@@ -14,7 +14,7 @@ except Exception:
     model = None
 
 # [설정] 본인의 쿠팡 파트너스 링크로 수정하세요
-COUPANG_URL = "https://link.coupang.com/a/XXXXXX" 
+COUPANG_URL = "https://link.coupang.com/a/din5aa" 
 
 # 세션 상태 초기화
 if 'unlocked' not in st.session_state:
