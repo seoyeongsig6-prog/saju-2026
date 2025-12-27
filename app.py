@@ -84,14 +84,14 @@ if st.session_state.full_report:
         if st.session_state.step == 1:
             st.warning("🔒 **상세 분석 결과가 잠겨 있습니다.**")
             # 버튼 클릭 시 JavaScript로 새 창 열고 상태 변경
-            if st.button("🧧 쿠팡 방문하고 상세 결과 보기 (새 창)"):
-                js = f"window.open('{COUPANG_URL}')"
+            if st.button("🧧 쿠팡 방문하고 상세 결과 보기"):
+                js = f"window.open('{COUPANG_URL}', '_blank')"
                 st.components.v1.html(f"<script>{js}</script>", height=0)
                 st.session_state.step = 2 # 2단계로 이동
                 st.rerun()
         
         # [상태 2] 방문 버튼을 누른 후 (전체확인 버튼만 노출)
-        elif st.session_state.step == 2:
+        elif st.session_state.step == 2 and not st.session_state.unlocked:
             st.info("✅ **쿠팡 방문이 확인되었습니다.**")
             if st.button("🔓 전체 확인하기"):
                 st.session_state.unlocked = True
@@ -99,8 +99,9 @@ if st.session_state.full_report:
 
         st.caption("이 서비스는 쿠팡파트너스 활동의 일환으로 쿠팡으로부터 이에 따른 일정액의 수수료를 제공 받습니다.")
     
-    else:
+    if:
         # 잠금 해제 후 모든 내용 출력
+        st.session_state.unlocked:
         st.success("🔓 모든 잠금이 해제되었습니다.")
         st.markdown(bottom_part)
         st.caption("이 서비스는 쿠팡파트너스 활동의 일환으로 쿠팡으로부터 이에 따른 일정액의 수수료를 제공 받습니다.")
