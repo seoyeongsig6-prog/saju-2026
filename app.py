@@ -3,7 +3,7 @@ import google.generativeai as genai
 import datetime
 import time
 
-# 1. 전역 변수 초기화 (NameError 방지)
+# 1. API 키 및 모델 설정 (NameError 방지를 위해 최상단에 배치)
 model = None
 try:
     if "GEMINI_API_KEY" in st.secrets:
@@ -16,7 +16,7 @@ except Exception:
 # [설정] 본인의 쿠팡 파트너스 링크 입력
 COUPANG_URL = "https://link.coupang.com/a/XXXXXX" 
 
-# 세션 상태 초기화
+# 세션 상태 초기화 (잠금 및 버튼 상태 관리)
 if 'unlocked' not in st.session_state:
     st.session_state.unlocked = False
 if 'full_report' not in st.session_state:
@@ -27,7 +27,7 @@ if 'step' not in st.session_state:
 st.set_page_config(page_title="2026 사주&처세 융합 분석", layout="centered")
 st.title("🏮 2026 사주&처세 융합 분석")
 
-# 2. 입력 섹션
+# 2. 사용자 입력 섹션
 with st.form("fortune_form"):
     user_name = st.text_input("성함", placeholder="본명을 입력해 주세요.")
     st.write("### 생년월일 선택")
@@ -46,60 +46,69 @@ with st.form("fortune_form"):
     with col_gender:
         gender = st.radio("성별", ["남성", "여성"], horizontal=True)
     user_mbti = st.selectbox("당신의 성향(MBTI)", ["ISTJ", "ISFJ", "INFJ", "INTJ", "ISTP", "ISFP", "INFP", "INTP", "ESTP", "ESFP", "ENFP", "ENTP", "ESTJ", "ESFJ", "ENFJ", "ENTJ"])
-    user_concern = st.text_area("요즘 가장 큰 고민 (비워두면 리포트에서 제외)")
+    
+    # 고민 상담 입력창
+    user_concern = st.text_area("요즘 가장 큰 고민 (비워두면 결과에서 제외됩니다)")
 
     if st.form_submit_button("2026년 운명 리포트 생성"):
         if not user_name:
             st.error("성함을 입력해 주세요.")
         elif model is None:
-            st.error("API 키 설정 에러. Secrets를 확인하세요.")
+            st.error("API 키 설정 에러. Secrets 설정을 확인하세요.")
         else:
-            with st.spinner("분석 중..."):
+            with st.spinner("운명의 흐름을 읽는 중..."):
                 st.session_state.unlocked = False
                 st.session_state.step = 1
                 birth_date_str = f"{year}년 {month}월 {day}일"
                 
-                # 고민 상담 항목 조건부 처리
-                concern_text = ""
+                # 고민이 있을 때만 프롬프트에 추가
+                concern_prompt = ""
                 if user_concern.strip():
-                    concern_text = f"6. 고민 해결: '{user_concern}'에 대한 역술가로서의 솔직한 답변"
+                    concern_prompt = f"6. 고민 해결: '{user_concern}'에 대한 역술가로서의 조언"
                 
-                prompt = f"""역술가로서 {user_name}({user_mbti}, {gender}, {birth_date_str})의 2026년 운세를 분석하세요.
-                ---잠금구분선--- 문구를 기준으로 요약과 상세 내용을 나누세요.
+                prompt = f"""당신은 역술가입니다. {user_name}({user_mbti}, {gender}, {birth_date_str})의 2026년 운세를 분석하세요.
+                ---잠금구분선--- 문구를 사용하여 요약과 상세 내용을 반드시 나누세요.
                 상단: [사주요약], [MBTI요약], [2026 병오년 총평]
-                하단: 상세운세(재물/사랑/인간관계/건강), {concern_text}"""
+                하단: 상세운세(재물/사랑/인간관계/건강), {concern_prompt}"""
                 
                 try:
                     response = model.generate_content(prompt)
                     st.session_state.full_report = response.text
                 except Exception as e:
-                    st.error(f"오류: {e}")
+                    st.error(f"분석 중 오류: {e}")
 
-# 3. 결과 출력 및 버튼 로직
+# 3. 결과 출력 및 고도화된 버튼 로직
 if st.session_state.full_report:
     report = st.session_state.full_report
-    top_part, bottom_part = report.split("---잠금구분선---") if "---잠금구분선---" in report else (report, "")
+    
+    # ValueError 방지: 구분선이 없을 경우를 대비한 안전한 분리
+    if "---잠금구분선---" in report:
+        top_part, bottom_part = report.split("---잠금구분선---", 1)
+    else:
+        top_part, bottom_part = report, "상세 분석 내용을 불러오지 못했습니다. 다시 시도해 주세요."
 
     st.divider()
     st.markdown(f"## 📜 {user_name}님의 2026년 운명 리포트")
     st.markdown(top_part)
 
-    # 잠금 로직 시작
+    # 잠금 시스템 시작
     if not st.session_state.unlocked:
         st.write("---")
-        # 1단계: 방문 전에는 방문 버튼만 표시
+        
+        # [상태 1] 방문 버튼만 노출
         if st.session_state.step == 1:
             st.warning("🔒 상세 운세와 고민 해답이 잠겨 있습니다.")
             if st.button("🧧 쿠팡 방문하고 상세 결과 보기"):
-                js = f"window.open('{COUPANG_URL}')"
+                # JavaScript로 새 창 열기
+                js = f"window.open('{COUPANG_URL}', '_blank')"
                 st.components.v1.html(f"<script>{js}</script>", height=0)
-                st.session_state.step = 2
+                st.session_state.step = 2 # 버튼 상태를 2단계로 변경
                 st.rerun()
         
-        # 2단계: 방문 버튼 누른 후에는 확인 버튼만 표시
+        # [상태 2] 방문 버튼을 누른 후, 전체확인 버튼만 노출
         elif st.session_state.step == 2:
             st.info("✅ 방문이 완료되었다면 아래 버튼을 눌러주세요.")
-            if st.button("🔓 전체 확인하기"):
+            if st.button("🔓 전체 결과 확인하기"):
                 st.session_state.unlocked = True
                 st.rerun()
         
