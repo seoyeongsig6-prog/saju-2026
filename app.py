@@ -1,9 +1,8 @@
 import streamlit as st
 import google.generativeai as genai
 import datetime
-import streamlit.components.v1 as components
 
-# 1. API 키 및 모델 초기화 (에러 방지용)
+# 1. API 키 및 모델 초기화
 model = None
 try:
     if "GEMINI_API_KEY" in st.secrets:
@@ -16,19 +15,16 @@ except Exception:
 # [설정] 본인의 쿠팡 파트너스 링크
 COUPANG_URL = "https://link.coupang.com/a/din5aa" 
 
-# 2. 쿼리 파라미터를 이용한 상태 관리 (버튼 클릭 감지)
-if "clicked" in st.query_params:
-    st.session_state.step = 2 # 클릭된 상태라면 바로 2단계로
-
+# 세션 상태 초기화 (결과와 단계를 엄격히 보존)
 if 'full_report' not in st.session_state:
     st.session_state.full_report = ""
 if 'step' not in st.session_state:
-    st.session_state.step = 0 # 0: 분석전, 1: 방문버튼, 2: 결과보기
+    st.session_state.step = 0 # 0:분석전, 1:쿠팡방문버튼, 2:결과확인버튼, 3:내용공개
 
 st.set_page_config(page_title="2026 사주&처세 융합 분석", layout="centered")
 st.title("🏮 2026 사주&처세 융합 분석")
 
-# 3. 사용자 입력 섹션
+# 2. 사용자 입력 섹션
 with st.form("fortune_form"):
     user_name = st.text_input("성함", placeholder="본명을 입력해 주세요.")
     st.write("### 생년월일 선택")
@@ -53,16 +49,15 @@ with st.form("fortune_form"):
         if not user_name:
             st.error("성함을 입력해 주세요.")
         elif model is None:
-            st.error("API 키 설정 에러. Secrets를 확인하세요.")
+            st.error("API 키 설정을 확인하세요.")
         else:
-            with st.spinner("분석 중..."):
-                st.session_state.step = 1
-                st.query_params.clear() # 이전 클릭 기록 삭제
+            with st.spinner("운명의 흐름을 읽는 중..."):
+                st.session_state.step = 1 # 즉시 1단계 진입
                 birth_date_str = f"{year}년 {month}월 {day}일"
                 concern_prompt = f"6. 고민 해결: '{user_concern}'에 대한 조언" if user_concern.strip() else ""
                 
-                prompt = f"""역술가로서 {user_name}({user_mbti}, {gender}, {birth_date_str})의 2026년 운세를 분석하세요.
----잠금구분선--- 문구를 사용하여 요약과 상세 내용을 반드시 나누세요.
+                prompt = f"""당신은 역술가입니다. {user_name}({user_mbti}, {gender}, {birth_date_str})의 2026년 운세를 분석하세요.
+---잠금구분선--- 문구를 사용하여 상단과 하단을 반드시 나누세요.
 상단: [사주요약], [MBTI요약], [2026 병오년 총평]
 하단: 상세운세(재물/사랑/인간관계/건강), {concern_prompt}"""
                 
@@ -72,51 +67,43 @@ with st.form("fortune_form"):
                 except Exception as e:
                     st.error(f"오류: {e}")
 
-# 4. 결과 출력 및 [원클릭] 순차 로직
+# 3. 결과 출력 및 1버튼 릴레이 로직
 if st.session_state.full_report:
     report = st.session_state.full_report
-    top_part, bottom_part = report.split("---잠금구분선---", 1) if "---잠금구분선---" in report else (report, "")
+    if "---잠금구분선---" in report:
+        top_part, bottom_part = report.split("---잠금구분선---", 1)
+    else:
+        top_part, bottom_part = report, "상세 데이터를 불러오지 못했습니다."
 
     st.divider()
     st.markdown(f"## 📜 운명 리포트")
     st.markdown(top_part)
 
-    # === 각 단계마다 '딱 하나'의 버튼만 노출 ===
+    # === [단계별 버튼 제어] 하나씩만 노출 ===
     
-    # [1단계] 쿠팡 방문 버튼: 클릭 시 즉시 쿠팡이 열리고 화면이 바뀜
+    # 1단계: 쿠팡 방문 버튼 (누르면 링크 열리고 사라짐)
     if st.session_state.step == 1:
         st.write("---")
-        st.warning("🔒 상세 분석 결과가 잠겨 있습니다.")
-        
-        # HTML/JS 버튼: 새 창 열기 + 부모 창 쿼리 파라미터 변경
-        button_html = f"""
-        <div style="text-align: center;">
-            <button id="coupang-btn" style="
-                width: 100%; padding: 15px; background-color: #ff4b4b; color: white;
-                border: none; border-radius: 10px; font-size: 18px; font-weight: bold; cursor: pointer;
-            ">🚀 쿠팡 방문하고 상세운세 풀기</button>
-        </div>
-        <script>
-            document.getElementById('coupang-btn').onclick = function() {{
-                window.open('{COUPANG_URL}', '_blank');
-                const url = new URL(window.parent.location.href);
-                url.searchParams.set('clicked', 'true');
-                window.parent.location.href = url.href;
-            }};
-        </script>
-        """
-        components.html(button_html, height=70)
-
-    # [2단계] 확인 및 완료: 1단계 버튼은 사라지고 상세 내용 노출
-    elif st.session_state.step == 2:
-        st.write("---")
-        st.success("🎉 방문이 확인되었습니다. 상세 분석 결과를 공개합니다.")
-        st.markdown(bottom_part)
-        
-        if st.button("🧧 처음으로 돌아가기"):
-            st.query_params.clear()
-            st.session_state.step = 0
+        st.warning("🔒 상세 운세가 잠겨 있습니다. 아래 버튼을 눌러주세요.")
+        if st.button("🚀 1단계: 쿠팡 방문하기", use_container_width=True, type="primary"):
+            # 자바스크립트로 링크 열기
+            js = f"window.open('{COUPANG_URL}', '_blank')"
+            st.components.v1.html(f"<script>{js}</script>", height=0)
+            st.session_state.step = 2 # 2단계로 이동
             st.rerun()
 
-st.divider()
-st.caption("이 서비스는 쿠팡 파트너스 활동의 일환으로 쿠팡으로부터 일정액의 수수료를 제공 받습니다.")
+    # 2단계: 결과 확인 버튼 (1단계 버튼이 사라진 자리에 등장)
+    elif st.session_state.step == 2:
+        st.write("---")
+        st.info("✅ 쿠팡 창이 열렸습니다. 방문을 마치셨다면 아래 버튼을 눌러 상세 운세를 확인하세요.")
+        if st.button("🔓 2단계: 결과 확인하기", use_container_width=True, type="primary"):
+            st.session_state.step = 3 # 최종 공개
+            st.rerun()
+
+    # 3단계: 최종 내용 공개
+    elif st.session_state.step == 3:
+        st.success("🎉 모든 잠금이 해제되었습니다.")
+        st.markdown(bottom_part)
+        st.caption("이 서비스는 쿠팡 파트너스 활동의 일환으로 일정액의 수수료를 제공받습니다.")
+
+st.caption("© 2026 서영식 사주&처세 융합 분석")
