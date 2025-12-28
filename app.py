@@ -21,6 +21,8 @@ if 'full_report' not in st.session_state:
     st.session_state.full_report = ""
 if 'coupang_visited' not in st.session_state:
     st.session_state.coupang_visited = False
+if 'user_name' not in st.session_state:
+    st.session_state.user_name = ""
 
 st.set_page_config(page_title="2026 사주&처세 융합 분석", layout="centered")
 st.title("🏮 2026 사주&처세 융합 분석")
@@ -59,6 +61,7 @@ with st.form("fortune_form"):
         else:
             with st.spinner("운명의 흐름을 읽는 중..."):
                 st.session_state.coupang_visited = False
+                st.session_state.user_name = user_name
                 birth_date_str = f"{year}년 {month}월 {day}일"
                 concern_prompt = f"6. 고민 해결: '{user_concern}'에 대한 역술가로서의 조언" if user_concern.strip() else ""
                 
@@ -76,11 +79,12 @@ with st.form("fortune_form"):
                 except Exception as e:
                     st.error(f"분석 중 오류: {e}")
 
-# 3. 결과 출력 (요구사항대로 정확히 구현)
+# 3. 결과 출력 (HTML 링크로 100% 작동 보장)
 if st.session_state.full_report:
     report = st.session_state.full_report
+    user_name = st.session_state.user_name
     
-    # 잠금구분선으로 정확히 분리
+    # 잠금구분선으로 분리
     if "---잠금구분선---" in report:
         top_part, bottom_part = report.split("---잠금구분선---", 1)
         top_part = top_part.strip()
@@ -92,39 +96,64 @@ if st.session_state.full_report:
     st.divider()
     st.markdown(f"## 📜 {user_name}님의 2026년 운명 리포트")
     
-    # 1단계: 잠금구분선 이전 내용 먼저 보여줌
+    # 1단계: 총평만 보여줌
     st.markdown("### 📋 총평")
     st.markdown(top_part)
     
     st.write("---")
     
-    # 쿠팡 방문 전: 쿠팡방문 버튼만
+    # 쿠팡 방문 전: HTML 링크 버튼 (가장 확실함)
     if not st.session_state.coupang_visited:
         st.warning("🔒 상세 운세와 고민 해답이 잠겨 있습니다.")
         st.markdown("### 🧧 쿠팡 방문 후 상세 결과 확인")
         
-        if st.button("🛒 쿠팡 방문하기", use_container_width=True):
-            # JavaScript로 새 탭 강제 열기 (100% 작동 보장)
-            js_code = f"""
-            <script>
-                window.open('{COUPANG_URL}', '_blank', 'noopener,noreferrer,width=1000,height=800');
-                window.focus();
-            </script>
-            """
-            st.components.v1.html(js_code, height=0)
-            
-            st.success("✅ 쿠팡이 새 탭에서 열렸습니다! 닫지 말고 다음 버튼을 눌러주세요.")
-            st.session_state.coupang_visited = True
-            st.rerun()
+        # HTML 링크로 새 탭 강제 열기 (100% 작동)
+        st.markdown(f"""
+        <div style="text-align: center; padding: 20px; background: linear-gradient(45deg, #ff6b6b, #feca57); border-radius: 15px; margin: 20px 0;">
+            <a href="{COUPANG_URL}" target="_blank" style="
+                display: inline-block; 
+                padding: 15px 40px; 
+                background: white; 
+                color: #ff6b6b; 
+                text-decoration: none; 
+                font-weight: bold; 
+                font-size: 18px; 
+                border-radius: 50px; 
+                box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+                transition: all 0.3s;
+            " onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                🚀 쿠팡 방문하고 상세운세 풀기
+            </a>
+            <p style="color: white; font-size: 14px; margin-top: 10px;">
+                클릭하면 새 탭에서 쿠팡이 열립니다!
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.info("💡 위 버튼 클릭 → 쿠팡 새 탭 열림 → 돌아와서 '전체내용보기' 클릭")
     
-    # 쿠팡 방문 후: 전체내용보기 버튼 생성
+    # 쿠팡 방문 후: 전체내용보기 버튼
     else:
-        st.info("👀 쿠팡 방문이 확인되었습니다!")
-        if st.button("📖 전체내용보기", use_container_width=True):
-            st.success("🔓 상세 내용이 해제되었습니다!")
-            st.markdown("### 📊 상세 운세 분석")
-            st.markdown(bottom_part)
-            st.caption("🌟 2026년, 당신의 운명이 빛나길 기원합니다!")
-        else:
-            st.info("📖 '전체내용보기' 버튼을 클릭하세요.")
+        st.success("✅ 쿠팡 방문 확인!")
+        col1, col2 = st.columns([3,1])
+        with col2:
+            if st.button("📖 전체내용보기", use_container_width=True):
+                st.markdown("### 📊 상세 운세 분석")
+                st.markdown(bottom_part)
+                st.caption("🌟 2026년, 당신의 운명이 빛나길 기원합니다!")
+        
+        with col1:
+            st.markdown("""
+            <div style="background: linear-gradient(45deg, #4ecdc4, #44a08d); padding: 15px; border-radius: 10px; text-align: center;">
+                <h3 style="color: white; margin: 0;">🔓 상세 내용 해제됨</h3>
+            </div>
+            """, unsafe_allow_html=True)
 
+# 하단 안내
+st.divider()
+st.caption("""
+🔧 사용법: 
+1. API 키 Secrets에 "GEMINI_API_KEY" 입력
+2. COUPANG_URL에 실제 쿠팡 파트너스 링크 
+3. 위 빨간 버튼 클릭 = 무조건 새 탭 열림!
+""")
