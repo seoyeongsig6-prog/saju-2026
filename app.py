@@ -21,6 +21,8 @@ if 'full_report' not in st.session_state:
     st.session_state.full_report = ""
 if 'coupang_visited' not in st.session_state:
     st.session_state.coupang_visited = False
+if 'show_full_content' not in st.session_state:
+    st.session_state.show_full_content = False
 if 'user_name' not in st.session_state:
     st.session_state.user_name = ""
 
@@ -61,6 +63,7 @@ with st.form("fortune_form"):
         else:
             with st.spinner("운명의 흐름을 읽는 중..."):
                 st.session_state.coupang_visited = False
+                st.session_state.show_full_content = False
                 st.session_state.user_name = user_name
                 birth_date_str = f"{year}년 {month}월 {day}일"
                 concern_prompt = f"6. 고민 해결: '{user_concern}'에 대한 역술가로서의 조언" if user_concern.strip() else ""
@@ -79,12 +82,12 @@ with st.form("fortune_form"):
                 except Exception as e:
                     st.error(f"분석 중 오류: {e}")
 
-# 3. 결과 출력 (HTML 링크로 100% 작동 보장)
+# 3. 결과 출력 (완벽한 2단계 흐름)
 if st.session_state.full_report:
     report = st.session_state.full_report
     user_name = st.session_state.user_name
     
-    # 잠금구분선으로 분리
+    # 잠금구분선으로 정확히 분리
     if "---잠금구분선---" in report:
         top_part, bottom_part = report.split("---잠금구분선---", 1)
         top_part = top_part.strip()
@@ -102,58 +105,12 @@ if st.session_state.full_report:
     
     st.write("---")
     
-    # 쿠팡 방문 전: HTML 링크 버튼 (가장 확실함)
+    # === 1단계: 쿠팡 방문 전 ===
     if not st.session_state.coupang_visited:
         st.warning("🔒 상세 운세와 고민 해답이 잠겨 있습니다.")
         st.markdown("### 🧧 쿠팡 방문 후 상세 결과 확인")
         
-        # HTML 링크로 새 탭 강제 열기 (100% 작동)
+        # HTML 링크 (새 탭 열기 + 자동 상태 변경)
         st.markdown(f"""
         <div style="text-align: center; padding: 20px; background: linear-gradient(45deg, #ff6b6b, #feca57); border-radius: 15px; margin: 20px 0;">
-            <a href="{COUPANG_URL}" target="_blank" style="
-                display: inline-block; 
-                padding: 15px 40px; 
-                background: white; 
-                color: #ff6b6b; 
-                text-decoration: none; 
-                font-weight: bold; 
-                font-size: 18px; 
-                border-radius: 50px; 
-                box-shadow: 0 8px 20px rgba(0,0,0,0.2);
-                transition: all 0.3s;
-            " onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
-                🚀 쿠팡 방문하고 상세운세 풀기
-            </a>
-            <p style="color: white; font-size: 14px; margin-top: 10px;">
-                클릭하면 새 탭에서 쿠팡이 열립니다!
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        st.info("💡 위 버튼 클릭 → 쿠팡 새 탭 열림 → 돌아와서 '전체내용보기' 클릭")
-    
-    # 쿠팡 방문 후: 전체내용보기 버튼
-    else:
-        st.success("✅ 쿠팡 방문 확인!")
-        col1, col2 = st.columns([3,1])
-        with col2:
-            if st.button("📖 전체내용보기", use_container_width=True):
-                st.markdown("### 📊 상세 운세 분석")
-                st.markdown(bottom_part)
-                st.caption("🌟 2026년, 당신의 운명이 빛나길 기원합니다!")
-        
-        with col1:
-            st.markdown("""
-            <div style="background: linear-gradient(45deg, #4ecdc4, #44a08d); padding: 15px; border-radius: 10px; text-align: center;">
-                <h3 style="color: white; margin: 0;">🔓 상세 내용 해제됨</h3>
-            </div>
-            """, unsafe_allow_html=True)
-
-# 하단 안내
-st.divider()
-st.caption("""
-🔧 사용법: 
-1. API 키 Secrets에 "GEMINI_API_KEY" 입력
-2. COUPANG_URL에 실제 쿠팡 파트너스 링크 
-3. 위 빨간 버튼 클릭 = 무조건 새 탭 열림!
-""")
+            <a href="{COUPANG_URL}" target="_blank" onclick="parent.document.querySelector('iframe').contentWindow.post
