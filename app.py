@@ -67,10 +67,9 @@ with st.form("fortune_form"):
                 except Exception as e:
                     st.error(f"분석 중 오류: {e}")
 
-# 3. 결과 출력 및 [순차 노출] 버튼 로직 (중복 노출 절대 불가)
+# 3. 결과 출력 및 [순차 노출] 버튼 로직
 if st.session_state.full_report:
     report = st.session_state.full_report
-    # 구분선으로 상/하단 분리
     if "---잠금구분선---" in report:
         top_part, bottom_part = report.split("---잠금구분선---", 1)
     else:
@@ -80,18 +79,18 @@ if st.session_state.full_report:
     st.markdown(f"## 📜 운명 리포트")
     st.markdown(top_part)
 
-    # === 버튼 로직: if-elif 구조로 각 단계당 딱 1개의 UI만 노출 ===
+    # === 개선된 버튼 로직 ===
     
-    # [1단계] 쿠팡 방문 버튼: 클릭 시 새 창 열기 + 다음 단계 버튼으로 교체
+    # [1단계] 쿠팡 방문 안내 및 링크 노출
     if st.session_state.step == 1:
         st.write("---")
         st.warning("🔒 상세 분석 결과가 잠겨 있습니다.")
-        st.markdown("### 🧧 쿠팡 방문 후 상세 결과 확인")
         
-        # 브라우저 팝업 차단을 피하기 위해 HTML <a> 태그를 버튼처럼 스타일링
+        # 안내 문구와 링크만 노출
         st.markdown(f"""
-            <div style="text-align: center; margin: 20px 0;">
-                <a href="{COUPANG_URL}" target="_blank" style="
+            <div style="text-align: center; margin-bottom: 10px;">
+                <p>아래 버튼을 눌러 쿠팡 파트너스 페이지를 방문하시면 잠금이 해제됩니다.</p>
+                <a href="{COUPANG_URL}" target="_blank" id="visit-link" style="
                     display: inline-block; width: 100%; padding: 15px 0; background-color: #ff4b4b; 
                     color: white; text-decoration: none; font-weight: bold; font-size: 18px; 
                     border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
@@ -99,23 +98,27 @@ if st.session_state.full_report:
             </div>
             """, unsafe_allow_html=True)
         
-        # 위 링크를 클릭한 사용자가 돌아와서 누를 버튼 (이걸 눌러야 1단계가 사라짐)
-        if st.button("🧧 쿠팡 페이지를 열었습니다 (다음으로)", use_container_width=True):
-            st.session_state.step = 2
-            st.rerun()
+        # '동시에 노출되는 문제'를 해결하기 위해, 방문 여부를 묻는 체크박스 활용
+        st.write("")
+        visited = st.checkbox("쿠팡 페이지 방문을 완료했습니다.")
+        
+        if visited:
+            if st.button("🧧 다음 단계로 진행", use_container_width=True, type="primary"):
+                st.session_state.step = 2
+                st.rerun()
 
-    # [2단계] 확인 및 잠금 해제 버튼
+    # [2단계] 결과 보기 버튼 (방문 확인이 끝난 후만 노출)
     elif st.session_state.step == 2:
         st.write("---")
-        st.info("✅ 방문이 완료되었다면 아래 버튼을 눌러 상세 운세를 확인하세요.")
-        if st.button("🔓 2단계: 결과 확인하기 (잠금 해제)", use_container_width=True, type="primary"):
+        st.info("✅ 확인되었습니다. 아래 버튼을 누르면 상세 사주가 공개됩니다.")
+        if st.button("🔓 상세 운세 결과 보기", use_container_width=True, type="primary"):
             st.session_state.step = 3
             st.rerun()
 
-    # [3단계] 최종 완료: 버튼이 모두 사라지고 상세 내용 노출
+    # [3단계] 최종 완료: 모든 버튼 제거 및 상세 내용 출력
     elif st.session_state.step == 3:
         st.write("---")
-        st.success("🎉 모든 잠금이 해제되었습니다.")
+        st.success("🎉 모든 잠금이 해제되었습니다. 2026년 대운을 확인하세요!")
         st.markdown(bottom_part)
         st.caption("이 서비스는 쿠팡 파트너스 활동의 일환으로 쿠팡으로부터 일정액의 수수료를 제공 받습니다.")
 
