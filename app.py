@@ -14,11 +14,13 @@ except Exception:
     model = None
 
 # [중요] 본인의 쿠팡 파트너스 링크 입력
-COUPANG_URL = "https://link.coupang.com/a/din5aa"  # 실제 링크로 변경
+COUPANG_URL = "https://link.coupang.com/a/din5aa" 
 
 # 세션 상태 초기화
 if 'full_report' not in st.session_state:
     st.session_state.full_report = ""
+if 'link_clicked' not in st.session_state:
+    st.session_state.link_clicked = False  # 링크 클릭 여부 추가
 if 'coupang_visited' not in st.session_state:
     st.session_state.coupang_visited = False
 if 'show_full_content' not in st.session_state:
@@ -62,6 +64,7 @@ with st.form("fortune_form"):
             st.error("API 키 설정 에러. Secrets 설정을 확인하세요.")
         else:
             with st.spinner("운명의 흐름을 읽는 중..."):
+                st.session_state.link_clicked = False
                 st.session_state.coupang_visited = False
                 st.session_state.show_full_content = False
                 st.session_state.user_name = user_name
@@ -69,11 +72,8 @@ with st.form("fortune_form"):
                 concern_prompt = f"6. 고민 해결: '{user_concern}'에 대한 역술가로서의 조언" if user_concern.strip() else ""
                 
                 prompt = f"""당신은 역술가입니다. {user_name}({user_mbti}, {gender}, {birth_date_str})의 2026년 운세를 분석하세요.
-
 ---잠금구분선--- 문구를 사용하여 요약과 상세 내용을 반드시 나누세요.
-
 상단: [사주요약], [MBTI요약], [2026 병오년 총평]
-
 하단: 상세운세(재물/사랑/인간관계/건강), {concern_prompt}"""
                 
                 try:
@@ -82,12 +82,11 @@ with st.form("fortune_form"):
                 except Exception as e:
                     st.error(f"분석 중 오류: {e}")
 
-# 3. 결과 출력 (모든 에러 해결)
+# 3. 결과 출력
 if st.session_state.full_report:
     report = st.session_state.full_report
     user_name = st.session_state.user_name
     
-    # 잠금구분선으로 정확히 분리
     if "---잠금구분선---" in report:
         top_part, bottom_part = report.split("---잠금구분선---", 1)
         top_part = top_part.strip()
@@ -98,53 +97,56 @@ if st.session_state.full_report:
     
     st.divider()
     st.markdown(f"## 📜 {user_name}님의 2026년 운명 리포트")
-    
-    # 1단계: 총평만 보여줌
     st.markdown("### 📋 총평")
     st.markdown(top_part)
-    
     st.write("---")
     
     # === 1단계: 쿠팡 방문 전 ===
     if not st.session_state.coupang_visited:
-        st.warning("🔒 상세 운세와 고민 해답이 잠겨 있습니다.")
-        st.markdown("### 🧧 쿠팡 방문 후 상세 결과 확인")
+        # A. 아직 링크를 클릭하지 않은 상태
+        if not st.session_state.link_clicked:
+            st.warning("🔒 상세 운세와 고민 해답이 잠겨 있습니다.")
+            st.markdown("### 🧧 쿠팡 방문 후 상세 결과 확인")
+            
+            html_link = f"""
+            <div style="text-align: center; padding: 20px; background: linear-gradient(45deg, #ff6b6b, #feca57); border-radius: 15px; margin: 20px 0;">
+                <a href="{COUPANG_URL}" target="_blank" style="
+                    display: inline-block; 
+                    padding: 15px 40px; 
+                    background: white; 
+                    color: #ff6b6b; 
+                    text-decoration: none; 
+                    font-weight: bold; 
+                    font-size: 18px; 
+                    border-radius: 50px; 
+                    box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+                ">
+                    🚀 쿠팡 방문하고 상세운세 풀기
+                </a>
+                <p style="color: white; font-size: 14px; margin-top: 10px;">클릭하면 새 탭에서 쿠팡이 열립니다!</p>
+            </div>
+            """
+            st.markdown(html_link, unsafe_allow_html=True)
+            
+            # 방문 버튼을 눌렀음을 인증하는 내부 버튼
+            if st.button("🧧 위 링크를 클릭하여 쿠팡 페이지를 열었습니다"):
+                st.session_state.link_clicked = True
+                st.rerun()
         
-        # HTML 링크 (새 탭 열기)
-        html_link = f"""
-        <div style="text-align: center; padding: 20px; background: linear-gradient(45deg, #ff6b6b, #feca57); border-radius: 15px; margin: 20px 0;">
-            <a href="{COUPANG_URL}" target="_blank" style="
-                display: inline-block; 
-                padding: 15px 40px; 
-                background: white; 
-                color: #ff6b6b; 
-                text-decoration: none; 
-                font-weight: bold; 
-                font-size: 18px; 
-                border-radius: 50px; 
-                box-shadow: 0 8px 20px rgba(0,0,0,0.2);
-                transition: all 0.3s;
-            " onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
-                🚀 쿠팡 방문하고 상세운세 풀기
-            </a>
-            <p style="color: white; font-size: 14px; margin-top: 10px;">
-                클릭하면 새 탭에서 쿠팡이 열립니다!
-            </p>
-        </div>
-        """
-        st.markdown(html_link, unsafe_allow_html=True)
-        
-        # 쿠팡 방문 완료 버튼 (key 제거)
-        if st.button("✅ 쿠팡 방문 완료!"):
-            st.session_state.coupang_visited = True
-            st.rerun()
+        # B. 링크 클릭 후 -> 방문 완료 버튼 노출
+        else:
+            st.info("💡 쿠팡 페이지가 열렸습니다. 쇼핑몰을 잠시 둘러보신 후 아래 버튼을 눌러주세요.")
+            if st.button("✅ 쿠팡 방문 완료!", type="primary"):
+                st.session_state.coupang_visited = True
+                st.rerun()
+            if st.button("◀ 방문 링크 다시 보기"):
+                st.session_state.link_clicked = False
+                st.rerun()
     
     # === 2단계: 전체내용보기 버튼 ===
     elif not st.session_state.show_full_content:
         st.success("✅ 쿠팡 방문 확인됨!")
-        st.markdown("### 🔓 전체내용 확인")
-        
-        if st.button("📖 전체내용보기", use_container_width=True, type="primary"):
+        if st.button("📖 상세 결과 전체보기", use_container_width=True, type="primary"):
             st.session_state.show_full_content = True
             st.rerun()
     
@@ -153,11 +155,6 @@ if st.session_state.full_report:
         st.success("🎉 모든 내용 해제 완료!")
         st.markdown("### 📊 상세 운세 분석")
         st.markdown(bottom_part)
-        st.caption("🌟 2026년, 당신의 운명이 빛나길 기원합니다!")
 
-# 하단 안내
 st.divider()
-st.caption("""
-✅ 완벽 흐름: 총평 → [쿠팡방문 클릭] → [쿠팡방문완료 클릭] → [전체내용보기 클릭] → 상세운세
-🔧 COUPANG_URL에 실제 파트너스 링크 입력!
-""")
+st.caption("이 서비스는 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.")
