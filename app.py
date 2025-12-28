@@ -81,44 +81,58 @@ if st.session_state.full_report:
 
     # === 개선된 버튼 로직 ===
     
-    # [1단계] 쿠팡 방문 안내 및 링크 노출
+# [1단계] 쿠팡 방문 (자바스크립트 제어)
     if st.session_state.step == 1:
         st.write("---")
         st.warning("🔒 상세 분석 결과가 잠겨 있습니다.")
         
-        # 안내 문구와 링크만 노출
-        st.markdown(f"""
-            <div style="text-align: center; margin-bottom: 10px;">
-                <p>아래 버튼을 눌러 쿠팡 파트너스 페이지를 방문하시면 잠금이 해제됩니다.</p>
-                <a href="{COUPANG_URL}" target="_blank" id="visit-link" style="
-                    display: inline-block; width: 100%; padding: 15px 0; background-color: #ff4b4b; 
-                    color: white; text-decoration: none; font-weight: bold; font-size: 18px; 
-                    border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-                ">🚀 1단계: 쿠팡 방문하기 (새 창 열림)</a>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        # '동시에 노출되는 문제'를 해결하기 위해, 방문 여부를 묻는 체크박스 활용
-        st.write("")
-        visited = st.checkbox("쿠팡 페이지 방문을 완료했습니다.")
-        
-        if visited:
-            if st.button("🧧 다음 단계로 진행", use_container_width=True, type="primary"):
-                st.session_state.step = 2
-                st.rerun()
+        # 1. 실제 로직을 처리할 숨겨진 파이썬 버튼 (CSS로 숨김)
+        st.markdown("""<style>.hidden-btn {display: none;}</style>""", unsafe_allow_html=True)
+        if st.button("내부로직용_숨겨진버튼", key="hidden_trigger"):
+            st.session_state.step = 2
+            st.rerun()
 
-    # [2단계] 결과 보기 버튼 (방문 확인이 끝난 후만 노출)
+        # 2. 사용자에게 보이는 커스텀 HTML 버튼
+        # 클릭 시: 새 창 열기(window.open) + 숨겨진 버튼 클릭(click)을 동시에 수행
+        components.html(f"""
+            <div style="text-align: center;">
+                <button id="main-btn" onclick="handleAction()" style="
+                    width: 100%; padding: 15px; background-color: #ff4b4b; 
+                    color: white; border: none; font-weight: bold; font-size: 18px; 
+                    border-radius: 10px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+                ">🚀 쿠팡 방문하고 결과 보기</button>
+            </div>
+
+            <script>
+                function handleAction() {{
+                    // 1. 쿠팡 링크 새 창으로 열기
+                    window.open('{COUPANG_URL}', '_blank');
+                    
+                    // 2. 스트림릿의 숨겨진 버튼을 찾아 클릭 이벤트 전달
+                    // 스트림릿 버튼은 보통 'kind-primary'나 'stButton' 클래스 내부에 존재함
+                    const buttons = window.parent.document.getElementsByTagName('button');
+                    for (let btn of buttons) {{
+                        if (btn.innerText === "내부로직용_숨겨진버튼") {{
+                            btn.click();
+                            break;
+                        }}
+                    }}
+                }}
+            </script>
+        """, height=100)
+
+    # [2단계] 방문 확인 후 나타나는 버튼
     elif st.session_state.step == 2:
         st.write("---")
-        st.info("✅ 확인되었습니다. 아래 버튼을 누르면 상세 사주가 공개됩니다.")
-        if st.button("🔓 상세 운세 결과 보기", use_container_width=True, type="primary"):
+        st.info("✅ 방문 확인 완료! 아래 버튼을 누르면 상세 내용이 공개됩니다.")
+        if st.button("🔓 사주 결과 확인하기", use_container_width=True, type="primary"):
             st.session_state.step = 3
             st.rerun()
 
-    # [3단계] 최종 완료: 모든 버튼 제거 및 상세 내용 출력
+    # [3단계] 최종 결과 노출
     elif st.session_state.step == 3:
         st.write("---")
-        st.success("🎉 모든 잠금이 해제되었습니다. 2026년 대운을 확인하세요!")
+        st.success("🎉 모든 잠금이 해제되었습니다.")
         st.markdown(bottom_part)
         st.caption("이 서비스는 쿠팡 파트너스 활동의 일환으로 쿠팡으로부터 일정액의 수수료를 제공 받습니다.")
 
