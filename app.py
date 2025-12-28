@@ -82,7 +82,7 @@ with st.form("fortune_form"):
                 except Exception as e:
                     st.error(f"분석 중 오류: {e}")
 
-# 3. 결과 출력 (완벽한 2단계 흐름)
+# 3. 결과 출력 (SyntaxError 완전 해결)
 if st.session_state.full_report:
     report = st.session_state.full_report
     user_name = st.session_state.user_name
@@ -110,7 +110,54 @@ if st.session_state.full_report:
         st.warning("🔒 상세 운세와 고민 해답이 잠겨 있습니다.")
         st.markdown("### 🧧 쿠팡 방문 후 상세 결과 확인")
         
-        # HTML 링크 (새 탭 열기 + 자동 상태 변경)
-        st.markdown(f"""
+        # HTML 링크 (f-string 오류 수정: 변수 밖으로 분리)
+        html_link = f"""
         <div style="text-align: center; padding: 20px; background: linear-gradient(45deg, #ff6b6b, #feca57); border-radius: 15px; margin: 20px 0;">
-            <a href="{COUPANG_URL}" target="_blank" onclick="parent.document.querySelector('iframe').contentWindow.post
+            <a href="{COUPANG_URL}" target="_blank" style="
+                display: inline-block; 
+                padding: 15px 40px; 
+                background: white; 
+                color: #ff6b6b; 
+                text-decoration: none; 
+                font-weight: bold; 
+                font-size: 18px; 
+                border-radius: 50px; 
+                box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+                transition: all 0.3s;
+            " onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                🚀 쿠팡 방문하고 상세운세 풀기
+            </a>
+            <p style="color: white; font-size: 14px; margin-top: 10px;">
+                클릭하면 새 탭에서 쿠팡이 열립니다!
+            </p>
+        </div>
+        """
+        st.markdown(html_link, unsafe_allow_html=True)
+        
+        st.button("쿠팡 방문 완료", key="mark_visited")
+        if st.button("쿠팡 방문 완료", key="mark_visited"):
+            st.session_state.coupang_visited = True
+            st.rerun()
+    
+    # === 2단계: 전체내용보기 버튼 ===
+    elif not st.session_state.show_full_content:
+        st.success("✅ 쿠팡 방문 확인!")
+        st.markdown("### 🔓 전체내용 확인")
+        
+        if st.button("📖 전체내용보기", use_container_width=True, type="primary"):
+            st.session_state.show_full_content = True
+            st.rerun()
+    
+    # === 3단계: 상세 내용 표시 ===
+    else:
+        st.success("🎉 모든 내용 해제 완료!")
+        st.markdown("### 📊 상세 운세 분석")
+        st.markdown(bottom_part)
+        st.caption("🌟 2026년, 당신의 운명이 빛나길 기원합니다!")
+
+# 하단 안내
+st.divider()
+st.caption("""
+✅ 흐름: 총평 → [쿠팡방문 클릭] → [쿠팡방문완료 클릭] → [전체내용보기 클릭] → 상세운세
+🔧 COUPANG_URL에 실제 파트너스 링크 입력!
+""")
