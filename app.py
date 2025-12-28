@@ -2,7 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 import datetime
 
-# 1. API 키 및 모델 초기화 (에러 방지용)
+# 1. API 키 및 모델 초기화
 model = None
 try:
     if "GEMINI_API_KEY" in st.secrets:
@@ -12,21 +12,20 @@ try:
 except Exception:
     model = None
 
-# [필수] 여기에 본인의 쿠팡 파트너스 링크를 넣으세요.
-# 이 링크 하나로 AI가 추천한 모든 물건의 수익이 사용자님께 돌아갑니다.
+# [설정] 사용자님의 쿠팡 파트너스 링크
 COUPANG_URL = "https://link.coupang.com/a/din5aa" 
 
 # 세션 상태 초기화
 if 'full_report' not in st.session_state:
     st.session_state.full_report = ""
 
-st.set_page_config(page_title="2026 사주&처세 융합 분석", layout="centered")
-st.title("🏮 2026 사주&처세 융합 분석")
+st.set_page_config(page_title="2026 사주&처세 정밀 분석", layout="centered")
+st.title("🏮 2026 사주&처세 정밀 분석")
 
 # 2. 사용자 입력 섹션
 with st.form("fortune_form"):
     user_name = st.text_input("성함", placeholder="본명을 입력해 주세요.")
-    st.write("### 생년월일 선택")
+    st.write("### 생년월일 및 출생 정보")
     col_y, col_m, col_d = st.columns(3)
     with col_y:
         year = st.selectbox("년", range(2026, 1919, -1), index=31)
@@ -44,28 +43,38 @@ with st.form("fortune_form"):
     with col_gender:
         gender = st.radio("성별", ["남성", "여성"], horizontal=True)
     
-    user_mbti = st.selectbox("당신의 성향(MBTI)", ["ISTJ", "ISFJ", "INFJ", "INTJ", "ISTP", "ISFP", "INFP", "INTP", "ESTP", "ESFP", "ENFP", "ENTP", "ESTJ", "ESFJ", "ENFJ", "ENTJ"])
-    user_concern = st.text_area("요즘 가장 큰 고민 (비워두면 리포트에서 제외)")
+    user_mbti = st.selectbox("성향(MBTI)", ["ISTJ", "ISFJ", "INFJ", "INTJ", "ISTP", "ISFP", "INFP", "INTP", "ESTP", "ESFP", "ENFP", "ENTP", "ESTJ", "ESFJ", "ENFJ", "ENTJ"])
+    user_concern = st.text_area("구체적인 고민 (비워두면 리포트에서 제외)")
 
-    if st.form_submit_button("2026년 운명 리포트 생성"):
+    if st.form_submit_button("정밀 운명 리포트 생성"):
         if not user_name:
             st.error("성함을 입력해 주세요.")
         elif model is None:
             st.error("API 키 설정을 확인하세요.")
         else:
-            with st.spinner("하늘의 기운을 읽고 있습니다..."):
+            with st.spinner("만세력을 구성하고 2026년의 기운을 대조하고 있습니다..."):
                 birth_date_str = f"{year}년 {month}월 {day}일"
-                concern_prompt = f"### 💡 고민 해결 조언\n'{user_concern}'에 대한 역술가로서의 조언을 작성하세요." if user_concern.strip() else ""
+                concern_prompt = f"### 💡 고민 해결 처세술\n'{user_concern}'에 대한 명리학적 해법을 제시하세요." if user_concern.strip() else ""
                 
-                # AI에게 행운의 아이템을 구체적으로 추천하도록 지시
-                prompt = f"""당신은 전문 역술가입니다. {user_name}({user_mbti}, {gender}, {birth_date_str})의 2026년 운세를 분석하세요.
+                # 전문 명리학 + 행운의 물건 지침 강화
+                prompt = f"""
+                당신은 정통 명리학자입니다. {user_name}({gender}, {birth_date_str}, {user_mbti})의 2026년(丙午年) 운세를 분석하세요.
+
+                [작성 지침]
+                - 뻔한 덕담이 아니라 십성(十星)과 용신을 활용해 전문적으로 분석하세요.
+                - 2026년 병오년의 강렬한 화(火) 기운이 사용자의 원국에 미치는 영향을 상세히 서술하세요.
                 
-                [필수 구조]
-                1. 📋 2026 병오년 총평
-                2. 📊 재물/사랑/인간관계/건강 상세 분석
+                [행운의 물건 지침]
+                - 마지막 항목인 '행운을 주는 물건'은 반드시 **가볍게 지니고 다닐 수 있는 작은 물건**(예: 카드, 키링, 손수건, 특정 원석 등)으로 추천하세요.
+                - "사주상 어떤 기운이 부족하고, 병오년의 기운이 이러하니 이 물건이 그 간극을 메워준다"는 논리적인 근거를 반드시 포함하세요.
+
+                [리포트 구조]
+                1. 📋 사주 원국 분석 및 핵심 용신
+                2. 🏮 2026 병오년 총평 (세운 분석)
+                3. 📊 재물/사랑/인간관계/건강 정밀 분석
                 {concern_prompt}
-                3. ✨ 2026 행운을 주는 물건: 
-                   이 사용자의 사주와 MBTI를 고려하여 올해 기운을 보강해줄 구체적인 행운의 아이템(예: 특정 색상의 지갑, 풍수 인테리어 소품, 행운의 원석 팔찌 등) 3가지를 추천하고 그 이유를 설명하세요."""
+                4. ✨ 2026 행운을 주는 물건 (휴대 가능한 소품 위주 추천)
+                """
                 
                 try:
                     response = model.generate_content(prompt)
@@ -73,30 +82,32 @@ with st.form("fortune_form"):
                 except Exception as e:
                     st.error(f"오류: {e}")
 
-# 3. 결과 출력 및 사용자 링크 연결
+# 3. 결과 출력
 if st.session_state.full_report:
     st.divider()
-    st.markdown(f"## 📜 {user_name}님의 2026년 운명 리포트")
-    
-    # AI가 생성한 전문 출력 (행운의 물건 포함)
+    st.markdown(f"## 📜 {user_name}님의 2026년 정밀 운명 리포트")
     st.markdown(st.session_state.full_report)
     
-    # 행운의 물건 섹션 바로 아래에 사용자님의 링크 배치
-    st.write("---")
-    st.info(f"🔮 **{user_name}님의 행운을 극대화할 아이템들을 지금 바로 확인해보세요.**")
-    
-    # 사용자님의 파트너스 링크가 걸린 큰 버튼
+    # --- 행운의 물건 보기 버튼 섹션 (디자인 최적화) ---
+    st.write("")
     st.markdown(f"""
-        <div style="text-align: center; margin: 20px 0;">
+        <div style="text-align: center; margin-top: 20px;">
             <a href="{COUPANG_URL}" target="_blank" style="
-                display: inline-block; width: 100%; padding: 20px 0; background-color: #ff4b4b; 
-                color: white; text-decoration: none; font-weight: bold; font-size: 20px; 
-                border-radius: 12px; box-shadow: 0 4px 15px rgba(255, 75, 75, 0.4);
-                transition: all 0.3s ease;
-            ">🎁 2026 행운의 아이템 구매하러 가기</a>
+                display: inline-block;
+                padding: 12px 35px;
+                background-color: #3d3d3d;
+                color: #ffffff;
+                text-decoration: none;
+                font-weight: 600;
+                font-size: 16px;
+                border-radius: 8px;
+                border: 1px solid #2d2d2d;
+                transition: background 0.3s ease;
+            ">🎁 행운을 주는 물건 확인하기</a>
+            <p style="font-size: 11px; color: #888; margin-top: 10px;">
+                이 포스팅은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.
+            </p>
         </div>
     """, unsafe_allow_html=True)
-    
-    st.caption("※ 위 링크를 통해 구매 시 쿠팡 파트너스 활동의 일환으로 일정액의 수수료를 제공받을 수 있습니다.")
 
-st.caption("© 2026 서영식 사주&처세 융합 분석")
+st.caption("© 2026 서영식 사주&처세 정밀 분석")
