@@ -1,8 +1,9 @@
 import streamlit as st
 import google.generativeai as genai
 import datetime
+import streamlit.components.v1 as components
 
-# 1. API 키 및 모델 초기화 (에러 방지용 최상단 선언)
+# 1. API 키 및 모델 초기화 (에러 방지용)
 model = None
 try:
     if "GEMINI_API_KEY" in st.secrets:
@@ -12,19 +13,22 @@ try:
 except Exception:
     model = None
 
-# [설정] 본인의 쿠팡 파트너스 링크 입력
+# [설정] 본인의 쿠팡 파트너스 링크
 COUPANG_URL = "https://link.coupang.com/a/din5aa" 
 
-# 세션 상태 초기값 설정 (제시해주신 로직 반영)
+# 2. 쿼리 파라미터를 이용한 상태 관리 (버튼 클릭 감지)
+if "clicked" in st.query_params:
+    st.session_state.step = 2 # 클릭된 상태라면 바로 2단계로
+
 if 'full_report' not in st.session_state:
     st.session_state.full_report = ""
 if 'step' not in st.session_state:
-    st.session_state.step = 0  # 0: 분석 전, 1: 쿠팡 버튼, 2: 방문확인 버튼, 3: 완료
+    st.session_state.step = 0 # 0: 분석전, 1: 방문버튼, 2: 결과보기
 
 st.set_page_config(page_title="2026 사주&처세 융합 분석", layout="centered")
 st.title("🏮 2026 사주&처세 융합 분석")
 
-# 2. 사용자 입력 섹션
+# 3. 사용자 입력 섹션
 with st.form("fortune_form"):
     user_name = st.text_input("성함", placeholder="본명을 입력해 주세요.")
     st.write("### 생년월일 선택")
@@ -43,7 +47,7 @@ with st.form("fortune_form"):
     with col_gender:
         gender = st.radio("성별", ["남성", "여성"], horizontal=True)
     user_mbti = st.selectbox("당신의 성향(MBTI)", ["ISTJ", "ISFJ", "INFJ", "INTJ", "ISTP", "ISFP", "INFP", "INTP", "ESTP", "ESFP", "ENFP", "ENTP", "ESTJ", "ESFJ", "ENFJ", "ENTJ"])
-    user_concern = st.text_area("요즘 가장 큰 고민 (비워두면 리포트에서 제외)")
+    user_concern = st.text_area("요즘 고민 (비워두면 결과에서 제외)")
 
     if st.form_submit_button("2026년 운명 리포트 생성"):
         if not user_name:
@@ -51,12 +55,13 @@ with st.form("fortune_form"):
         elif model is None:
             st.error("API 키 설정 에러. Secrets를 확인하세요.")
         else:
-            with st.spinner("운명의 흐름을 읽는 중..."):
-                st.session_state.step = 1 # 분석 직후 1단계 진입
+            with st.spinner("분석 중..."):
+                st.session_state.step = 1
+                st.query_params.clear() # 이전 클릭 기록 삭제
                 birth_date_str = f"{year}년 {month}월 {day}일"
                 concern_prompt = f"6. 고민 해결: '{user_concern}'에 대한 조언" if user_concern.strip() else ""
                 
-                prompt = f"""당신은 역술가입니다. {user_name}({user_mbti}, {gender}, {birth_date_str})의 2026년 운세를 분석하세요.
+                prompt = f"""역술가로서 {user_name}({user_mbti}, {gender}, {birth_date_str})의 2026년 운세를 분석하세요.
 ---잠금구분선--- 문구를 사용하여 요약과 상세 내용을 반드시 나누세요.
 상단: [사주요약], [MBTI요약], [2026 병오년 총평]
 하단: 상세운세(재물/사랑/인간관계/건강), {concern_prompt}"""
@@ -67,59 +72,51 @@ with st.form("fortune_form"):
                 except Exception as e:
                     st.error(f"오류: {e}")
 
-# 3. 결과 출력 및 [순차 노출] 버튼 로직 (중복 노출 절대 불가)
+# 4. 결과 출력 및 [원클릭] 순차 로직
 if st.session_state.full_report:
     report = st.session_state.full_report
-    if "---잠금구분선---" in report:
-        top_part, bottom_part = report.split("---잠금구분선---", 1)
-    else:
-        top_part, bottom_part = report, "상세 분석 내용을 불러오지 못했습니다."
+    top_part, bottom_part = report.split("---잠금구분선---", 1) if "---잠금구분선---" in report else (report, "")
 
     st.divider()
     st.markdown(f"## 📜 운명 리포트")
     st.markdown(top_part)
 
-    # === 버튼 로직: if-elif-else 구조로 단계별 1개의 UI만 노출 ===
+    # === 각 단계마다 '딱 하나'의 버튼만 노출 ===
     
-    # [1단계] 쿠팡 방문 링크 버튼 (가장 확실한 HTML 방식)
+    # [1단계] 쿠팡 방문 버튼: 클릭 시 즉시 쿠팡이 열리고 화면이 바뀜
     if st.session_state.step == 1:
         st.write("---")
         st.warning("🔒 상세 분석 결과가 잠겨 있습니다.")
-        st.markdown("### 🧧 쿠팡 방문 후 상세 결과 확인")
         
-        # 브라우저가 강제로 새 창을 열게 하는 버튼형 링크
-        st.markdown(f"""
-            <div style="text-align: center; margin: 20px 0;">
-                <a href="{COUPANG_URL}" target="_blank" style="
-                    display: inline-block; padding: 15px 40px; background-color: #ff4b4b; 
-                    color: white; text-decoration: none; font-weight: bold; font-size: 18px; 
-                    border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-                ">🚀 쿠팡 방문하기 (새 창 열림)</a>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        # 링크 클릭 후 상태를 넘기기 위한 전용 버튼
-        if st.button("🧧 위 버튼을 눌러 페이지를 열었습니다 (다음으로)", use_container_width=True):
-            st.session_state.step = 2
-            st.rerun()
+        # HTML/JS 버튼: 새 창 열기 + 부모 창 쿼리 파라미터 변경
+        button_html = f"""
+        <div style="text-align: center;">
+            <button id="coupang-btn" style="
+                width: 100%; padding: 15px; background-color: #ff4b4b; color: white;
+                border: none; border-radius: 10px; font-size: 18px; font-weight: bold; cursor: pointer;
+            ">🚀 쿠팡 방문하고 상세운세 풀기</button>
+        </div>
+        <script>
+            document.getElementById('coupang-btn').onclick = function() {{
+                window.open('{COUPANG_URL}', '_blank');
+                const url = new URL(window.parent.location.href);
+                url.searchParams.set('clicked', 'true');
+                window.parent.location.href = url.href;
+            }};
+        </script>
+        """
+        components.html(button_html, height=70)
 
-    # [2단계] '방문페이지를 열었습니다' 확인 버튼만 노출
+    # [2단계] 확인 및 완료: 1단계 버튼은 사라지고 상세 내용 노출
     elif st.session_state.step == 2:
         st.write("---")
-        st.info("✅ 쿠팡 방문을 마치셨다면 아래 버튼을 눌러 상세 운세를 확인하세요.")
-        if st.button("🔓 전체 내용 확인하기 (잠금 해제)", use_container_width=True, type="primary"):
-            st.session_state.step = 3
-            st.rerun()
-            
-        if st.button("◀ 다시 방문하기 (단계 리셋)"):
-            st.session_state.step = 1
-            st.rerun()
-
-    # [3단계] 최종 완료: 상세 내용 노출
-    elif st.session_state.step == 3:
-        st.write("---")
-        st.success("🎉 모든 잠금이 해제되었습니다.")
+        st.success("🎉 방문이 확인되었습니다. 상세 분석 결과를 공개합니다.")
         st.markdown(bottom_part)
-        st.caption("이 서비스는 쿠팡 파트너스 활동의 일환으로 쿠팡으로부터 일정액의 수수료를 제공 받습니다.")
+        
+        if st.button("🧧 처음으로 돌아가기"):
+            st.query_params.clear()
+            st.session_state.step = 0
+            st.rerun()
 
-st.caption("© 2026 서영식 사주&처세 융합 분석")
+st.divider()
+st.caption("이 서비스는 쿠팡 파트너스 활동의 일환으로 쿠팡으로부터 일정액의 수수료를 제공 받습니다.")
