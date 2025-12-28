@@ -2,7 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 import datetime
 
-# 1. API 키 및 모델 설정 (NameError 방지)
+# 1. API 키 및 모델 초기화 (에러 방지용 최상단 선언)
 model = None
 try:
     if "GEMINI_API_KEY" in st.secrets:
@@ -15,7 +15,7 @@ except Exception:
 # [설정] 본인의 쿠팡 파트너스 링크 입력
 COUPANG_URL = "https://link.coupang.com/a/din5aa" 
 
-# 세션 상태 초기화 (제시해주신 step 방식 적용)
+# 세션 상태 초기값 설정 (제시해주신 로직 반영)
 if 'full_report' not in st.session_state:
     st.session_state.full_report = ""
 if 'step' not in st.session_state:
@@ -49,13 +49,11 @@ with st.form("fortune_form"):
         if not user_name:
             st.error("성함을 입력해 주세요.")
         elif model is None:
-            st.error("API 키 설정 에러. Secrets 설정을 확인하세요.")
+            st.error("API 키 설정 에러. Secrets를 확인하세요.")
         else:
             with st.spinner("운명의 흐름을 읽는 중..."):
-                st.session_state.step = 1 # 분석 직후 1단계로 진입
+                st.session_state.step = 1 # 분석 직후 1단계 진입
                 birth_date_str = f"{year}년 {month}월 {day}일"
-                
-                # 고민이 있을 때만 프롬프트에 포함 (항목 제외 로직)
                 concern_prompt = f"6. 고민 해결: '{user_concern}'에 대한 조언" if user_concern.strip() else ""
                 
                 prompt = f"""당신은 역술가입니다. {user_name}({user_mbti}, {gender}, {birth_date_str})의 2026년 운세를 분석하세요.
@@ -67,12 +65,11 @@ with st.form("fortune_form"):
                     response = model.generate_content(prompt)
                     st.session_state.full_report = response.text
                 except Exception as e:
-                    st.error(f"분석 중 오류: {e}")
+                    st.error(f"오류: {e}")
 
-# 3. 결과 출력 및 [수정된] 단계별 버튼 로직
+# 3. 결과 출력 및 [순차 노출] 버튼 로직 (중복 노출 절대 불가)
 if st.session_state.full_report:
     report = st.session_state.full_report
-    # 구분선으로 상/하단 분리
     if "---잠금구분선---" in report:
         top_part, bottom_part = report.split("---잠금구분선---", 1)
     else:
@@ -80,31 +77,48 @@ if st.session_state.full_report:
 
     st.divider()
     st.markdown(f"## 📜 운명 리포트")
-    st.markdown(top_part) # 상단 요약 상시 노출
+    st.markdown(top_part)
 
-    # [1단계] 쿠팡 방문 버튼만 노출 (제시해주신 로직 적용)
+    # === 버튼 로직: if-elif-else 구조로 단계별 1개의 UI만 노출 ===
+    
+    # [1단계] 쿠팡 방문 링크 버튼 (가장 확실한 HTML 방식)
     if st.session_state.step == 1:
         st.write("---")
-        st.warning("🔒 상세 분석 결과와 고민 해답이 잠겨 있습니다.")
+        st.warning("🔒 상세 분석 결과가 잠겨 있습니다.")
         st.markdown("### 🧧 쿠팡 방문 후 상세 결과 확인")
-        if st.button("🚀 쿠팡방문하기", use_container_width=True):
-            js = f"window.open('{COUPANG_URL}', '_blank')"
-            st.components.v1.html(f"<script>{js}</script>", height=0)
-            st.session_state.step = 2 # 2단계로 이동
+        
+        # 브라우저가 강제로 새 창을 열게 하는 버튼형 링크
+        st.markdown(f"""
+            <div style="text-align: center; margin: 20px 0;">
+                <a href="{COUPANG_URL}" target="_blank" style="
+                    display: inline-block; padding: 15px 40px; background-color: #ff4b4b; 
+                    color: white; text-decoration: none; font-weight: bold; font-size: 18px; 
+                    border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+                ">🚀 쿠팡 방문하기 (새 창 열림)</a>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # 링크 클릭 후 상태를 넘기기 위한 전용 버튼
+        if st.button("🧧 위 버튼을 눌러 페이지를 열었습니다 (다음으로)", use_container_width=True):
+            st.session_state.step = 2
             st.rerun()
 
-    # [2단계] '방문페이지를 열었습니다' 버튼만 노출
+    # [2단계] '방문페이지를 열었습니다' 확인 버튼만 노출
     elif st.session_state.step == 2:
         st.write("---")
-        st.info("쿠팡 방문을 마치셨다면 아래 버튼을 눌러주세요.")
-        if st.button("방문페이지를 열었습니다", use_container_width=True):
-            st.session_state.step = 3 # 3단계로 이동
+        st.info("✅ 쿠팡 방문을 마치셨다면 아래 버튼을 눌러 상세 운세를 확인하세요.")
+        if st.button("🔓 전체 내용 확인하기 (잠금 해제)", use_container_width=True, type="primary"):
+            st.session_state.step = 3
+            st.rerun()
+            
+        if st.button("◀ 다시 방문하기 (단계 리셋)"):
+            st.session_state.step = 1
             st.rerun()
 
-    # [3단계] 전체 내용 노출
+    # [3단계] 최종 완료: 상세 내용 노출
     elif st.session_state.step == 3:
         st.write("---")
-        st.success("🔓 모든 잠금이 해제되었습니다. 상세 분석 결과를 확인하세요.")
+        st.success("🎉 모든 잠금이 해제되었습니다.")
         st.markdown(bottom_part)
         st.caption("이 서비스는 쿠팡 파트너스 활동의 일환으로 쿠팡으로부터 일정액의 수수료를 제공 받습니다.")
 
