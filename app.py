@@ -79,61 +79,68 @@ if st.session_state.full_report:
     st.markdown(f"## 📜 운명 리포트")
     st.markdown(top_part)
 
-    # === 개선된 버튼 로직 ===
+    # === [개선] 원클릭 다이렉트 로직 ===
     
-# [1단계] 쿠팡 방문 (자바스크립트 제어)
+    # 아직 잠금 해제가 안 된 경우 (step 1)
     if st.session_state.step == 1:
         st.write("---")
-        st.warning("🔒 상세 분석 결과가 잠겨 있습니다.")
+        st.info("🧧 아래 버튼을 클릭하면 상세 운세가 즉시 공개됩니다.")
+
+        # 1. 화면에서 완전히 숨겨진 파이썬 버튼
+        # 투명하게 처리하여 사용자 눈에는 보이지 않음
+        st.markdown("""
+            <style>
+                div[data-testid="stButton"] button:has(div:contains("hidden_trigger")) {
+                    display: none;
+                }
+            </style>
+        """, unsafe_allow_html=True)
         
-        # 1. 실제 로직을 처리할 숨겨진 파이썬 버튼 (CSS로 숨김)
-        st.markdown("""<style>.hidden-btn {display: none;}</style>""", unsafe_allow_html=True)
-        if st.button("내부로직용_숨겨진버튼", key="hidden_trigger"):
-            st.session_state.step = 2
+        if st.button("hidden_trigger", key="hidden_trigger"):
+            st.session_state.step = 3  # 곧바로 결과 단계로 점프
             st.rerun()
 
-        # 2. 사용자에게 보이는 커스텀 HTML 버튼
-        # 클릭 시: 새 창 열기(window.open) + 숨겨진 버튼 클릭(click)을 동시에 수행
+        # 2. 사용자에게 보여줄 단 하나의 버튼 (HTML/JS)
         components.html(f"""
             <div style="text-align: center;">
-                <button id="main-btn" onclick="handleAction()" style="
-                    width: 100%; padding: 15px; background-color: #ff4b4b; 
-                    color: white; border: none; font-weight: bold; font-size: 18px; 
-                    border-radius: 10px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-                ">🚀 쿠팡 방문하고 결과 보기</button>
+                <button id="unlock-btn" onclick="handleUnlock()" style="
+                    width: 100%; padding: 18px; background-color: #ff4b4b; 
+                    color: white; border: none; font-weight: bold; font-size: 20px; 
+                    border-radius: 12px; cursor: pointer; box-shadow: 0 4px 15px rgba(255, 75, 75, 0.3);
+                ">🚀 상세 결과 확인하기 (쿠팡 방문)</button>
             </div>
 
             <script>
-                function handleAction() {{
-                    // 1. 쿠팡 링크 새 창으로 열기
+                function handleUnlock() {{
+                    // 1. 쿠팡 페이지 새 창 열기
                     window.open('{COUPANG_URL}', '_blank');
                     
-                    // 2. 스트림릿의 숨겨진 버튼을 찾아 클릭 이벤트 전달
-                    // 스트림릿 버튼은 보통 'kind-primary'나 'stButton' 클래스 내부에 존재함
-                    const buttons = window.parent.document.getElementsByTagName('button');
-                    for (let btn of buttons) {{
-                        if (btn.innerText === "내부로직용_숨겨진버튼") {{
-                            btn.click();
-                            break;
+                    // 2. 부모 창(스트림릿)의 숨겨진 버튼을 0.5초 뒤에 클릭하여 상태 변경
+                    setTimeout(function() {{
+                        const buttons = window.parent.document.getElementsByTagName('button');
+                        for (let btn of buttons) {{
+                            if (btn.innerText.includes("hidden_trigger")) {{
+                                btn.click();
+                                break;
+                            }}
                         }}
-                    }}
+                    }}, 500);
                 }}
             </script>
         """, height=100)
 
-    # [2단계] 방문 확인 후 나타나는 버튼
-    elif st.session_state.step == 2:
-        st.write("---")
-        st.info("✅ 방문 확인 완료! 아래 버튼을 누르면 상세 내용이 공개됩니다.")
-        if st.button("🔓 사주 결과 확인하기", use_container_width=True, type="primary"):
-            st.session_state.step = 3
-            st.rerun()
-
-    # [3단계] 최종 결과 노출
+    # 최종 결과 단계 (step 3)
     elif st.session_state.step == 3:
         st.write("---")
-        st.success("🎉 모든 잠금이 해제되었습니다.")
+        st.success("🎉 모든 잠금이 해제되었습니다. 당신의 2026년 운세입니다.")
         st.markdown(bottom_part)
-        st.caption("이 서비스는 쿠팡 파트너스 활동의 일환으로 쿠팡으로부터 일정액의 수수료를 제공 받습니다.")
+        
+        # 다시 분석하고 싶을 때를 위한 초기화 버튼
+        if st.button("새로 분석하기"):
+            st.session_state.step = 0
+            st.session_state.full_report = ""
+            st.rerun()
+        
+        st.caption("이 서비스는 쿠팡 파트너스 활동의 일환으로 일정액의 수수료를 제공받을 수 있습니다.")
 
 st.caption("© 2026 서영식 사주&처세 융합 분석")
