@@ -82,7 +82,7 @@ with st.form("fortune_form"):
                 except Exception as e:
                     st.error(f"분석 중 오류: {e}")
 
-# 3. 결과 출력 (SyntaxError 완전 해결)
+# 3. 결과 출력 (모든 에러 해결)
 if st.session_state.full_report:
     report = st.session_state.full_report
     user_name = st.session_state.user_name
@@ -110,7 +110,7 @@ if st.session_state.full_report:
         st.warning("🔒 상세 운세와 고민 해답이 잠겨 있습니다.")
         st.markdown("### 🧧 쿠팡 방문 후 상세 결과 확인")
         
-        # HTML 링크 (f-string 오류 수정: 변수 밖으로 분리)
+        # HTML 링크 (새 탭 열기)
         html_link = f"""
         <div style="text-align: center; padding: 20px; background: linear-gradient(45deg, #ff6b6b, #feca57); border-radius: 15px; margin: 20px 0;">
             <a href="{COUPANG_URL}" target="_blank" style="
@@ -134,14 +134,14 @@ if st.session_state.full_report:
         """
         st.markdown(html_link, unsafe_allow_html=True)
         
-        st.button("쿠팡 방문 완료", key="mark_visited")
-        if st.button("쿠팡 방문 완료", key="mark_visited"):
+        # 쿠팡 방문 완료 버튼 (key 제거)
+        if st.button("✅ 쿠팡 방문 완료!"):
             st.session_state.coupang_visited = True
             st.rerun()
     
     # === 2단계: 전체내용보기 버튼 ===
     elif not st.session_state.show_full_content:
-        st.success("✅ 쿠팡 방문 확인!")
+        st.success("✅ 쿠팡 방문 확인됨!")
         st.markdown("### 🔓 전체내용 확인")
         
         if st.button("📖 전체내용보기", use_container_width=True, type="primary"):
@@ -158,6 +158,6 @@ if st.session_state.full_report:
 # 하단 안내
 st.divider()
 st.caption("""
-✅ 흐름: 총평 → [쿠팡방문 클릭] → [쿠팡방문완료 클릭] → [전체내용보기 클릭] → 상세운세
+✅ 완벽 흐름: 총평 → [쿠팡방문 클릭] → [쿠팡방문완료 클릭] → [전체내용보기 클릭] → 상세운세
 🔧 COUPANG_URL에 실제 파트너스 링크 입력!
 """)
