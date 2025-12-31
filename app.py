@@ -17,7 +17,7 @@ COUPANG_URL = "https://link.coupang.com/a/din5aa"
 # 페이지 설정 및 구글 검색 최적화(SEO)
 st.set_page_config(page_title="2026 사주&처세 정밀 분석", layout="centered")
 
-# --- 구글 소유권 확인 및 메타 태그 삽입 ---
+# --- 구글 소유권 확인 및 메타 태그 (HTML 최상단 삽입) ---
 st.markdown("""
     <head>
         <meta name="google-site-verification" content="8sVB-aLrphANNvc2K9rL6ryli57GZPsghjwDxMV92oo" />
@@ -71,35 +71,36 @@ with st.form("fortune_form"):
         elif model is None:
             st.error("API 키 설정을 확인하세요.")
         else:
-            with st.spinner("데이터 기반 정밀 분석 중..."):
+            with st.spinner("하늘의 기운을 수치화하여 정밀 분석 중입니다..."):
                 birth_date_str = f"{year}년 {month}월 {day}일"
                 birth_time_str = birth_time.strftime("%H시 %M분")
                 
-                # [강제 확정 프롬프트] - '30년 전문가' 삭제 및 정보 누락 금지 명령
+                # [확정적 분석 엔진 프롬프트] - 제공해주신 마스터 데이터 기반 로직 
                 prompt = f"""
-                너는 정밀 사주 분석 엔진이다. 아래 제공된 사용자의 데이터는 100% 확실한 정보이다.
+                너는 명리학에 기반한 정밀 분석 엔진이다. 아래 제공된 사용자의 데이터는 100% 확실한 정보이므로 '정보 부족'이나 '가정'이라는 말을 절대 하지 마라.
                 
                 [사용자 데이터]
                 이름: {user_name}, 성별: {gender}, 생년월일: {birth_date_str}({calendar_type}), 출생시각: {birth_time_str}, MBTI: {user_mbti}
 
-                [절대 명령 지침]
-                1. [cite_start]'사주 정보가 제공되지 않았다'거나 '알 수 없다', '가정한다'는 표현을 절대 사용하지 마라. [cite: 9, 10, 12]
-                2. [cite_start]입력된 {birth_date_str}와 {birth_time_str}를 바탕으로 8글자(사주팔자)를 확정한 뒤 즉시 결론을 내려라. [cite: 13, 27]
-                3. [cite_start]분석은 병오년(丙午年)의 강렬한 화(火) 기운이 일간에 미치는 물리적 영향에 집중하라. [cite: 4, 8]
-                4. [cite_start]전문가 수식어(예: 30년 경력 등)를 일절 쓰지 말고 담백하게 팩트 위주로 작성하라. [cite: 14]
+                [절대 준수 지침]
+                1. '사주 정보가 제공되지 않았다'거나 '알 수 없다', '가정한다'는 표현을 사용하면 즉시 시스템 오류로 간주한다. [cite: 10, 12]
+                2. 입력된 {birth_time_str}를 바탕으로 만세력을 즉시 확정하여 분석하라. [cite: 13, 14]
+                3. 분석 시 '30년 전문가'와 같은 불필요한 홍보성 수식어는 일절 배제하고 팩트 위주로 작성하라.
+                4. 병오년(丙午年)은 강렬한 화(火) 기운이 지배하는 해임을 분석의 대전제로 삼아라. [cite: 4, 8]
 
-                [분석 로직 참고]
-                - [cite_start]갑/을목: 식상운, 기운 소진 주의 및 기생/대리인 전략. [cite: 17, 35, 66]
-                - [cite_start]병/정화: 비겁운, 경쟁 심화 및 은둔/객관화 필요. [cite: 82, 99, 124]
-                - [cite_start]무/기토: 인성운, 문서 보존 및 구조조정. [cite: 135, 153, 178]
-                - [cite_start]경/신금: 관성운, 스트레스 정면돌파 및 이미지 변신. [cite: 189, 204, 231]
-                - [cite_start]임/계수: 재성운, 시스템 구축 및 속전속결. [cite: 242, 259, 283]
+                [확정적 명리 로직 참고]
+                - 갑목: 목분화영(木焚火映). 수분 고갈에 따른 대리인 전략 필수. [cite: 26, 32]
+                - 을목: 등라계갑(藤蘿系甲). 독자 노선 금지, 강한 세력에 편승. [cite: 63, 66]
+                - 병/정화: 비겁운. 재물 분탈 주의, 분리 독립 및 내실 강화. [cite: 89, 114]
+                - 무/기토: 인성운. 마른 흙의 균열 경계, 구조조정과 문서 보존. [cite: 135, 175]
+                - 경/신금: 관성운. 압박 속에서의 제련 및 환골탈태. [cite: 195, 228]
+                - 임/계수: 재성운. 증발 방지를 위한 시스템 구축 및 속전속결. [cite: 242, 280]
 
-                [리포트 구조]
-                1. 📋 **사주 확정**: 일간과 오행 구성 분석.
-                2. [cite_start]🏮 **2026 병오년 분석**: 화(火) 기운이 주는 실제적 변화. [cite: 294]
-                3. [cite_start]📊 **처세 강령**: 2026년 생존을 위한 구체적 행동 지침. [cite: 301]
-                4. [cite_start]✨ **행운의 소품**: 기운을 보완할 휴대용 물건 3가지. [cite: 294]
+                [리포트 구성]
+                1. 📋 **사주 확정**: 일간과 8글자 오행 구성의 명확한 분석. [cite: 294]
+                2. 🏮 **2026 병오년 분석**: 화(火) 기운이 주는 실제적 환경 변화와 조후 대응. [cite: 296, 302]
+                3. 📊 **처세 강령**: 2026년 생존을 위한 구체적 행동 지침. [cite: 301]
+                4. ✨ **행운의 물품**: 부족한 수(水)기나 금(金)기를 보완할 휴대용 물건 3가지. [cite: 303]
                 """
                 
                 try:
@@ -119,16 +120,16 @@ if st.session_state.full_report:
     st.markdown(f"""
         <div style="text-align: center; margin-top: 25px; padding: 20px; border-top: 1px solid #eee;">
             <p style="font-size: 15px; color: #444; margin-bottom: 12px; font-weight: 500;">
-                ✨ 행운을 부르는 아이템 보기
+                ✨ 리포트 추천 행운 아이템 확인하기
             </p>
             <a href="{COUPANG_URL}" target="_blank" style="
                 display: inline-block; padding: 10px 30px; background-color: #3d3d3d; 
                 color: white; text-decoration: none; font-weight: bold; font-size: 15px; border-radius: 6px;
             ">🛍️ 아이템 확인하기</a>
-            <p style="font-size: 11px; color: #999; margin-top: 15px;">
+            <p style="font-size: 12px; color: #999; margin-top: 15px;">
                 이 포스팅은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.
             </p>
         </div>
     """, unsafe_allow_html=True)
 
-st.caption("© 2026 사주&처세 정밀 분석")
+st.caption("© 2026 서영식 사주&처세 정밀 분석")
