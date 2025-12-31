@@ -14,18 +14,18 @@ except Exception:
 
 COUPANG_URL = "https://link.coupang.com/a/din5aa" 
 
-# 페이지 설정 및 구글 검색 최적화(SEO) [cite: 293]
+# 페이지 설정 및 구글 검색 최적화(SEO)
 st.set_page_config(page_title="2026 사주&처세 정밀 분석", layout="centered")
 
 # --- 구글 소유권 확인 및 메타 태그 삽입 ---
 st.markdown("""
     <head>
         <meta name="google-site-verification" content="8sVB-aLrphANNvc2K9rL6ryli57GZPsghjwDxMV92oo" />
-        <meta name="description" content="2026년 병오년(丙午年) 정통 명리학 기반 사주 분석. 10천간별 확정적 처세술과 행운의 아이템 추천.">
+        <meta name="description" content="2026년 병오년(丙午年) 확정적 명리 분석 및 처세술 리포트.">
     </head>
 """, unsafe_allow_html=True)
 
-# --- Streamlit 기본 메뉴 및 헤더/푸터 숨기기 (UI 최적화) ---
+# --- UI 숨기기 ---
 hide_st_style = """
             <style>
             #MainMenu {visibility: hidden;}
@@ -71,36 +71,35 @@ with st.form("fortune_form"):
         elif model is None:
             st.error("API 키 설정을 확인하세요.")
         else:
-            with st.spinner("만세력을 정확히 구성하여 기운의 흐름을 분석 중입니다..."):
+            with st.spinner("데이터 기반 정밀 분석 중..."):
                 birth_date_str = f"{year}년 {month}월 {day}일"
                 birth_time_str = birth_time.strftime("%H시 %M분")
                 
-                # [마스터 데이터 기반 초정밀 프롬프트] - '(가정)' 키워드 차단 및 확정적 로직 주입 [cite: 12, 13, 294]
+                # [강제 확정 프롬프트] - '30년 전문가' 삭제 및 정보 누락 금지 명령
                 prompt = f"""
-                당신은 30년 경력의 정통 명리학자입니다. 2026년 병오년(丙午年)은 화(火)의 기운이 가장 강력한 '간여지동'의 해임을 전제로 분석하세요. [cite: 4]
+                너는 정밀 사주 분석 엔진이다. 아래 제공된 사용자의 데이터는 100% 확실한 정보이다.
                 
-                [절대 준수 지침]
-                1. 모든 정보가 제공되었으므로 '가정', '추측', '정보 부족' 등의 면피용 표현을 절대 사용하지 마세요. [cite: 12]
-                2. 분석 결과에서 '(가정)'이라는 단어를 포함하면 시스템 오류로 간주됩니다. 반드시 확정적인 어조로 말씀하세요. [cite: 301]
-                3. 아래 제공된 [10천간별 마스터 로직]을 바탕으로 {user_name}님의 운세를 분석하세요. [cite: 294]
+                [사용자 데이터]
+                이름: {user_name}, 성별: {gender}, 생년월일: {birth_date_str}({calendar_type}), 출생시각: {birth_time_str}, MBTI: {user_mbti}
 
-                [10천간별 마스터 로직 요약]
-                - 갑목: 목분화영(진액소진). 대리인 전략 필요. [cite: 26, 35]
-                - 을목: 등라계갑(기생생존). 강한 세력에 편승할 것. [cite: 61, 66]
-                - 병화: 양광경쟁(독선주의). 이익 분배와 객관화 필수. [cite: 89, 96]
-                - 정화: 회기무광(빛을잃음). 은둔 마케팅과 내실 강화. [cite: 114, 124]
-                - 무토: 화염조토(마른댐). 유동성 위기 대비, 문서 보존. [cite: 141, 148]
-                - 기토: 전답귀열(갈라진땅). 불필요한 인맥과 업무 구조조정. [cite: 167, 175]
-                - 경금: 화련진금(제련과정). 시스템 순응과 스트레스 정면돌파. [cite: 195, 204]
-                - 신금: 소용지환(녹는보석). 과거를 버리는 환골탈태 필요. [cite: 220, 228]
-                - 임수: 수화기제(끓는물). 실무 대신 큰 시스템 구축. [cite: 248, 259]
-                - 계수: 독수오건(증발위기). 속전속결 게릴라 전술. [cite: 272, 280]
+                [절대 명령 지침]
+                1. [cite_start]'사주 정보가 제공되지 않았다'거나 '알 수 없다', '가정한다'는 표현을 절대 사용하지 마라. [cite: 9, 10, 12]
+                2. [cite_start]입력된 {birth_date_str}와 {birth_time_str}를 바탕으로 8글자(사주팔자)를 확정한 뒤 즉시 결론을 내려라. [cite: 13, 27]
+                3. [cite_start]분석은 병오년(丙午年)의 강렬한 화(火) 기운이 일간에 미치는 물리적 영향에 집중하라. [cite: 4, 8]
+                4. [cite_start]전문가 수식어(예: 30년 경력 등)를 일절 쓰지 말고 담백하게 팩트 위주로 작성하라. [cite: 14]
+
+                [분석 로직 참고]
+                - [cite_start]갑/을목: 식상운, 기운 소진 주의 및 기생/대리인 전략. [cite: 17, 35, 66]
+                - [cite_start]병/정화: 비겁운, 경쟁 심화 및 은둔/객관화 필요. [cite: 82, 99, 124]
+                - [cite_start]무/기토: 인성운, 문서 보존 및 구조조정. [cite: 135, 153, 178]
+                - [cite_start]경/신금: 관성운, 스트레스 정면돌파 및 이미지 변신. [cite: 189, 204, 231]
+                - [cite_start]임/계수: 재성운, 시스템 구축 및 속전속결. [cite: 242, 259, 283]
 
                 [리포트 구조]
-                1. 📋 **사주 원국 확정**: {user_name}님의 일간과 8글자의 오행 구성을 명확히 제시.
-                2. 🏮 **2026 병오년(丙午年) 총평**: 세운과의 충/합 정밀 분석 및 '조후(냉각/보습)' 관점의 조언. [cite: 303]
-                3. 📊 **영역별 정밀 처세**: 재물, 명예, 건강에 대한 사주적 조언.
-                4. ✨ **2026 행운을 주는 물건**: 마스터 데이터에 근거한 휴대용 소품 3가지 추천. [cite: 294]
+                1. 📋 **사주 확정**: 일간과 오행 구성 분석.
+                2. [cite_start]🏮 **2026 병오년 분석**: 화(火) 기운이 주는 실제적 변화. [cite: 294]
+                3. [cite_start]📊 **처세 강령**: 2026년 생존을 위한 구체적 행동 지침. [cite: 301]
+                4. [cite_start]✨ **행운의 소품**: 기운을 보완할 휴대용 물건 3가지. [cite: 294]
                 """
                 
                 try:
@@ -114,24 +113,22 @@ with st.form("fortune_form"):
 if st.session_state.full_report:
     st.divider()
     st.markdown(f"## 📜 {st.session_state.target_name}님의 2026년 정밀 운명 리포트")
-    st.info("💡 본 리포트는 입력하신 정보를 바탕으로 확정된 명리 로직에 의해 생성되었습니다. [cite: 14]")
-    
     st.markdown(st.session_state.full_report)
     
-    # 쿠팡 파트너스 최적화 UI
+    # 쿠팡 파트너스 UI
     st.markdown(f"""
         <div style="text-align: center; margin-top: 25px; padding: 20px; border-top: 1px solid #eee;">
             <p style="font-size: 15px; color: #444; margin-bottom: 12px; font-weight: 500;">
-                ✨ 리포트에서 추천된 '행운의 아이템'을 확인해보세요.
+                ✨ 행운을 부르는 아이템 보기
             </p>
             <a href="{COUPANG_URL}" target="_blank" style="
-                display: inline-block; padding: 12px 35px; background-color: #3d3d3d; 
+                display: inline-block; padding: 10px 30px; background-color: #3d3d3d; 
                 color: white; text-decoration: none; font-weight: bold; font-size: 15px; border-radius: 6px;
-            ">🛍️ 행운을 주는 물건 보기</a>
+            ">🛍️ 아이템 확인하기</a>
             <p style="font-size: 11px; color: #999; margin-top: 15px;">
                 이 포스팅은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.
             </p>
         </div>
     """, unsafe_allow_html=True)
 
-st.caption("© 2026 서영식 사주&처세 정밀 분석")
+st.caption("© 2026 사주&처세 정밀 분석")
