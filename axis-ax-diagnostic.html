@@ -98,6 +98,13 @@
   .lead-form .btn{width:100%;}
   .skip-link{display:block;text-align:center;font-size:12px;color:var(--muted);margin-top:12px;text-decoration:underline;cursor:pointer;background:none;border:none;}
 
+  /* Prequiz gate */
+  .prequiz{background:linear-gradient(135deg,#eef1ff,#e7fbf6);}
+  .required{color:var(--danger);}
+  .field-hint{font-size:12px;color:var(--muted);margin:-10px 0 14px;}
+  .field-error{font-size:12px;color:var(--danger);margin:-10px 0 14px;display:none;}
+  .lead-form input.invalid{border-color:var(--danger);}
+
   /* Report */
   .report{background:#fff;}
   .report-head{text-align:center;margin-bottom:34px;}
@@ -197,6 +204,34 @@
   </div>
 </section>
 
+<!-- PRE-QUIZ REQUIRED INFO -->
+<section class="wrap prequiz hidden" id="prequiz">
+  <div class="lead-form" style="max-width:520px;">
+    <h3>진단 시작 전 기본 정보 입력</h3>
+    <p>진단결과서를 보내드리고 AXIS 담당자가 후속 안내를 드리기 위해 아래 정보가 필요합니다. 개인 이메일이 아닌 <strong>회사 이메일</strong>을 입력해주세요.</p>
+    <form id="prequizForm" novalidate>
+      <label>이름 <span class="required">*</span></label>
+      <input type="text" id="pqName" placeholder="예: 김민준">
+      <div class="field-error" id="pqNameError">이름을 입력해주세요.</div>
+
+      <label>회사명 / 직책 <span class="required">*</span></label>
+      <input type="text" id="pqCompany" placeholder="예: (주)에이엑스컴퍼니 · HR팀장">
+      <div class="field-error" id="pqCompanyError">회사명 / 직책을 입력해주세요.</div>
+
+      <label>회사 이메일 <span class="required">*</span></label>
+      <input type="email" id="pqEmail" placeholder="예: name@company.com">
+      <div class="field-hint">네이버, 지메일 등 개인 이메일은 사용할 수 없습니다. 소속 회사 도메인 이메일만 입력해주세요.</div>
+      <div class="field-error" id="pqEmailError">회사 도메인 이메일을 입력해주세요.</div>
+
+      <label>연락처 <span class="required">*</span></label>
+      <input type="tel" id="pqPhone" placeholder="예: 010-1234-5678">
+      <div class="field-error" id="pqPhoneError">연락처를 입력해주세요.</div>
+
+      <button class="btn btn-primary" type="submit">정보 확인하고 진단 시작하기 →</button>
+    </form>
+  </div>
+</section>
+
 <!-- QUIZ -->
 <section class="wrap quiz-section hidden" id="quiz">
   <h2>AX 조직문화 진단</h2>
@@ -217,17 +252,9 @@
     <div class="score-circle" id="scoreCircle" style="--pct:0">
       <div class="score-circle-inner"><b id="quickScoreNum">0</b><span>AX 준비도 점수</span></div>
     </div>
-    <p style="font-size:14px;color:var(--muted);margin:0;">전체 결과가 계산되었습니다. 영역별 상세 분석과 맞춤 보완 방안을 확인해보세요.</p>
-  </div>
-  <div class="lead-form">
-    <h3>상세 진단결과서 받기</h3>
-    <p>입력하신 이름/회사명은 진단결과서 상단에 표기되며, 별도로 저장되지 않습니다. (선택 입력)</p>
-    <label>이름 / 직책</label>
-    <input type="text" id="leadName" placeholder="예: 김민준 팀장">
-    <label>회사명</label>
-    <input type="text" id="leadCompany" placeholder="예: (주)에이엑스컴퍼니">
+    <p style="font-size:14px;color:var(--muted);margin:0 0 20px;">전체 결과가 계산되었습니다. 영역별 상세 분석과 맞춤 보완 방안을 확인해보세요.</p>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 16px;" id="submitStatus">결과를 저장하는 중입니다...</p>
     <button class="btn btn-primary" id="showReportBtn">상세 결과 확인하기 →</button>
-    <button class="skip-link" id="skipLeadBtn">건너뛰고 결과 보기</button>
   </div>
 </section>
 
@@ -282,13 +309,13 @@
   <div class="contact-box">
     <form id="contactForm">
       <label>이름</label>
-      <input type="text" required placeholder="이름을 입력해주세요">
+      <input type="text" id="ctName" required placeholder="이름을 입력해주세요">
       <label>회사명</label>
-      <input type="text" required placeholder="회사명을 입력해주세요">
+      <input type="text" id="ctCompany" required placeholder="회사명을 입력해주세요">
       <label>연락처 또는 이메일</label>
-      <input type="text" required placeholder="연락 가능한 연락처 또는 이메일">
+      <input type="text" id="ctContact" required placeholder="연락 가능한 연락처 또는 이메일">
       <label>문의 내용</label>
-      <textarea rows="3" placeholder="궁금하신 점이나 현재 조직 상황을 간단히 남겨주세요"></textarea>
+      <textarea rows="3" id="ctMessage" placeholder="궁금하신 점이나 현재 조직 상황을 간단히 남겨주세요"></textarea>
       <button class="btn btn-primary" type="submit">상담 신청하기</button>
     </form>
     <div class="thanks-msg" id="thanksMsg">✅ 신청이 접수되었습니다. 담당 컨설턴트가 곧 연락드리겠습니다.</div>
@@ -298,6 +325,43 @@
 <footer>© AXIS · AX 조직문화 진단 툴킷은 러프한 자가 점검 도구이며, 정식 진단은 전문가 상담을 통해 진행됩니다.</footer>
 
 <script>
+/* ---------------- 연동 설정 ----------------
+   Google Apps Script Web App을 배포한 뒤 발급되는 URL을 아래에 붙여넣으면
+   진단 결과가 이메일 발송 + 구글시트 저장으로 자동 연동됩니다.
+   배포 방법은 함께 제공된 apps-script-backend.gs / EMAIL_SETUP.md 파일을 참고하세요. */
+const CONFIG = {
+  SUBMIT_ENDPOINT_URL: 'REPLACE_WITH_APPS_SCRIPT_WEB_APP_URL'
+};
+
+const FREE_EMAIL_DOMAINS = [
+  'naver.com','hanmail.net','daum.net','kakao.com','nate.com','empas.com',
+  'gmail.com','yahoo.com','yahoo.co.kr','hotmail.com','outlook.com','live.com',
+  'icloud.com','me.com','msn.com','paran.com','korea.com','dreamwiz.com',
+  'gmx.com','protonmail.com','aol.com','yandex.com','mail.com','zoho.com'
+];
+
+function isCompanyEmail(email){
+  const m = /^[^\s@]+@([^\s@]+)$/.exec(email.trim());
+  if(!m) return false;
+  return !FREE_EMAIL_DOMAINS.includes(m[1].toLowerCase());
+}
+
+function submitLead(payload){
+  if(CONFIG.SUBMIT_ENDPOINT_URL.indexOf('REPLACE_WITH') === 0){
+    console.warn('SUBMIT_ENDPOINT_URL이 설정되지 않아 결과를 전송하지 않았습니다.', payload);
+    return Promise.resolve({ok:false, reason:'not_configured'});
+  }
+  return fetch(CONFIG.SUBMIT_ENDPOINT_URL, {
+    method:'POST',
+    mode:'no-cors',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify(payload)
+  }).then(()=>({ok:true})).catch(err=>{
+    console.warn('결과 전송 실패', err);
+    return {ok:false, reason:'network_error'};
+  });
+}
+
 /* ---------------- 데이터 ---------------- */
 const DIMENSIONS = [
   {
@@ -475,6 +539,48 @@ document.getElementById('nextBtn').addEventListener('click', ()=>{
 });
 
 document.getElementById('startBtn').addEventListener('click', ()=>{
+  document.getElementById('prequiz').classList.remove('hidden');
+  window.scrollTo({top:document.getElementById('prequiz').offsetTop-80,behavior:'smooth'});
+});
+
+/* ---------------- 진단 시작 전 필수 정보 ---------------- */
+const respondent = {name:'', company:'', email:'', phone:''};
+
+function validatePrequiz(){
+  const name = document.getElementById('pqName').value.trim();
+  const company = document.getElementById('pqCompany').value.trim();
+  const email = document.getElementById('pqEmail').value.trim();
+  const phone = document.getElementById('pqPhone').value.trim();
+
+  const checks = [
+    ['pqName', name.length>0],
+    ['pqCompany', company.length>0],
+    ['pqEmail', email.length>0 && isCompanyEmail(email)],
+    ['pqPhone', phone.length>0]
+  ];
+
+  let allValid = true;
+  checks.forEach(([id, valid])=>{
+    const input = document.getElementById(id);
+    const errorEl = document.getElementById(id+'Error');
+    input.classList.toggle('invalid', !valid);
+    if(errorEl) errorEl.style.display = valid ? 'none' : 'block';
+    if(!valid) allValid = false;
+  });
+
+  if(allValid){
+    respondent.name = name;
+    respondent.company = company;
+    respondent.email = email;
+    respondent.phone = phone;
+  }
+  return allValid;
+}
+
+document.getElementById('prequizForm').addEventListener('submit', (e)=>{
+  e.preventDefault();
+  if(!validatePrequiz()) return;
+  document.getElementById('prequiz').classList.add('hidden');
   document.getElementById('quiz').classList.remove('hidden');
   renderPage();
   window.scrollTo({top:document.getElementById('quiz').offsetTop-80,behavior:'smooth'});
@@ -519,16 +625,31 @@ function finishQuiz(){
   document.getElementById('quiz').classList.add('hidden');
   document.getElementById('leadgate').classList.remove('hidden');
   window.scrollTo({top:document.getElementById('leadgate').offsetTop-80,behavior:'smooth'});
+
+  const dimScoreMap = {};
+  RESULT.dimScores.forEach(d=>{ dimScoreMap[d.short] = d.avg; });
+
+  const statusEl = document.getElementById('submitStatus');
+  submitLead({
+    type:'diagnosis',
+    name: respondent.name,
+    company: respondent.company,
+    email: respondent.email,
+    phone: respondent.phone,
+    overallPct: RESULT.overallPct,
+    level: lvl.label,
+    dimScores: dimScoreMap,
+    submittedAt: new Date().toISOString()
+  }).then(res=>{
+    statusEl.textContent = res.ok ? '결과가 저장되었습니다.' : '결과 저장은 아직 연동되지 않았습니다. (관리자 설정 필요)';
+  });
 }
 
 /* ---------------- 리드 게이트 ---------------- */
 document.getElementById('showReportBtn').addEventListener('click', showReport);
-document.getElementById('skipLeadBtn').addEventListener('click', showReport);
 
 function showReport(){
-  const name = document.getElementById('leadName').value.trim();
-  const company = document.getElementById('leadCompany').value.trim();
-  const label = [company, name].filter(Boolean).join(' · ');
+  const label = [respondent.company, respondent.name].filter(Boolean).join(' · ');
   document.getElementById('reportName').textContent = label ? `${label} 님을 위한 진단 결과서` : '진단 결과서';
 
   renderReport(RESULT);
@@ -680,9 +801,17 @@ document.getElementById('retakeBtn').addEventListener('click', ()=>{
 
 document.getElementById('printBtn').addEventListener('click', ()=>window.print());
 
-/* ---------------- 문의 폼 (프론트엔드 전용, 실제 발송은 백엔드 연동 필요) ---------------- */
+/* ---------------- 문의 폼 (CONFIG.SUBMIT_ENDPOINT_URL 연동 시 이메일 발송 + 시트 저장) ---------------- */
 document.getElementById('contactForm').addEventListener('submit', (e)=>{
   e.preventDefault();
+  submitLead({
+    type:'consult_request',
+    name: document.getElementById('ctName').value.trim(),
+    company: document.getElementById('ctCompany').value.trim(),
+    contact: document.getElementById('ctContact').value.trim(),
+    message: document.getElementById('ctMessage').value.trim(),
+    submittedAt: new Date().toISOString()
+  });
   e.target.classList.add('hidden');
   document.getElementById('thanksMsg').style.display = 'block';
 });
