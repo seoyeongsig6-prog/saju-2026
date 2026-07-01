@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AX 조직문화 진단 툴킷 | AXIS</title>
+<meta name="description" content="우리 조직의 AX(AI 전환) 준비도와 조직문화 취약점을 3분 만에 진단해보세요. AXIS의 AX 조직문화 진단 툴킷.">
+<style>
+  :root{
+    --navy:#0b1220;
+    --navy2:#131b34;
+    --card:#ffffff;
+    --bg:#f5f6fb;
+    --accent:#5b6cff;
+    --accent2:#00c2a8;
+    --danger:#ff5c5c;
+    --warn:#ffab2e;
+    --good:#2ecc71;
+    --text:#1c2333;
+    --muted:#6b7280;
+    --border:#e6e8f0;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic","Segoe UI",sans-serif;background:var(--bg);color:var(--text);line-height:1.6;}
+  a{color:inherit;}
+  .hidden{display:none !important;}
+  img{max-width:100%;}
+
+  /* Header */
+  .site-header{position:sticky;top:0;z-index:50;background:var(--navy);color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;}
+  .logo{font-weight:800;font-size:20px;letter-spacing:1px;}
+  .logo span{color:var(--accent2);}
+  .header-tag{font-size:12px;color:#aab2d6;display:none;}
+  @media(min-width:600px){.header-tag{display:block;}}
+
+  /* Hero */
+  .hero{background:linear-gradient(135deg,var(--navy) 0%,var(--navy2) 55%,#1c2a5e 100%);color:#fff;padding:64px 20px 80px;text-align:center;}
+  .hero-badge{display:inline-block;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);color:#dfe3ff;font-size:13px;padding:6px 14px;border-radius:999px;margin-bottom:18px;}
+  .hero h1{font-size:clamp(26px,4vw,40px);margin:0 0 16px;font-weight:800;line-height:1.35;}
+  .hero h1 em{color:var(--accent2);font-style:normal;}
+  .hero p{max-width:640px;margin:0 auto 30px;color:#c7cbea;font-size:16px;}
+  .hero-stats{display:flex;gap:28px;justify-content:center;flex-wrap:wrap;margin-bottom:34px;}
+  .hero-stats div{font-size:13px;color:#aab2d6;}
+  .hero-stats strong{display:block;font-size:22px;color:#fff;}
+  .btn{display:inline-block;border:none;cursor:pointer;font-weight:700;border-radius:10px;padding:15px 34px;font-size:16px;transition:transform .15s ease, box-shadow .15s ease;}
+  .btn:hover{transform:translateY(-2px);}
+  .btn-primary{background:linear-gradient(90deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 10px 24px rgba(91,108,255,.35);}
+  .btn-outline{background:transparent;border:1px solid rgba(255,255,255,.4);color:#fff;}
+  .btn-ghost{background:#eef0fb;color:var(--navy);}
+
+  section.wrap{max-width:880px;margin:0 auto;padding:56px 20px;}
+
+  /* Intro problem section */
+  .problem{background:#fff;}
+  .problem h2, .quiz-section h2, .report h2{font-size:22px;font-weight:800;margin-bottom:6px;}
+  .problem .sub, .section-sub{color:var(--muted);font-size:14px;margin-bottom:28px;}
+  .problem-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;}
+  .problem-card{background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:20px;}
+  .problem-card .emoji{font-size:26px;margin-bottom:10px;display:block;}
+  .problem-card h3{font-size:15px;margin:0 0 6px;}
+  .problem-card p{font-size:13px;color:var(--muted);margin:0;}
+
+  /* Quiz */
+  .quiz-section{background:#fff;}
+  .progress-wrap{height:8px;background:var(--border);border-radius:999px;overflow:hidden;margin-bottom:8px;}
+  .progress-bar{height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .3s ease;}
+  .progress-label{font-size:12px;color:var(--muted);text-align:right;margin-bottom:26px;}
+  .dim-page{display:none;}
+  .dim-page.active{display:block;animation:fadeIn .25s ease;}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+  .dim-title{display:flex;align-items:center;gap:10px;font-size:19px;font-weight:800;margin-bottom:4px;}
+  .dim-title .n{font-size:12px;background:var(--navy);color:#fff;padding:3px 9px;border-radius:999px;}
+  .dim-desc{color:var(--muted);font-size:13px;margin-bottom:22px;}
+  .q-block{border:1px solid var(--border);border-radius:14px;padding:18px 18px 14px;margin-bottom:14px;}
+  .q-text{font-size:15px;font-weight:600;margin-bottom:14px;}
+  .scale-legend{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:6px;padding:0 2px;}
+  .scale{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;}
+  .scale button{border:1px solid var(--border);background:#fbfbfe;border-radius:10px;padding:10px 0;font-size:15px;font-weight:700;color:var(--muted);cursor:pointer;transition:all .15s ease;}
+  .scale button:hover{border-color:var(--accent);}
+  .scale button.selected{background:linear-gradient(90deg,var(--accent),var(--accent2));color:#fff;border-color:transparent;}
+  .quiz-nav{display:flex;justify-content:space-between;margin-top:26px;}
+  .quiz-nav .btn{padding:12px 26px;font-size:14px;}
+  #nextBtn:disabled, #startQuizNav:disabled{opacity:.4;cursor:not-allowed;transform:none;}
+
+  /* Lead gate */
+  .leadgate{background:linear-gradient(135deg,#eef1ff,#e7fbf6);}
+  .score-reveal{text-align:center;background:#fff;border-radius:20px;padding:36px 24px;box-shadow:0 12px 30px rgba(20,30,80,.08);max-width:480px;margin:0 auto 30px;}
+  .score-circle{width:140px;height:140px;border-radius:50%;margin:0 auto 16px;display:flex;align-items:center;justify-content:center;flex-direction:column;background:conic-gradient(var(--accent) calc(var(--pct)*1%), #eef0fb 0);}
+  .score-circle-inner{width:112px;height:112px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+  .score-circle-inner b{font-size:30px;}
+  .score-circle-inner span{font-size:11px;color:var(--muted);}
+  .level-tag{display:inline-block;padding:6px 16px;border-radius:999px;font-weight:700;font-size:13px;margin-bottom:10px;}
+  .lead-form{background:#fff;border-radius:16px;padding:26px;max-width:480px;margin:0 auto;box-shadow:0 12px 30px rgba(20,30,80,.06);}
+  .lead-form h3{margin:0 0 4px;font-size:16px;}
+  .lead-form p{font-size:13px;color:var(--muted);margin:0 0 16px;}
+  .lead-form label{font-size:13px;font-weight:600;display:block;margin-bottom:6px;}
+  .lead-form input{width:100%;padding:11px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:14px;font-size:14px;}
+  .lead-form .btn{width:100%;}
+  .skip-link{display:block;text-align:center;font-size:12px;color:var(--muted);margin-top:12px;text-decoration:underline;cursor:pointer;background:none;border:none;}
+
+  /* Prequiz gate */
+  .prequiz{background:linear-gradient(135deg,#eef1ff,#e7fbf6);}
+  .required{color:var(--danger);}
+  .field-hint{font-size:12px;color:var(--muted);margin:-10px 0 14px;}
+  .field-error{font-size:12px;color:var(--danger);margin:-10px 0 14px;display:none;}
+  .lead-form input.invalid{border-color:var(--danger);}
+
+  /* Report */
+  .report{background:#fff;}
+  .report-head{text-align:center;margin-bottom:34px;}
+  .report-head .name{font-size:14px;color:var(--muted);}
+  .report-head h2{font-size:26px;margin:6px 0 14px;}
+  .overall-badge{display:inline-flex;gap:8px;align-items:center;padding:10px 20px;border-radius:999px;font-weight:800;font-size:15px;}
+  .overall-desc{max-width:560px;margin:14px auto 0;color:var(--muted);font-size:14px;}
+
+  .radar-wrap{display:flex;justify-content:center;margin:20px 0 30px;}
+
+  .dim-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-bottom:36px;}
+  .dim-card{border:1px solid var(--border);border-radius:14px;padding:16px 18px;}
+  .dim-card-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+  .dim-card-top .name{font-weight:700;font-size:14px;}
+  .badge{font-size:11px;font-weight:800;padding:3px 10px;border-radius:999px;color:#fff;white-space:nowrap;}
+  .badge-danger{background:var(--danger);}
+  .badge-warn{background:var(--warn);color:#4a3200;}
+  .badge-good{background:var(--good);}
+  .bar-track{height:8px;background:var(--border);border-radius:999px;overflow:hidden;margin:8px 0 10px;}
+  .bar-fill{height:100%;border-radius:999px;}
+  .dim-card p{font-size:12.5px;color:var(--muted);margin:0;}
+
+  .priority-box{background:#fff5f5;border:1px solid #ffd7d7;border-radius:16px;padding:22px;margin-bottom:36px;}
+  .priority-box h3{margin:0 0 12px;font-size:16px;color:#a8231f;}
+  .priority-box ol{margin:0;padding-left:20px;font-size:14px;}
+  .priority-box li{margin-bottom:6px;}
+
+  .solutions{margin-bottom:10px;}
+  .sol-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-bottom:26px;}
+  .sol-card{border-radius:16px;padding:22px;color:#fff;position:relative;overflow:hidden;}
+  .sol-card.primary{background:linear-gradient(135deg,var(--navy),#26327a);}
+  .sol-card.secondary{background:linear-gradient(135deg,#2b3a67,#4a5896);}
+  .sol-card .tag{font-size:11px;background:rgba(255,255,255,.15);display:inline-block;padding:3px 10px;border-radius:999px;margin-bottom:10px;}
+  .sol-card h4{margin:0 0 8px;font-size:17px;}
+  .sol-card p{font-size:13px;color:#dfe3ff;margin:0;}
+
+  .academy-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:36px;}
+  .academy-card{border:1px solid var(--border);border-radius:14px;padding:16px;text-align:center;background:var(--bg);}
+  .academy-card.recommended{border-color:var(--accent);background:#f2f3ff;}
+  .academy-card .rec-tag{display:block;font-size:11px;color:var(--accent);font-weight:800;margin-bottom:4px;}
+  .academy-card h5{margin:6px 0 4px;font-size:14px;}
+  .academy-card p{font-size:12px;color:var(--muted);margin:0;}
+
+  .cta-final{text-align:center;background:linear-gradient(135deg,var(--navy),#1c2a5e);color:#fff;border-radius:20px;padding:38px 24px;margin-bottom:10px;}
+  .cta-final h3{font-size:20px;margin:0 0 8px;}
+  .cta-final p{color:#c7cbea;font-size:14px;margin:0 0 22px;}
+  .cta-final .btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
+  .report-actions{display:flex;justify-content:center;gap:10px;margin-top:20px;flex-wrap:wrap;}
+  .report-actions button{background:none;border:1px solid var(--border);border-radius:8px;padding:9px 16px;font-size:13px;cursor:pointer;color:var(--muted);}
+
+  /* Contact */
+  .contact{background:var(--bg);}
+  .contact-box{background:#fff;border-radius:16px;padding:28px;max-width:520px;margin:0 auto;box-shadow:0 12px 30px rgba(20,30,80,.06);}
+  .contact-box label{font-size:13px;font-weight:600;display:block;margin-bottom:6px;}
+  .contact-box input,.contact-box textarea{width:100%;padding:11px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:14px;font-size:14px;font-family:inherit;}
+  .contact-box .btn{width:100%;}
+  .thanks-msg{display:none;text-align:center;padding:20px;color:var(--good);font-weight:700;}
+
+  footer{text-align:center;color:var(--muted);font-size:12px;padding:30px 20px;}
+
+  @media print{
+    .site-header,.hero,.quiz-nav,.report-actions,.contact,footer,.cta-final{display:none !important;}
+  }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="logo">AX<span>IS</span></div>
+  <div class="header-tag">AX 조직문화 전문 파트너</div>
+</header>
+
+<!-- HERO -->
+<section class="hero" id="top">
+  <div class="hero-badge">무료 · 약 3분 소요 · 18문항</div>
+  <h1>우리 조직의 AX 전환,<br><em>진짜 준비되어 있을까요?</em></h1>
+  <p>AI 툴을 도입했지만 구성원은 여전히 낯섦과 불안, 거부감을 느끼고 있지 않나요?
+  기술 도입만으로는 AX 전환이 완성되지 않습니다. AXIS의 AX 조직문화 진단 툴킷으로
+  우리 조직의 준비도와 취약 영역을 지금 바로 확인해보세요.</p>
+  <div class="hero-stats">
+    <div><strong>6</strong>진단 영역</div>
+    <div><strong>18</strong>개 문항</div>
+    <div><strong>3분</strong>소요 시간</div>
+  </div>
+  <button class="btn btn-primary" id="startBtn">지금 진단 시작하기 →</button>
+</section>
+
+<!-- PROBLEM CONTEXT -->
+<section class="wrap problem">
+  <h2>왜 많은 기업의 AX 전환이 실패할까요?</h2>
+  <p class="sub">기술 컨설팅으로 AI를 도입해도, 조직문화가 준비되지 않으면 현장에서 멈춥니다.</p>
+  <div class="problem-grid">
+    <div class="problem-card"><span class="emoji">😥</span><h3>낯섦과 불안</h3><p>새로운 툴과 방식에 대한 두려움이 해소되지 않은 채 도입이 강행됩니다.</p></div>
+    <div class="problem-card"><span class="emoji">🙅</span><h3>협업에 대한 거부감</h3><p>AI와 함께 일하는 방식에 대한 심리적 저항이 조용히 쌓여갑니다.</p></div>
+    <div class="problem-card"><span class="emoji">🌀</span><h3>일하는 방식의 혼란</h3><p>기존 업무에 AI만 얹혀져 프로세스와 소통 방식이 뒤엉킵니다.</p></div>
+    <div class="problem-card"><span class="emoji">📉</span><h3>형식적 도입</h3><p>결국 툴은 방치되고, 투자한 비용과 시간은 성과로 이어지지 못합니다.</p></div>
+  </div>
+</section>
+
+<!-- PRE-QUIZ REQUIRED INFO -->
+<section class="wrap prequiz hidden" id="prequiz">
+  <div class="lead-form" style="max-width:520px;">
+    <h3>진단 시작 전 기본 정보 입력</h3>
+    <p>진단결과서를 보내드리고 AXIS 담당자가 후속 안내를 드리기 위해 아래 정보가 필요합니다. 개인 이메일이 아닌 <strong>회사 이메일</strong>을 입력해주세요.</p>
+    <form id="prequizForm" novalidate>
+      <label>이름 <span class="required">*</span></label>
+      <input type="text" id="pqName" placeholder="예: 김민준">
+      <div class="field-error" id="pqNameError">이름을 입력해주세요.</div>
+
+      <label>회사명 / 직책 <span class="required">*</span></label>
+      <input type="text" id="pqCompany" placeholder="예: (주)에이엑스컴퍼니 · HR팀장">
+      <div class="field-error" id="pqCompanyError">회사명 / 직책을 입력해주세요.</div>
+
+      <label>회사 이메일 <span class="required">*</span></label>
+      <input type="email" id="pqEmail" placeholder="예: name@company.com">
+      <div class="field-hint">네이버, 지메일 등 개인 이메일은 사용할 수 없습니다. 소속 회사 도메인 이메일만 입력해주세요.</div>
+      <div class="field-error" id="pqEmailError">회사 도메인 이메일을 입력해주세요.</div>
+
+      <label>연락처 <span class="required">*</span></label>
+      <input type="tel" id="pqPhone" placeholder="예: 010-1234-5678">
+      <div class="field-error" id="pqPhoneError">연락처를 입력해주세요.</div>
+
+      <button class="btn btn-primary" type="submit">정보 확인하고 진단 시작하기 →</button>
+    </form>
+  </div>
+</section>
+
+<!-- QUIZ -->
+<section class="wrap quiz-section hidden" id="quiz">
+  <h2>AX 조직문화 진단</h2>
+  <p class="section-sub">각 문항을 읽고 우리 조직의 현재 모습과 가장 가까운 정도를 선택해주세요.</p>
+  <div class="progress-wrap"><div class="progress-bar" id="progressBar"></div></div>
+  <div class="progress-label" id="progressLabel">1 / 6 영역</div>
+  <div id="quizPages"></div>
+  <div class="quiz-nav">
+    <button class="btn btn-ghost" id="prevBtn">← 이전</button>
+    <button class="btn btn-primary" id="nextBtn" disabled>다음 →</button>
+  </div>
+</section>
+
+<!-- LEAD GATE -->
+<section class="wrap leadgate hidden" id="leadgate">
+  <div class="score-reveal">
+    <div class="level-tag" id="quickLevelTag">-</div>
+    <div class="score-circle" id="scoreCircle" style="--pct:0">
+      <div class="score-circle-inner"><b id="quickScoreNum">0</b><span>AX 준비도 점수</span></div>
+    </div>
+    <p style="font-size:14px;color:var(--muted);margin:0 0 20px;">전체 결과가 계산되었습니다. 영역별 상세 분석과 맞춤 보완 방안을 확인해보세요.</p>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 16px;" id="submitStatus">결과를 저장하는 중입니다...</p>
+    <button class="btn btn-primary" id="showReportBtn">상세 결과 확인하기 →</button>
+  </div>
+</section>
+
+<!-- REPORT -->
+<section class="wrap report hidden" id="report">
+  <div class="report-head">
+    <div class="name" id="reportName">진단 결과서</div>
+    <h2>AX 조직문화 진단결과서</h2>
+    <div class="overall-badge" id="overallBadge">-</div>
+    <p class="overall-desc" id="overallDesc"></p>
+  </div>
+
+  <div class="radar-wrap" id="radarWrap"></div>
+
+  <h2 style="font-size:18px;">영역별 진단 결과</h2>
+  <p class="section-sub">점수가 낮을수록 시급하게 보완이 필요한 영역입니다.</p>
+  <div class="dim-cards" id="dimCards"></div>
+
+  <div class="priority-box" id="priorityBox">
+    <h3>⚠ 가장 시급하게 보완이 필요한 영역</h3>
+    <ol id="priorityList"></ol>
+  </div>
+
+  <div class="solutions">
+    <h2 style="font-size:18px;">AXIS 추천 솔루션</h2>
+    <p class="section-sub">진단 결과를 바탕으로 우리 조직에 맞는 접근 방식을 추천합니다.</p>
+    <div class="sol-grid" id="solGrid"></div>
+  </div>
+
+  <h2 style="font-size:18px;">추천 아카데미 과정</h2>
+  <p class="section-sub">취약 영역을 보완할 수 있는 AXIS 아카데미 과정입니다.</p>
+  <div class="academy-grid" id="academyGrid"></div>
+
+  <div class="cta-final">
+    <h3>AX 전환, 기술이 아니라 조직문화로 완성하세요</h3>
+    <p>이 진단은 러프한 자가 점검 결과입니다. AXIS 전문가와의 상담을 통해 정확한 진단과 실행 로드맵을 받아보세요.</p>
+    <div class="btns">
+      <a href="#contact" class="btn btn-primary">무료 상담 신청하기</a>
+      <button class="btn btn-outline" id="retakeBtn">다시 진단하기</button>
+    </div>
+  </div>
+
+  <div class="report-actions">
+    <button id="printBtn">🖨 결과서 인쇄 / PDF 저장</button>
+  </div>
+</section>
+
+<!-- CONTACT -->
+<section class="wrap contact" id="contact">
+  <h2>무료 상담 신청</h2>
+  <p class="section-sub">진단 결과와 함께 담당 컨설턴트가 연락드립니다.</p>
+  <div class="contact-box">
+    <form id="contactForm">
+      <label>이름</label>
+      <input type="text" id="ctName" required placeholder="이름을 입력해주세요">
+      <label>회사명</label>
+      <input type="text" id="ctCompany" required placeholder="회사명을 입력해주세요">
+      <label>연락처 또는 이메일</label>
+      <input type="text" id="ctContact" required placeholder="연락 가능한 연락처 또는 이메일">
+      <label>문의 내용</label>
+      <textarea rows="3" id="ctMessage" placeholder="궁금하신 점이나 현재 조직 상황을 간단히 남겨주세요"></textarea>
+      <button class="btn btn-primary" type="submit">상담 신청하기</button>
+    </form>
+    <div class="thanks-msg" id="thanksMsg">✅ 신청이 접수되었습니다. 담당 컨설턴트가 곧 연락드리겠습니다.</div>
+  </div>
+</section>
+
+<footer>© AXIS · AX 조직문화 진단 툴킷은 러프한 자가 점검 도구이며, 정식 진단은 전문가 상담을 통해 진행됩니다.</footer>
+
+<script>
+/* ---------------- 연동 설정 ----------------
+   Google Apps Script Web App을 배포한 뒤 발급되는 URL을 아래에 붙여넣으면
+   진단 결과가 이메일 발송 + 구글시트 저장으로 자동 연동됩니다.
+   배포 방법은 함께 제공된 apps-script-backend.gs / EMAIL_SETUP.md 파일을 참고하세요. */
+const CONFIG = {
+  SUBMIT_ENDPOINT_URL: 'REPLACE_WITH_APPS_SCRIPT_WEB_APP_URL'
+};
+
+const FREE_EMAIL_DOMAINS = [
+  'naver.com','hanmail.net','daum.net','kakao.com','nate.com','empas.com',
+  'gmail.com','yahoo.com','yahoo.co.kr','hotmail.com','outlook.com','live.com',
+  'icloud.com','me.com','msn.com','paran.com','korea.com','dreamwiz.com',
+  'gmx.com','protonmail.com','aol.com','yandex.com','mail.com','zoho.com'
+];
+
+function isCompanyEmail(email){
+  const m = /^[^\s@]+@([^\s@]+)$/.exec(email.trim());
+  if(!m) return false;
+  return !FREE_EMAIL_DOMAINS.includes(m[1].toLowerCase());
+}
+
+function submitLead(payload){
+  if(CONFIG.SUBMIT_ENDPOINT_URL.indexOf('REPLACE_WITH') === 0){
+    console.warn('SUBMIT_ENDPOINT_URL이 설정되지 않아 결과를 전송하지 않았습니다.', payload);
+    return Promise.resolve({ok:false, reason:'not_configured'});
+  }
+  return fetch(CONFIG.SUBMIT_ENDPOINT_URL, {
+    method:'POST',
+    mode:'no-cors',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify(payload)
+  }).then(()=>({ok:true})).catch(err=>{
+    console.warn('결과 전송 실패', err);
+    return {ok:false, reason:'network_error'};
+  });
+}
+
+/* ---------------- 데이터 ---------------- */
+const DIMENSIONS = [
+  {
+    id:'leadership', short:'리더십/비전', icon:'🧭', name:'리더십 & 비전',
+    desc:'경영진이 AX 전환의 방향과 목적을 얼마나 명확히 제시하고 있는지를 봅니다.',
+    questions:[
+      '경영진은 AX(AI 전환)를 왜, 어떻게 추진하는지 구성원에게 명확히 설명하고 있다.',
+      '경영진은 전환 과정에서 구성원들의 저항과 우려를 경청하고 반영한다.',
+      '우리 조직은 AX 전환의 성공 기준(목표)이 구체적으로 공유되어 있다.'
+    ],
+    low:'AX 전환의 목적과 방향이 구성원에게 충분히 전달되지 않아, "왜 해야 하는지" 모른 채 지시만 따르는 상황일 수 있습니다. 방향성 없는 도입은 형식적 도입으로 끝나기 쉽습니다.',
+    mid:'방향은 어느 정도 공유되고 있으나, 구체적인 실행 기준이나 지속적인 소통은 부족할 수 있습니다.',
+    high:'경영진의 비전과 실행 의지가 구성원에게 잘 전달되고 있습니다. 이 힘을 실행 조직문화로 연결하는 것이 다음 과제입니다.',
+    course:'임원과정'
+  },
+  {
+    id:'safety', short:'심리적안전', icon:'🛡️', name:'심리적 안전감 & 변화 수용성',
+    desc:'구성원이 변화와 실수에 대해 얼마나 안전하게 느끼는지를 봅니다.',
+    questions:[
+      '구성원들은 AI 도구를 잘 못 다뤄도 비난받지 않고 시도해볼 수 있는 분위기다.',
+      '새로운 업무 방식(AI 활용)에 대한 두려움이나 거부감을 자유롭게 이야기할 수 있다.',
+      '실수나 실패를 학습의 기회로 받아들이는 문화가 있다.'
+    ],
+    low:'구성원들이 AI 도입에 대한 불안, 낯섦, 거부감을 안전하게 표현하지 못하고 있을 가능성이 큽니다. 표면적으로는 조용하지만 내부적으로는 저항과 이탈로 이어질 수 있는 위험 신호입니다.',
+    mid:'변화를 받아들이려는 시도는 있으나, 실패나 시행착오에 대한 심리적 부담이 여전히 존재합니다.',
+    high:'구성원들이 심리적으로 안전한 환경에서 변화를 받아들이고 있습니다. 이 신뢰를 실질적 역량으로 전환할 시점입니다.',
+    course:'리더과정'
+  },
+  {
+    id:'skill', short:'AI협업역량', icon:'🤝', name:'AI 협업 역량 & 학습 지원',
+    desc:'구성원이 실제로 AI 툴을 얼마나 능숙하게 활용하고, 그 성장을 지원받고 있는지를 봅니다.',
+    questions:[
+      '구성원들은 현재 도입된 AI 툴을 실제 업무에 자신 있게 활용하고 있다.',
+      'AI 툴 활용법에 대한 교육/코칭이 충분히 제공되고 있다.',
+      '부서/직급을 막론하고 AI 활용 역량 격차를 줄이기 위한 지원이 있다.'
+    ],
+    low:'AI 툴은 도입되었지만 실제 활용도는 낮고, 학습과 코칭 체계가 부재할 가능성이 높습니다. "쓰라고만 하고 방법은 알려주지 않는" 전형적인 도입 실패 패턴입니다.',
+    mid:'일부 구성원은 능숙하게 활용하지만, 조직 전체로 확산되지는 못한 상태입니다.',
+    high:'구성원들의 AI 활용 역량이 고르게 성장하고 있습니다. 이제는 우수 사례를 표준화하고 확산할 단계입니다.',
+    course:'AX챔피언양성'
+  },
+  {
+    id:'process', short:'일하는방식', icon:'⚙️', name:'일하는 방식 & 프로세스 재설계',
+    desc:'기존 업무 프로세스가 AI 활용에 맞게 재설계되었는지를 봅니다.',
+    questions:[
+      '기존 업무 프로세스는 AI 도입에 맞게 재설계되었다 (단순히 기존 업무에 AI를 얹은 것이 아니다).',
+      'AI 도입 이후 불필요해진 업무나 절차가 명확히 정리되었다.',
+      '협업 도구·보고 체계가 AI 활용에 맞게 최신화되어 있다.'
+    ],
+    low:'기존 업무 프로세스에 AI를 단순히 얹어 놓은 상태로, 업무는 오히려 늘어나고 혼란만 가중되고 있을 가능성이 있습니다.',
+    mid:'일부 프로세스는 개선되었으나, 전사적으로 일관된 재설계는 이루어지지 않았습니다.',
+    high:'AI에 맞게 일하는 방식이 재정립되고 있습니다. 남은 비효율 구간을 마무리하면 완성도가 높아집니다.',
+    course:'일하는방식리빌딩'
+  },
+  {
+    id:'communication', short:'소통협업', icon:'💬', name:'소통 & 협업 문화',
+    desc:'AI 활용 경험과 어려움이 조직 내에서 얼마나 잘 공유되는지를 봅니다.',
+    questions:[
+      '부서 간, 구성원 간 AI 활용 노하우와 사례가 자유롭게 공유된다.',
+      'AI 도입에 대한 구성원의 피드백을 수집하고 개선하는 채널이 있다.',
+      '리더와 구성원 간 AX 전환에 대한 솔직한 대화가 이루어진다.'
+    ],
+    low:'AI 활용 경험과 어려움이 공유되지 않고 개인의 문제로 남아있을 가능성이 큽니다. 이는 조직 전체의 학습 속도를 늦춥니다.',
+    mid:'일부 채널은 있으나 활성화되지 않아 실질적인 지식 확산이 제한적입니다.',
+    high:'AI 활용 노하우가 활발히 공유되고 있습니다. 이 문화를 전사 표준으로 자리잡게 할 시점입니다.',
+    course:'콜라보레이션 과정'
+  },
+  {
+    id:'governance', short:'제도/거버넌스', icon:'📐', name:'제도 & 거버넌스',
+    desc:'AI 활용에 관한 가이드라인, 책임 범위, 평가/보상 체계가 갖춰져 있는지를 봅니다.',
+    questions:[
+      'AI 활용에 대한 명확한 가이드라인(윤리, 보안, 책임범위 등)이 마련되어 있다.',
+      'AI 활용 성과나 시도가 평가/보상 체계에 반영되어 있다.',
+      'AX 전환을 전담하거나 책임지는 조직/역할(챔피언, TF 등)이 존재한다.'
+    ],
+    low:'AI 활용에 대한 가이드라인, 책임 범위, 평가·보상 연계가 부재하여 구성원들이 "알아서" 판단해야 하는 리스크에 노출되어 있습니다.',
+    mid:'기본적인 가이드라인은 있으나 평가·보상 체계와의 연계가 미흡합니다.',
+    high:'제도적 뒷받침이 잘 갖춰져 있습니다. 이를 지속적으로 고도화하는 것이 중요합니다.',
+    course:'AX챔피언양성'
+  }
+];
+
+const SCALE_LABELS = ['전혀 아니다','아니다','보통이다','그렇다','매우 그렇다'];
+
+const ACADEMY = [
+  {id:'exec', name:'임원과정', desc:'경영진의 AX 비전 수립과 전달력을 강화합니다.', mapsTo:['leadership']},
+  {id:'leader', name:'리더과정', desc:'팀 리더의 변화관리와 심리적 안전감 조성 역량을 키웁니다.', mapsTo:['safety']},
+  {id:'champion', name:'AX챔피언양성', desc:'현업의 AI 활용 전문가·전파자를 양성합니다.', mapsTo:['skill','governance']},
+  {id:'collab', name:'콜라보레이션 과정', desc:'부서 간, 구성원 간 협업과 소통 문화를 강화합니다.', mapsTo:['communication']}
+];
+
+/* ---------------- 상태 ---------------- */
+const answers = {}; // qGlobalIndex -> score
+let currentPage = 0;
+
+/* ---------------- 퀴즈 렌더링 ---------------- */
+const quizPages = document.getElementById('quizPages');
+
+function globalIndex(dimIdx, qIdx){ return dimIdx*3 + qIdx; }
+
+DIMENSIONS.forEach((dim, dimIdx)=>{
+  const page = document.createElement('div');
+  page.className = 'dim-page' + (dimIdx===0 ? ' active' : '');
+  page.dataset.page = dimIdx;
+
+  let html = `
+    <div class="dim-title"><span>${dim.icon}</span> ${dim.name} <span class="n">${dimIdx+1}/${DIMENSIONS.length}</span></div>
+    <div class="dim-desc">${dim.desc}</div>
+  `;
+
+  dim.questions.forEach((q, qIdx)=>{
+    const gi = globalIndex(dimIdx, qIdx);
+    html += `
+      <div class="q-block">
+        <div class="q-text">${qIdx+1}. ${q}</div>
+        <div class="scale-legend"><span>전혀 아니다</span><span>매우 그렇다</span></div>
+        <div class="scale" data-q="${gi}">
+          ${[1,2,3,4,5].map(v=>`<button type="button" data-val="${v}" title="${SCALE_LABELS[v-1]}">${v}</button>`).join('')}
+        </div>
+      </div>
+    `;
+  });
+
+  page.innerHTML = html;
+  quizPages.appendChild(page);
+});
+
+quizPages.addEventListener('click', (e)=>{
+  const btn = e.target.closest('.scale button');
+  if(!btn) return;
+  const scaleEl = btn.parentElement;
+  const qIndex = parseInt(scaleEl.dataset.q, 10);
+  answers[qIndex] = parseInt(btn.dataset.val, 10);
+  scaleEl.querySelectorAll('button').forEach(b=>b.classList.remove('selected'));
+  btn.classList.add('selected');
+  updateNextButton();
+});
+
+function currentPageAnswered(){
+  const dimIdx = currentPage;
+  for(let q=0;q<3;q++){
+    if(answers[globalIndex(dimIdx,q)] === undefined) return false;
+  }
+  return true;
+}
+
+function updateNextButton(){
+  document.getElementById('nextBtn').disabled = !currentPageAnswered();
+}
+
+function renderPage(){
+  document.querySelectorAll('.dim-page').forEach((p,i)=>{
+    p.classList.toggle('active', i===currentPage);
+  });
+  document.getElementById('progressBar').style.width = ((currentPage)/(DIMENSIONS.length-1)*100*0 + (currentPage+1)/DIMENSIONS.length*100) + '%';
+  document.getElementById('progressLabel').textContent = `${currentPage+1} / ${DIMENSIONS.length} 영역`;
+  document.getElementById('prevBtn').style.visibility = currentPage===0 ? 'hidden' : 'visible';
+  const nextBtn = document.getElementById('nextBtn');
+  nextBtn.textContent = currentPage === DIMENSIONS.length-1 ? '결과 보기 →' : '다음 →';
+  updateNextButton();
+}
+
+document.getElementById('prevBtn').addEventListener('click', ()=>{
+  if(currentPage>0){ currentPage--; renderPage(); window.scrollTo({top:document.getElementById('quiz').offsetTop-80,behavior:'smooth'}); }
+});
+document.getElementById('nextBtn').addEventListener('click', ()=>{
+  if(!currentPageAnswered()) return;
+  if(currentPage < DIMENSIONS.length-1){
+    currentPage++;
+    renderPage();
+    window.scrollTo({top:document.getElementById('quiz').offsetTop-80,behavior:'smooth'});
+  } else {
+    finishQuiz();
+  }
+});
+
+document.getElementById('startBtn').addEventListener('click', ()=>{
+  document.getElementById('prequiz').classList.remove('hidden');
+  window.scrollTo({top:document.getElementById('prequiz').offsetTop-80,behavior:'smooth'});
+});
+
+/* ---------------- 진단 시작 전 필수 정보 ---------------- */
+const respondent = {name:'', company:'', email:'', phone:''};
+
+function validatePrequiz(){
+  const name = document.getElementById('pqName').value.trim();
+  const company = document.getElementById('pqCompany').value.trim();
+  const email = document.getElementById('pqEmail').value.trim();
+  const phone = document.getElementById('pqPhone').value.trim();
+
+  const checks = [
+    ['pqName', name.length>0],
+    ['pqCompany', company.length>0],
+    ['pqEmail', email.length>0 && isCompanyEmail(email)],
+    ['pqPhone', phone.length>0]
+  ];
+
+  let allValid = true;
+  checks.forEach(([id, valid])=>{
+    const input = document.getElementById(id);
+    const errorEl = document.getElementById(id+'Error');
+    input.classList.toggle('invalid', !valid);
+    if(errorEl) errorEl.style.display = valid ? 'none' : 'block';
+    if(!valid) allValid = false;
+  });
+
+  if(allValid){
+    respondent.name = name;
+    respondent.company = company;
+    respondent.email = email;
+    respondent.phone = phone;
+  }
+  return allValid;
+}
+
+document.getElementById('prequizForm').addEventListener('submit', (e)=>{
+  e.preventDefault();
+  if(!validatePrequiz()) return;
+  document.getElementById('prequiz').classList.add('hidden');
+  document.getElementById('quiz').classList.remove('hidden');
+  renderPage();
+  window.scrollTo({top:document.getElementById('quiz').offsetTop-80,behavior:'smooth'});
+});
+
+/* ---------------- 결과 계산 ---------------- */
+let RESULT = null;
+
+function computeResult(){
+  const dimScores = DIMENSIONS.map((dim,dimIdx)=>{
+    const vals = [0,1,2].map(q=>answers[globalIndex(dimIdx,q)]);
+    const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
+    return {...dim, avg};
+  });
+  const overallAvg = dimScores.reduce((a,d)=>a+d.avg,0)/dimScores.length;
+  const overallPct = Math.round((overallAvg/5)*100);
+  return {dimScores, overallAvg, overallPct};
+}
+
+function badgeFor(avg){
+  if(avg < 2.5) return {label:'시급', cls:'badge-danger', color:'var(--danger)'};
+  if(avg < 3.5) return {label:'보완 필요', cls:'badge-warn', color:'var(--warn)'};
+  return {label:'강점', cls:'badge-good', color:'var(--good)'};
+}
+
+function levelFor(pct){
+  if(pct < 40) return {label:'위험 단계', color:'var(--danger)', desc:'현재 상태로 AX 전환을 추진하면 실패 리스크가 매우 높습니다. 조직문화 전반의 재설계가 시급합니다.'};
+  if(pct < 60) return {label:'취약 단계', color:'var(--warn)', desc:'AX 전환의 기반이 아직 취약합니다. 핵심 영역을 중심으로 체계적인 정비가 필요합니다.'};
+  if(pct < 80) return {label:'성장 단계', color:'var(--accent)', desc:'전환의 기반은 갖춰졌으나, 일부 영역의 보완을 통해 안정적으로 정착시킬 수 있습니다.'};
+  return {label:'안정 단계', color:'var(--good)', desc:'AX 전환이 안정적으로 자리잡고 있습니다. 성과를 고도화하고 확산하는 단계로 나아가야 합니다.'};
+}
+
+function finishQuiz(){
+  RESULT = computeResult();
+  const lvl = levelFor(RESULT.overallPct);
+  document.getElementById('quickLevelTag').textContent = lvl.label;
+  document.getElementById('quickLevelTag').style.background = lvl.color;
+  document.getElementById('quickLevelTag').style.color = '#fff';
+  document.getElementById('quickScoreNum').textContent = RESULT.overallPct;
+  document.getElementById('scoreCircle').style.setProperty('--pct', RESULT.overallPct);
+
+  document.getElementById('quiz').classList.add('hidden');
+  document.getElementById('leadgate').classList.remove('hidden');
+  window.scrollTo({top:document.getElementById('leadgate').offsetTop-80,behavior:'smooth'});
+
+  const dimScoreMap = {};
+  RESULT.dimScores.forEach(d=>{ dimScoreMap[d.short] = d.avg; });
+
+  const statusEl = document.getElementById('submitStatus');
+  submitLead({
+    type:'diagnosis',
+    name: respondent.name,
+    company: respondent.company,
+    email: respondent.email,
+    phone: respondent.phone,
+    overallPct: RESULT.overallPct,
+    level: lvl.label,
+    dimScores: dimScoreMap,
+    submittedAt: new Date().toISOString()
+  }).then(res=>{
+    statusEl.textContent = res.ok ? '결과가 저장되었습니다.' : '결과 저장은 아직 연동되지 않았습니다. (관리자 설정 필요)';
+  });
+}
+
+/* ---------------- 리드 게이트 ---------------- */
+document.getElementById('showReportBtn').addEventListener('click', showReport);
+
+function showReport(){
+  const label = [respondent.company, respondent.name].filter(Boolean).join(' · ');
+  document.getElementById('reportName').textContent = label ? `${label} 님을 위한 진단 결과서` : '진단 결과서';
+
+  renderReport(RESULT);
+
+  document.getElementById('leadgate').classList.add('hidden');
+  document.getElementById('report').classList.remove('hidden');
+  window.scrollTo({top:document.getElementById('report').offsetTop-80,behavior:'smooth'});
+}
+
+/* ---------------- 레이더 차트 ---------------- */
+function polar(cx,cy,r,angleDeg){
+  const rad = (angleDeg-90)*Math.PI/180;
+  return [cx + r*Math.cos(rad), cy + r*Math.sin(rad)];
+}
+
+function buildRadarSVG(dimScores){
+  const cx=170, cy=170, R=120, n=dimScores.length;
+  const step = 360/n;
+  let grid = '';
+  [0.2,0.4,0.6,0.8,1].forEach(level=>{
+    const pts = dimScores.map((_,i)=>polar(cx,cy,R*level,i*step).join(',')).join(' ');
+    grid += `<polygon points="${pts}" fill="none" stroke="#e2e5f2" stroke-width="1"/>`;
+  });
+  let axes = '';
+  let labels = '';
+  dimScores.forEach((d,i)=>{
+    const [x,y] = polar(cx,cy,R,i*step);
+    axes += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#e2e5f2" stroke-width="1"/>`;
+    const [lx,ly] = polar(cx,cy,R+26,i*step);
+    let anchor = 'middle';
+    if(lx < cx-10) anchor='end'; else if(lx > cx+10) anchor='start';
+    labels += `<text x="${lx}" y="${ly}" font-size="11" fill="#4b5266" text-anchor="${anchor}" dominant-baseline="middle">${d.icon} ${d.short}</text>`;
+  });
+  const dataPts = dimScores.map((d,i)=>polar(cx,cy,R*(d.avg/5),i*step).join(',')).join(' ');
+  const dots = dimScores.map((d,i)=>{
+    const [x,y]=polar(cx,cy,R*(d.avg/5),i*step);
+    return `<circle cx="${x}" cy="${y}" r="4" fill="#5b6cff"/>`;
+  }).join('');
+
+  return `
+  <svg width="340" height="340" viewBox="0 0 340 340">
+    ${grid}
+    ${axes}
+    <polygon points="${dataPts}" fill="#5b6cff" fill-opacity="0.28" stroke="#5b6cff" stroke-width="2"/>
+    ${dots}
+    ${labels}
+  </svg>`;
+}
+
+/* ---------------- 결과서 렌더링 ---------------- */
+function renderReport(result){
+  const {dimScores, overallPct} = result;
+  const lvl = levelFor(overallPct);
+
+  const badge = document.getElementById('overallBadge');
+  badge.textContent = `AX 준비도 ${overallPct}점 · ${lvl.label}`;
+  badge.style.background = lvl.color;
+  badge.style.color = '#fff';
+  document.getElementById('overallDesc').textContent = lvl.desc;
+
+  document.getElementById('radarWrap').innerHTML = buildRadarSVG(dimScores);
+
+  const sorted = [...dimScores].sort((a,b)=>a.avg-b.avg);
+
+  document.getElementById('dimCards').innerHTML = dimScores.map(d=>{
+    const b = badgeFor(d.avg);
+    const pct = Math.round((d.avg/5)*100);
+    const text = d.avg<2.5 ? d.low : (d.avg<3.5 ? d.mid : d.high);
+    return `
+      <div class="dim-card">
+        <div class="dim-card-top">
+          <span class="name">${d.icon} ${d.name}</span>
+          <span class="badge ${b.cls}">${b.label}</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${b.color}"></div></div>
+        <p>${text}</p>
+      </div>`;
+  }).join('');
+
+  document.getElementById('priorityList').innerHTML = sorted.slice(0,2).map(d=>
+    `<li><strong>${d.icon} ${d.name}</strong> (100점 만점 중 ${Math.round((d.avg/5)*100)}점) — ${d.course} 과정으로 보완을 권장합니다.</li>`
+  ).join('');
+
+  const dangerCount = dimScores.filter(d=>d.avg<2.5).length;
+  const warnCount = dimScores.filter(d=>d.avg<3.5).length;
+
+  let solHtml = '';
+  if(dangerCount >= 3 || overallPct < 45){
+    solHtml += `
+      <div class="sol-card primary">
+        <span class="tag">1순위 추천</span>
+        <h4>올체인지 (조직문화 전면 재구축)</h4>
+        <p>리더십, 프로세스, 제도 등 여러 영역이 동시에 취약한 상태입니다. 조직문화 전반을 새롭게 설계하는 올체인지가 필요합니다.</p>
+      </div>
+      <div class="sol-card secondary">
+        <span class="tag">병행 추천</span>
+        <h4>일하는방식 리빌딩</h4>
+        <p>전면 재구축과 함께 시급한 업무 프로세스부터 선제적으로 개선할 수 있습니다.</p>
+      </div>`;
+  } else if(dangerCount >= 1 || warnCount >= 3){
+    solHtml += `
+      <div class="sol-card primary">
+        <span class="tag">1순위 추천</span>
+        <h4>일하는방식 리빌딩</h4>
+        <p>특정 영역의 보완이 시급한 상태입니다. 조직문화 전체를 바꾸기보다, 취약 영역을 선택적으로 재설계하는 리빌딩이 효과적입니다.</p>
+      </div>
+      <div class="sol-card secondary">
+        <span class="tag">확산 추천</span>
+        <h4>올체인지 (중장기 로드맵)</h4>
+        <p>현재는 부분 개선으로 대응 가능하나, 장기적으로는 조직문화 전반의 재정렬을 함께 고려해보세요.</p>
+      </div>`;
+  } else {
+    solHtml += `
+      <div class="sol-card primary">
+        <span class="tag">현재 단계</span>
+        <h4>일하는방식 리빌딩 (고도화)</h4>
+        <p>전반적으로 안정적인 상태입니다. 남은 취약 영역을 정교하게 다듬어 성과를 고도화하세요.</p>
+      </div>
+      <div class="sol-card secondary">
+        <span class="tag">확산 추천</span>
+        <h4>아카데미 전사 확산</h4>
+        <p>현재의 강점을 조직 전체로 확산시켜 AX 전환의 성공 사례로 정착시키세요.</p>
+      </div>`;
+  }
+  document.getElementById('solGrid').innerHTML = solHtml;
+
+  const priorityDimIds = sorted.slice(0,2).map(d=>d.id);
+  document.getElementById('academyGrid').innerHTML = ACADEMY.map(a=>{
+    const recommended = a.mapsTo.some(id=>priorityDimIds.includes(id));
+    return `
+      <div class="academy-card ${recommended?'recommended':''}">
+        ${recommended?'<span class="rec-tag">★ 우선 추천</span>':''}
+        <h5>${a.name}</h5>
+        <p>${a.desc}</p>
+      </div>`;
+  }).join('');
+}
+
+/* ---------------- 재진단 / 인쇄 ---------------- */
+document.getElementById('retakeBtn').addEventListener('click', ()=>{
+  for(const k in answers) delete answers[k];
+  currentPage = 0;
+  document.querySelectorAll('.scale button.selected').forEach(b=>b.classList.remove('selected'));
+  renderPage();
+  document.getElementById('report').classList.add('hidden');
+  document.getElementById('quiz').classList.remove('hidden');
+  window.scrollTo({top:document.getElementById('quiz').offsetTop-80,behavior:'smooth'});
+});
+
+document.getElementById('printBtn').addEventListener('click', ()=>window.print());
+
+/* ---------------- 문의 폼 (CONFIG.SUBMIT_ENDPOINT_URL 연동 시 이메일 발송 + 시트 저장) ---------------- */
+document.getElementById('contactForm').addEventListener('submit', (e)=>{
+  e.preventDefault();
+  submitLead({
+    type:'consult_request',
+    name: document.getElementById('ctName').value.trim(),
+    company: document.getElementById('ctCompany').value.trim(),
+    contact: document.getElementById('ctContact').value.trim(),
+    message: document.getElementById('ctMessage').value.trim(),
+    submittedAt: new Date().toISOString()
+  });
+  e.target.classList.add('hidden');
+  document.getElementById('thanksMsg').style.display = 'block';
+});
+</script>
+</body>
+</html>
