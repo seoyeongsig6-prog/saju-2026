@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="AXIS의 AX(AI Transformation) 조직문화 진단 - 5분 안에 우리 조직의 AI 전환 준비도를 확인해보세요.">
+<title>AX 조직문화 진단 | AXIS</title>
+<style>
+  :root {
+    --surface-1: #fcfcfb;
+    --page: #f9f9f7;
+    --ink-primary: #0b0b0b;
+    --ink-secondary: #52514e;
+    --ink-muted: #898781;
+    --gridline: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border: rgba(11,11,11,0.10);
+    --accent: #2a78d6;
+    --accent-dark: #184f95;
+    --warning: #fab219;
+    --step-250: #86b6ef;
+    --step-400: #3987e5;
+    --step-500: #256abf;
+    --step-650: #104281;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.6;
+  }
+
+  .wrap {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 0 20px 60px;
+  }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 20px;
+    max-width: 720px;
+    margin: 0 auto;
+  }
+
+  .logo-mark { display: flex; align-items: center; gap: 2px; }
+  .logo-mark svg { height: 22px; width: auto; display: block; }
+  .logo-word {
+    font-weight: 900;
+    font-size: 22px;
+    letter-spacing: 1px;
+  }
+
+  .header-cta {
+    display: inline-block;
+    padding: 8px 16px;
+    border-radius: 999px;
+    background: var(--ink-primary);
+    color: #fff;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .header-cta:hover { background: var(--accent-dark); }
+
+  /* Intro */
+  .hero { text-align: center; padding: 32px 0 8px; }
+  .hero h1 { font-size: 26px; margin: 0 0 12px; letter-spacing: -0.3px; }
+  .hero p { color: var(--ink-secondary); font-size: 15px; margin: 0 auto 28px; max-width: 480px; }
+
+  .card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px 24px;
+  }
+
+  .primary-btn {
+    display: inline-block;
+    border: none;
+    cursor: pointer;
+    background: var(--accent);
+    color: #fff;
+    font-size: 16px;
+    font-weight: 700;
+    padding: 14px 32px;
+    border-radius: 10px;
+    text-decoration: none;
+  }
+  .primary-btn:hover { background: var(--accent-dark); }
+  .primary-btn:disabled { background: var(--baseline); cursor: not-allowed; }
+
+  .ghost-btn {
+    display: inline-block;
+    border: 1px solid var(--baseline);
+    cursor: pointer;
+    background: transparent;
+    color: var(--ink-primary);
+    font-size: 14px;
+    font-weight: 600;
+    padding: 12px 24px;
+    border-radius: 10px;
+    text-decoration: none;
+  }
+
+  .privacy-note {
+    font-size: 12px;
+    color: var(--ink-muted);
+    margin-top: 16px;
+  }
+
+  /* Survey */
+  #survey { display: none; }
+
+  .progress-track {
+    height: 6px;
+    background: var(--gridline);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-bottom: 6px;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 999px;
+    transition: width .25s ease;
+    width: 20%;
+  }
+  .progress-label {
+    font-size: 12px;
+    color: var(--ink-muted);
+    margin-bottom: 20px;
+  }
+
+  .dimension-name {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent-dark);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0 0 4px;
+  }
+  .dimension-title { font-size: 19px; margin: 0 0 20px; }
+
+  fieldset {
+    border: none;
+    padding: 0 0 24px;
+    margin: 0 0 24px;
+    border-bottom: 1px solid var(--gridline);
+  }
+  fieldset:last-of-type { border-bottom: none; }
+
+  legend {
+    font-size: 15px;
+    font-weight: 600;
+    padding: 0;
+    margin-bottom: 12px;
+  }
+
+  .likert {
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .likert label {
+    flex: 1;
+    text-align: center;
+    font-size: 11px;
+    color: var(--ink-secondary);
+    cursor: pointer;
+  }
+  .likert input {
+    display: block;
+    margin: 0 auto 6px;
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+  }
+
+  .nav-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+  }
+
+  /* Results */
+  #result { display: none; }
+
+  .level-badge {
+    display: inline-block;
+    padding: 6px 16px;
+    border-radius: 999px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 14px;
+  }
+
+  .score-hero { font-size: 44px; font-weight: 800; margin: 0 0 4px; }
+  .score-hero span { font-size: 20px; color: var(--ink-muted); font-weight: 600; }
+  .level-desc { color: var(--ink-secondary); font-size: 14px; margin: 0 0 28px; }
+
+  .bar-row { margin-bottom: 18px; }
+  .bar-row-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 6px;
+    font-size: 14px;
+  }
+  .bar-row-head .flag {
+    font-size: 12px;
+    color: #9a6a00;
+    font-weight: 700;
+    margin-left: 6px;
+  }
+  .bar-track {
+    height: 10px;
+    background: var(--gridline);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--accent);
+  }
+
+  .cta-block {
+    text-align: center;
+    margin-top: 32px;
+    padding-top: 28px;
+    border-top: 1px solid var(--gridline);
+  }
+  .cta-block p { font-size: 14px; color: var(--ink-secondary); margin-bottom: 14px; }
+
+  .restart-row { text-align: center; margin-top: 16px; }
+
+  footer {
+    text-align: center;
+    color: var(--ink-muted);
+    font-size: 12px;
+    padding: 30px 0 10px;
+  }
+
+  @media (max-width: 480px) {
+    .likert label { font-size: 10px; }
+    .hero h1 { font-size: 22px; }
+    .score-hero { font-size: 36px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-mark" aria-label="AXIS 로고">
+    <svg viewBox="0 0 132 40" xmlns="http://www.w3.org/2000/svg">
+      <text x="0" y="30" font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="34" fill="#0b0b0b">A</text>
+      <g transform="translate(48,20)">
+        <polygon points="0,0 0,-13 13,0" fill="#0b0b0b"/>
+        <polygon points="0,0 13,0 0,13" fill="#fcfcfb" stroke="#0b0b0b" stroke-width="1.5"/>
+        <polygon points="0,0 0,13 -13,0" fill="#0b0b0b"/>
+        <polygon points="0,0 -13,0 0,-13" fill="#fcfcfb" stroke="#0b0b0b" stroke-width="1.5"/>
+      </g>
+      <text x="76" y="30" font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="34" fill="#0b0b0b">I</text>
+      <text x="88" y="30" font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="34" fill="#0b0b0b">S</text>
+    </svg>
+  </div>
+  <a class="header-cta" href="http://axisway.co.kr/Contact" target="_blank" rel="noopener">AXIS 상담신청</a>
+</header>
+
+<div class="wrap">
+
+  <!-- Intro -->
+  <section id="intro">
+    <div class="hero">
+      <h1>우리 조직의 AX 준비도, 5분이면 확인됩니다</h1>
+      <p>AXIS가 설계한 20문항 진단으로 리더십, 인프라, 협업, 인재, 실행 문화 5가지 영역에서 우리 회사의 AI 전환(AX) 조직문화 수준을 확인해보세요.</p>
+    </div>
+    <div class="card" style="text-align:center;">
+      <button class="primary-btn" onclick="startSurvey()">진단 시작하기</button>
+      <p class="privacy-note">입력하신 답변은 서버로 전송되지 않고 이 브라우저 안에서만 계산됩니다.</p>
+    </div>
+  </section>
+
+  <!-- Survey -->
+  <section id="survey">
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-label" id="progressLabel">1 / 5 영역</div>
+    <div class="card">
+      <p class="dimension-name" id="dimName"></p>
+      <h2 class="dimension-title" id="dimTitle"></h2>
+      <div id="questionList"></div>
+      <div class="nav-row">
+        <button class="ghost-btn" id="prevBtn" onclick="goPrev()">이전</button>
+        <button class="primary-btn" id="nextBtn" onclick="goNext()">다음</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Result -->
+  <section id="result">
+    <div class="card">
+      <span class="level-badge" id="levelBadge"></span>
+      <div class="score-hero" id="scoreHero"></div>
+      <p class="level-desc" id="levelDesc"></p>
+
+      <div id="barList"></div>
+
+      <div class="cta-block">
+        <p>진단 결과를 바탕으로 우리 조직에 맞는 AX 전환 전략이 궁금하다면,<br>AXIS 전문가와 함께 다음 단계를 설계해보세요.</p>
+        <a class="primary-btn" href="http://axisway.co.kr/Contact" target="_blank" rel="noopener">AXIS 상담신청</a>
+      </div>
+    </div>
+    <div class="restart-row">
+      <button class="ghost-btn" onclick="restart()">다시 진단하기</button>
+    </div>
+  </section>
+
+</div>
+
+<footer>&copy; 2026 AXIS. All rights reserved.</footer>
+
+<script>
+  const DIMENSIONS = [
+    {
+      id: 'leadership',
+      name: 'Leadership & Vision',
+      title: '리더십과 비전',
+      questions: [
+        '경영진은 AI 활용을 회사의 중요한 전략 방향으로 공개적으로 강조한다.',
+        '우리 조직은 AI 도입을 위한 구체적인 목표나 계획을 갖고 있다.',
+        '리더들은 AI 관련 실험과 도전을 적극적으로 지지한다.',
+        'AI 전환에 필요한 예산과 자원이 별도로 배정되어 있다.'
+      ]
+    },
+    {
+      id: 'infra',
+      name: 'Data & Tech Infra',
+      title: '데이터와 기술 인프라',
+      questions: [
+        '업무에 필요한 데이터가 잘 정리되어 있어 쉽게 활용할 수 있다.',
+        '구성원들이 AI 도구(챗봇, 자동화 툴 등)에 자유롭게 접근할 수 있다.',
+        '데이터 보안과 AI 활용 기준(가이드라인)이 마련되어 있다.',
+        '반복적인 업무를 자동화하거나 AI로 대체하는 시도가 이루어지고 있다.'
+      ]
+    },
+    {
+      id: 'process',
+      name: 'Process & Collaboration',
+      title: '프로세스와 협업',
+      questions: [
+        '부서 간 협업 시 AI 도구를 활용해 효율을 높이고 있다.',
+        '업무 프로세스에 AI 활용 단계가 자연스럽게 포함되어 있다.',
+        '새로운 AI 도구나 방식을 팀 내에서 빠르게 공유하고 확산한다.',
+        '의사결정 과정에서 데이터와 AI 분석 결과를 참고한다.'
+      ]
+    },
+    {
+      id: 'talent',
+      name: 'Talent & Capability',
+      title: '인재와 역량',
+      questions: [
+        '구성원들은 AI 도구를 다루는 데 어려움을 느끼지 않는다.',
+        '회사는 AI 역량 강화를 위한 교육이나 학습 기회를 제공한다.',
+        '구성원들은 AI를 활용해 업무 생산성을 높이려는 의지가 있다.',
+        '신규 채용이나 인재 육성 시 AI 활용 역량을 중요하게 고려한다.'
+      ]
+    },
+    {
+      id: 'culture',
+      name: 'Experimentation Culture',
+      title: '실험과 실행 문화',
+      questions: [
+        '새로운 시도가 실패하더라도 이를 학습의 기회로 받아들이는 분위기다.',
+        '작은 시도(파일럿)를 빠르게 해보고 개선하는 문화가 있다.',
+        '구성원들이 자발적으로 AI를 업무에 적용해보려 시도한다.',
+        '성공적인 AI 활용 사례를 조직 내에서 공유하고 확산한다.'
+      ]
+    }
+  ];
+
+  const LIKERT = ['전혀 아니다', '아니다', '보통이다', '그렇다', '매우 그렇다'];
+
+  let current = 0;
+  const answers = DIMENSIONS.map(d => new Array(d.questions.length).fill(null));
+
+  function startSurvey() {
+    document.getElementById('intro').style.display = 'none';
+    document.getElementById('survey').style.display = 'block';
+    renderDimension();
+  }
+
+  function renderDimension() {
+    const dim = DIMENSIONS[current];
+    document.getElementById('dimName').textContent = dim.name;
+    document.getElementById('dimTitle').textContent = dim.title;
+    document.getElementById('progressFill').style.width = `${((current + 1) / DIMENSIONS.length) * 100}%`;
+    document.getElementById('progressLabel').textContent = `${current + 1} / ${DIMENSIONS.length} 영역`;
+
+    const list = document.getElementById('questionList');
+    list.innerHTML = '';
+    dim.questions.forEach((q, qi) => {
+      const fs = document.createElement('fieldset');
+      const legend = document.createElement('legend');
+      legend.textContent = `${qi + 1}. ${q}`;
+      fs.appendChild(legend);
+
+      const likert = document.createElement('div');
+      likert.className = 'likert';
+      LIKERT.forEach((label, li) => {
+        const val = li + 1;
+        const wrap = document.createElement('label');
+        const input = document.createElement('input');
+        input.type = 'radio';
+        input.name = `q_${current}_${qi}`;
+        input.value = val;
+        input.checked = answers[current][qi] === val;
+        input.addEventListener('change', () => { answers[current][qi] = val; });
+        wrap.appendChild(input);
+        wrap.appendChild(document.createTextNode(label));
+        likert.appendChild(wrap);
+      });
+      fs.appendChild(likert);
+      list.appendChild(fs);
+    });
+
+    document.getElementById('prevBtn').style.visibility = current === 0 ? 'hidden' : 'visible';
+    document.getElementById('nextBtn').textContent = current === DIMENSIONS.length - 1 ? '결과 보기' : '다음';
+
+    document.getElementById('survey').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function goPrev() {
+    if (current === 0) return;
+    current -= 1;
+    renderDimension();
+  }
+
+  function goNext() {
+    if (answers[current].includes(null)) {
+      alert('모든 문항에 답변해주세요.');
+      return;
+    }
+    if (current < DIMENSIONS.length - 1) {
+      current += 1;
+      renderDimension();
+    } else {
+      showResult();
+    }
+  }
+
+  function dimensionAverage(i) {
+    const a = answers[i];
+    return a.reduce((s, v) => s + v, 0) / a.length;
+  }
+
+  function levelInfo(overall) {
+    if (overall <= 2.0) return { name: '씨앗 단계', color: 'var(--step-250)', desc: 'AX 조직문화가 아직 초기 단계입니다. AI 전환을 위한 방향 설정과 작은 시도부터 시작하기 좋은 시점입니다.' };
+    if (overall <= 3.0) return { name: '새싹 단계', color: 'var(--step-400)', desc: '기본적인 시도는 시작되었지만, 조직 전체로 확산하기 위한 체계화가 필요합니다.' };
+    if (overall <= 4.0) return { name: '성장 단계', color: 'var(--step-500)', desc: 'AX 문화가 자리잡아가고 있습니다. 강점 영역을 더 다지고 약한 영역을 보완하면 성숙 단계로 나아갈 수 있습니다.' };
+    return { name: '성숙 단계', color: 'var(--step-650)', desc: 'AX 조직문화가 잘 정착되어 있습니다. 지속적인 고도화와 성과 확산에 집중할 단계입니다.' };
+  }
+
+  function showResult() {
+    const scores = DIMENSIONS.map((_, i) => dimensionAverage(i));
+    const overall = scores.reduce((s, v) => s + v, 0) / scores.length;
+    const lvl = levelInfo(overall);
+    const minScore = Math.min(...scores);
+
+    document.getElementById('survey').style.display = 'none';
+    document.getElementById('result').style.display = 'block';
+
+    const badge = document.getElementById('levelBadge');
+    badge.textContent = lvl.name;
+    badge.style.background = lvl.color;
+
+    document.getElementById('scoreHero').innerHTML = `${overall.toFixed(1)}<span> / 5.0</span>`;
+    document.getElementById('levelDesc').textContent = lvl.desc;
+
+    const barList = document.getElementById('barList');
+    barList.innerHTML = '';
+    DIMENSIONS.forEach((dim, i) => {
+      const score = scores[i];
+      const pct = (score / 5) * 100;
+      const isWeakest = score === minScore;
+
+      const row = document.createElement('div');
+      row.className = 'bar-row';
+      row.innerHTML = `
+        <div class="bar-row-head">
+          <span>${dim.title}${isWeakest ? '<span class="flag">&#9888; 보완이 필요한 영역</span>' : ''}</span>
+          <span>${score.toFixed(1)} / 5.0</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+      `;
+      barList.appendChild(row);
+    });
+
+    document.getElementById('result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function restart() {
+    current = 0;
+    answers.forEach(a => a.fill(null));
+    document.getElementById('result').style.display = 'none';
+    document.getElementById('intro').style.display = 'block';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+</script>
+
+</body>
+</html>
