@@ -655,8 +655,9 @@ function showReport(){
 /* PDF 생성: 결과서 영역을 캡처해 A4 PDF로 만들고 브라우저에서 바로 다운로드 */
 async function downloadReportPdf(){
   const reportEl = document.getElementById('report');
-  const canvas = await html2canvas(reportEl, { scale: 1.5, backgroundColor: '#ffffff', useCORS: true });
-  const imgData = canvas.toDataURL('image/jpeg', 0.85);
+  const scale = 2.5;
+  const canvas = await html2canvas(reportEl, { scale, backgroundColor: '#ffffff', useCORS: true });
+  const imgData = canvas.toDataURL('image/jpeg', 0.95);
 
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF('p', 'mm', 'a4');
@@ -664,6 +665,7 @@ async function downloadReportPdf(){
   const pageHeight = pdf.internal.pageSize.getHeight();
   const imgWidth = pageWidth;
   const imgHeight = canvas.height * imgWidth / canvas.width;
+  const pxToMm = imgWidth / canvas.width; // 캡처 픽셀 -> PDF mm 환산 비율
 
   let heightLeft = imgHeight;
   let position = 0;
@@ -674,6 +676,24 @@ async function downloadReportPdf(){
     pdf.addPage();
     pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
     heightLeft -= pageHeight;
+  }
+
+  // "AXIS 상담신청" 버튼 위치에 실제 클릭 가능한 링크를 얹는다
+  const ctaLink = reportEl.querySelector('.cta-final a.btn-primary');
+  if (ctaLink) {
+    const reportBox = reportEl.getBoundingClientRect();
+    const linkBox = ctaLink.getBoundingClientRect();
+
+    const topMm = (linkBox.top - reportBox.top) * scale * pxToMm;
+    const leftMm = (linkBox.left - reportBox.left) * scale * pxToMm;
+    const wMm = linkBox.width * scale * pxToMm;
+    const hMm = linkBox.height * scale * pxToMm;
+
+    const pageNum = Math.floor(topMm / pageHeight);
+    const yOnPage = topMm - pageNum * pageHeight;
+
+    pdf.setPage(pageNum + 1);
+    pdf.link(leftMm, yOnPage, wMm, hMm, { url: 'http://axisway.co.kr/Contact' });
   }
 
   const fileLabel = [respondent.company, respondent.name].filter(Boolean).join('_') || '진단결과';
