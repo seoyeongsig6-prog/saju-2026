@@ -33,6 +33,16 @@ hide_st_style = """
             footer {visibility: hidden;}
             .stAppDeployButton {display:none;}
             #stDecoration {display:none;}
+
+            /* 모바일에서 입력창 폰트가 16px보다 작으면 iOS 등 브라우저가
+               입력창을 탭할 때 화면을 자동으로 확대(zoom)하면서 스크롤이
+               멈춘 것처럼 보이는 문제가 발생한다. 16px 이상으로 고정해 방지. */
+            input, textarea, select,
+            [data-baseweb="input"] input,
+            [data-baseweb="select"] input,
+            [data-baseweb="select"] div {
+                font-size: 16px !important;
+            }
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
