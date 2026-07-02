@@ -27,12 +27,14 @@
   img{max-width:100%;}
 
   /* Header */
-  .site-header{position:sticky;top:0;z-index:50;background:var(--navy);color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;}
+  .site-header{position:sticky;top:0;z-index:50;background:var(--navy);color:#fff;padding:14px 20px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;column-gap:12px;}
+  .logo-mark{justify-self:start;display:flex;align-items:center;}
   .logo{font-weight:800;font-size:20px;letter-spacing:1px;}
   .logo span{color:var(--accent2);}
-  .header-tag{font-size:12px;color:#aab2d6;display:none;}
+  .logo-img{height:28px;width:auto;display:block;}
+  .header-tag{justify-self:center;text-align:center;font-size:12px;color:#aab2d6;display:none;white-space:nowrap;}
   @media(min-width:600px){.header-tag{display:block;}}
-  .header-cta-btn{padding:9px 18px;font-size:13px;box-shadow:none;text-decoration:none;}
+  .header-cta-btn{justify-self:end;padding:9px 18px;font-size:13px;box-shadow:none;text-decoration:none;}
 
   /* Hero */
   .hero{background:linear-gradient(135deg,var(--navy) 0%,var(--navy2) 55%,#1c2a5e 100%);color:#fff;padding:64px 20px 80px;text-align:center;}
@@ -174,8 +176,10 @@
 <body>
 
 <header class="site-header">
-  <div class="logo">AX<span>IS</span></div>
-  <div class="header-tag">AX 조직문화 전문 파트너</div>
+  <div class="logo-mark">
+    <div class="logo">AX<span>IS</span></div>
+  </div>
+  <div class="header-tag">AX 조직문화 구축 전문 회사</div>
   <a class="btn btn-primary header-cta-btn" href="http://axisway.co.kr/Contact" target="_blank" rel="noopener">AXIS 상담신청</a>
 </header>
 
