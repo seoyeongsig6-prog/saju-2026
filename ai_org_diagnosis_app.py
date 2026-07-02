@@ -1,6 +1,7 @@
 import streamlit as st
 import google.generativeai as genai
 import datetime
+import json
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -375,6 +376,12 @@ if "unlocked" not in st.session_state:
     st.session_state.unlocked = False
 if "report" not in st.session_state:
     st.session_state.report = ""
+if "answers" not in st.session_state:
+    # 문항 응답은 위젯의 key가 아니라 이 딕셔너리에 직접 저장한다.
+    # Streamlit은 특정 런에서 렌더링되지 않은 위젯의 session_state를 지워버리므로
+    # (다른 단계로 이동하면 이전 단계 위젯이 이번 런에 없다고 간주해 값이 삭제됨),
+    # 단계 이동 후에도 값을 유지하려면 위젯 key에 의존하지 않고 별도 dict로 관리해야 한다.
+    st.session_state.answers = {}
 
 
 def wkey(section_key, qid):
@@ -385,24 +392,32 @@ def wkey(section_key, qid):
 # 4. 렌더링 / 스코어링 / 프롬프트 유틸
 # ============================================================
 def render_question(section_key, q):
+    field_id = f"{section_key}.{q['id']}"
     key = wkey(section_key, q["id"])
     qtype = q["type"]
     label = q["label"]
+    current = st.session_state.answers.get(field_id)
 
     if qtype == "text":
-        st.text_input(label, key=key)
+        val = st.text_input(label, value=current or "", key=key)
     elif qtype == "select":
-        st.selectbox(label, q["options"], key=key)
+        options = q["options"]
+        idx = options.index(current) if current in options else 0
+        val = st.selectbox(label, options, index=idx, key=key)
     elif qtype == "radio":
-        st.radio(label, q["options"], key=key)
+        options = q["options"]
+        idx = options.index(current) if current in options else 0
+        val = st.radio(label, options, index=idx, key=key)
     elif qtype == "multiselect":
-        st.multiselect(label, q["options"], key=key)
+        val = st.multiselect(label, q["options"], default=current or [], key=key)
     elif qtype == "textarea":
-        st.text_area(label, key=key, height=90)
+        val = st.text_area(label, value=current or "", key=key, height=90)
+
+    st.session_state.answers[field_id] = val
 
 
 def get_answer(section_key, qid, default=None):
-    return st.session_state.get(wkey(section_key, qid), default)
+    return st.session_state.answers.get(f"{section_key}.{qid}", default)
 
 
 CRITICAL_CAP = 40  # 레드플래그(치명적 항목) 발생 시 해당 영역 점수 상한
@@ -596,6 +611,39 @@ if valid_codes and not st.session_state.unlocked:
     st.stop()
 elif not valid_codes:
     st.caption("⚠️ 접근 코드가 설정되어 있지 않아 테스트 모드로 열려 있습니다. (운영 전 ACCESS_CODES 시크릿을 설정하세요)")
+
+# ============================================================
+# 5-1. 진행상황 저장/이어하기 (중단·접속끊김 대비)
+# ============================================================
+# 서버(Streamlit) 세션은 재시작되거나 접속이 끊기면 사라지므로, 서버에 의존하지
+# 않고 사용자가 직접 파일로 내려받아 보관했다가 다시 업로드해서 이어가는 방식으로 구현한다.
+with st.expander("💾 진행 상황 저장 / 이어서 하기 (중간에 중단하거나 접속이 끊겨도 안전)"):
+    st.caption(
+        "문항이 많아 한 번에 끝내기 어려울 수 있습니다. 언제든 아래 버튼으로 지금까지의 "
+        "답변을 파일로 저장해두었다가, 나중에 그 파일을 업로드하면 저장한 시점부터 이어서 "
+        "진행할 수 있습니다. (단, 현재 페이지는 '다음/이전' 버튼을 한 번 눌러야 저장 대상에 포함됩니다.)"
+    )
+    progress_payload = {
+        "step": st.session_state.step,
+        "answers": st.session_state.answers,
+    }
+    st.download_button(
+        "💾 진행 상황 저장하기",
+        data=json.dumps(progress_payload, ensure_ascii=False, indent=2),
+        file_name=f"AI진단_진행상황_{datetime.date.today().isoformat()}.json",
+        mime="application/json",
+    )
+
+    uploaded_progress = st.file_uploader("저장해둔 진행 상황 파일(.json) 업로드", type=["json"])
+    if uploaded_progress is not None and st.button("📂 불러온 내용으로 이어서 진행하기"):
+        try:
+            loaded = json.loads(uploaded_progress.read().decode("utf-8"))
+            st.session_state.answers.update(loaded.get("answers", {}))
+            st.session_state.step = loaded.get("step", 0)
+            st.success("진행 상황을 불러왔습니다.")
+            st.rerun()
+        except Exception as e:
+            st.error(f"파일을 불러오는 중 오류가 발생했습니다: {e}")
 
 # ============================================================
 # 6. 진단 위저드
