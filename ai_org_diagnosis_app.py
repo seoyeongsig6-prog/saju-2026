@@ -621,6 +621,10 @@ if prev_clicked and step > 0:
     st.session_state.step -= 1
     st.rerun()
 
+if next_clicked and step == 0 and not get_answer("basic", "company_name"):
+    st.error("회사명(또는 조직명)을 입력해 주세요.")
+    next_clicked = False
+
 if next_clicked:
     if step < TOTAL_STEPS - 1:
         st.session_state.step += 1
@@ -673,5 +677,11 @@ if st.session_state.report:
         st.caption("✅ 진단 결과가 회사 백업 메일함으로 자동 발송되었습니다.")
     elif st.session_state.get("backup_err"):
         st.caption(f"⚠️ 백업 메일 발송 실패: {st.session_state.backup_err}")
+
+    st.divider()
+    if st.button("🔄 새 진단 시작하기"):
+        for k in list(st.session_state.keys()):
+            del st.session_state[k]
+        st.rerun()
 
 st.caption("© 2026 AI 조직 세부진단 키트")
