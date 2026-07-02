@@ -255,8 +255,7 @@
       <div class="score-circle-inner"><b id="quickScoreNum">0</b><span>AX 준비도 점수</span></div>
     </div>
     <p style="font-size:14px;color:var(--muted);margin:0 0 20px;">전체 결과가 계산되었습니다. 영역별 상세 분석과 맞춤 보완 방안을 확인해보세요.</p>
-    <p style="font-size:12px;color:var(--muted);margin:0 0 16px;" id="submitStatus">결과를 저장하는 중입니다...</p>
-    <button class="btn btn-primary" id="showReportBtn">상세 결과 확인하기 →</button>
+    <button class="btn btn-primary" id="showReportBtn">진단결과 메일로 받기 →</button>
   </div>
 </section>
 
@@ -306,6 +305,8 @@
 
 <footer>© AXIS · AX 조직문화 진단 툴킷은 러프한 자가 점검 도구이며, 정식 진단은 전문가 상담을 통해 진행됩니다.</footer>
 
+<script src="vendor/html2canvas.min.js"></script>
+<script src="vendor/jspdf.umd.min.js"></script>
 <script>
 /* ---------------- 연동 설정 ----------------
    Google Apps Script Web App을 배포한 뒤 발급되는 URL을 아래에 붙여넣으면
@@ -607,11 +608,25 @@ function finishQuiz(){
   document.getElementById('quiz').classList.add('hidden');
   document.getElementById('leadgate').classList.remove('hidden');
   window.scrollTo({top:document.getElementById('leadgate').offsetTop-80,behavior:'smooth'});
+}
 
+/* ---------------- 리드 게이트: 결과 공개 + PDF 다운로드 + DB 저장/이메일 발송 ---------------- */
+document.getElementById('showReportBtn').addEventListener('click', handleGetReport);
+
+async function handleGetReport(){
+  showReport();
+  // 리포트가 화면에 그려질 시간을 잠깐 준다 (PDF 캡처 전 레이아웃 안정화)
+  await new Promise(resolve => setTimeout(resolve, 350));
+
+  const pdfBase64 = await downloadReportPdf().catch(err => {
+    console.warn('PDF 생성 실패', err);
+    return null;
+  });
+
+  const lvl = levelFor(RESULT.overallPct);
   const dimScoreMap = {};
-  RESULT.dimScores.forEach(d=>{ dimScoreMap[d.short] = d.avg; });
+  RESULT.dimScores.forEach(d=>{ dimScoreMap[d.short] = Number(d.avg.toFixed(2)); });
 
-  const statusEl = document.getElementById('submitStatus');
   submitLead({
     type:'diagnosis',
     name: respondent.name,
@@ -621,14 +636,10 @@ function finishQuiz(){
     overallPct: RESULT.overallPct,
     level: lvl.label,
     dimScores: dimScoreMap,
+    pdfBase64,
     submittedAt: new Date().toISOString()
-  }).then(res=>{
-    statusEl.textContent = res.ok ? '결과가 저장되었습니다.' : '결과 저장은 아직 연동되지 않았습니다. (관리자 설정 필요)';
   });
 }
-
-/* ---------------- 리드 게이트 ---------------- */
-document.getElementById('showReportBtn').addEventListener('click', showReport);
 
 function showReport(){
   const label = [respondent.company, respondent.name].filter(Boolean).join(' · ');
@@ -641,6 +652,36 @@ function showReport(){
   window.scrollTo({top:document.getElementById('report').offsetTop-80,behavior:'smooth'});
 }
 
+/* PDF 생성: 결과서 영역을 캡처해 A4 PDF로 만들고 브라우저에서 바로 다운로드, base64도 반환(이메일 첨부용) */
+async function downloadReportPdf(){
+  const reportEl = document.getElementById('report');
+  const canvas = await html2canvas(reportEl, { scale: 1.5, backgroundColor: '#ffffff', useCORS: true });
+  const imgData = canvas.toDataURL('image/jpeg', 0.85);
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF('p', 'mm', 'a4');
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const imgWidth = pageWidth;
+  const imgHeight = canvas.height * imgWidth / canvas.width;
+
+  let heightLeft = imgHeight;
+  let position = 0;
+  pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+  heightLeft -= pageHeight;
+  while (heightLeft > 0) {
+    position = heightLeft - imgHeight;
+    pdf.addPage();
+    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+  }
+
+  const fileLabel = [respondent.company, respondent.name].filter(Boolean).join('_') || '진단결과';
+  pdf.save(`AXIS_AX조직문화_진단결과서_${fileLabel}.pdf`);
+
+  return pdf.output('datauristring').split(',')[1];
+}
+
 /* ---------------- 레이더 차트 ---------------- */
 function polar(cx,cy,r,angleDeg){
   const rad = (angleDeg-90)*Math.PI/180;
@@ -648,7 +689,7 @@ function polar(cx,cy,r,angleDeg){
 }
 
 function buildRadarSVG(dimScores){
-  const cx=170, cy=170, R=120, n=dimScores.length;
+  const cx=230, cy=230, R=110, n=dimScores.length;
   const step = 360/n;
   let grid = '';
   [0.2,0.4,0.6,0.8,1].forEach(level=>{
@@ -660,7 +701,7 @@ function buildRadarSVG(dimScores){
   dimScores.forEach((d,i)=>{
     const [x,y] = polar(cx,cy,R,i*step);
     axes += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#e2e5f2" stroke-width="1"/>`;
-    const [lx,ly] = polar(cx,cy,R+26,i*step);
+    const [lx,ly] = polar(cx,cy,R+50,i*step);
     let anchor = 'middle';
     if(lx < cx-10) anchor='end'; else if(lx > cx+10) anchor='start';
     labels += `<text x="${lx}" y="${ly}" font-size="11" fill="#4b5266" text-anchor="${anchor}" dominant-baseline="middle">${d.icon} ${d.short}</text>`;
@@ -672,7 +713,7 @@ function buildRadarSVG(dimScores){
   }).join('');
 
   return `
-  <svg width="340" height="340" viewBox="0 0 340 340">
+  <svg viewBox="0 0 460 460" style="width:100%;max-width:460px;height:auto;">
     ${grid}
     ${axes}
     <polygon points="${dataPts}" fill="#5b6cff" fill-opacity="0.28" stroke="#5b6cff" stroke-width="2"/>
