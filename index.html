@@ -258,7 +258,7 @@
       <div class="score-circle-inner"><b id="quickScoreNum">0</b><span>AX 준비도 점수</span></div>
     </div>
     <p style="font-size:14px;color:var(--muted);margin:0 0 20px;">전체 결과가 계산되었습니다. 영역별 상세 분석과 맞춤 보완 방안을 확인해보세요.</p>
-    <button class="btn btn-primary" id="showReportBtn">진단 결과 다운로드 →</button>
+    <button class="btn btn-primary" id="showReportBtn">상세 결과 확인하기 →</button>
   </div>
 </section>
 
@@ -300,21 +300,15 @@
       <button class="btn btn-outline" id="retakeBtn">다시 진단하기</button>
     </div>
   </div>
-
-  <div class="report-actions">
-    <button id="printBtn">🖨 결과서 인쇄 / PDF 저장</button>
-  </div>
 </section>
 
 <footer>© AXIS · AX 조직문화 진단 툴킷은 러프한 자가 점검 도구이며, 정식 진단은 전문가 상담을 통해 진행됩니다.</footer>
 
-<script src="vendor/html2canvas.min.js"></script>
-<script src="vendor/jspdf.umd.min.js"></script>
 <script>
 /* ---------------- 연동 설정 ----------------
    Google Apps Script Web App을 배포한 뒤 발급되는 URL을 아래에 붙여넣으면
    진단 결과(고객정보+점수)가 구글시트 DB에 자동으로 쌓입니다. 고객에게는
-   이메일이 발송되지 않고, 결과 PDF는 고객 브라우저에서 바로 다운로드됩니다.
+   이메일이 발송되지 않고, PDF 다운로드 기능은 제공하지 않습니다(화면 열람만).
    배포 방법은 함께 제공된 apps-script-backend.gs 파일 상단 주석을 참고하세요. */
 const CONFIG = {
   SUBMIT_ENDPOINT_URL: 'https://script.google.com/macros/s/AKfycbwD4AYmkufGTnAHP9f-649rXdSSQZ2_QnNUNg_o42JZ_v-pyRavpag4LcugJsCzjYQ/exec'
@@ -614,15 +608,11 @@ function finishQuiz(){
   window.scrollTo({top:document.getElementById('leadgate').offsetTop-80,behavior:'smooth'});
 }
 
-/* ---------------- 리드 게이트: 결과 공개 + PDF 다운로드 + DB 저장/이메일 발송 ---------------- */
+/* ---------------- 리드 게이트: 결과 공개 + DB 저장 ---------------- */
 document.getElementById('showReportBtn').addEventListener('click', handleGetReport);
 
-async function handleGetReport(){
+function handleGetReport(){
   showReport();
-  // 리포트가 화면에 그려질 시간을 잠깐 준다 (PDF 캡처 전 레이아웃 안정화)
-  await new Promise(resolve => setTimeout(resolve, 350));
-
-  downloadReportPdf().catch(err => console.warn('PDF 생성 실패', err));
 
   const lvl = levelFor(RESULT.overallPct);
   const dimScoreMap = {};
@@ -650,54 +640,6 @@ function showReport(){
   document.getElementById('leadgate').classList.add('hidden');
   document.getElementById('report').classList.remove('hidden');
   window.scrollTo({top:document.getElementById('report').offsetTop-80,behavior:'smooth'});
-}
-
-/* PDF 생성: 결과서 영역을 캡처해 A4 PDF로 만들고 브라우저에서 바로 다운로드 */
-async function downloadReportPdf(){
-  const reportEl = document.getElementById('report');
-  const scale = 2.5;
-  const canvas = await html2canvas(reportEl, { scale, backgroundColor: '#ffffff', useCORS: true });
-  const imgData = canvas.toDataURL('image/jpeg', 0.95);
-
-  const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF('p', 'mm', 'a4');
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  const imgWidth = pageWidth;
-  const imgHeight = canvas.height * imgWidth / canvas.width;
-  const pxToMm = imgWidth / canvas.width; // 캡처 픽셀 -> PDF mm 환산 비율
-
-  let heightLeft = imgHeight;
-  let position = 0;
-  pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
-  heightLeft -= pageHeight;
-  while (heightLeft > 0) {
-    position = heightLeft - imgHeight;
-    pdf.addPage();
-    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
-    heightLeft -= pageHeight;
-  }
-
-  // "AXIS 상담신청" 버튼 위치에 실제 클릭 가능한 링크를 얹는다
-  const ctaLink = reportEl.querySelector('.cta-final a.btn-primary');
-  if (ctaLink) {
-    const reportBox = reportEl.getBoundingClientRect();
-    const linkBox = ctaLink.getBoundingClientRect();
-
-    const topMm = (linkBox.top - reportBox.top) * scale * pxToMm;
-    const leftMm = (linkBox.left - reportBox.left) * scale * pxToMm;
-    const wMm = linkBox.width * scale * pxToMm;
-    const hMm = linkBox.height * scale * pxToMm;
-
-    const pageNum = Math.floor(topMm / pageHeight);
-    const yOnPage = topMm - pageNum * pageHeight;
-
-    pdf.setPage(pageNum + 1);
-    pdf.link(leftMm, yOnPage, wMm, hMm, { url: 'http://axisway.co.kr/Contact' });
-  }
-
-  const fileLabel = [respondent.company, respondent.name].filter(Boolean).join('_') || '진단결과';
-  pdf.save(`AXIS_AX조직문화_진단결과서_${fileLabel}.pdf`);
 }
 
 /* ---------------- 레이더 차트 ---------------- */
@@ -839,8 +781,6 @@ document.getElementById('retakeBtn').addEventListener('click', ()=>{
   document.getElementById('quiz').classList.remove('hidden');
   window.scrollTo({top:document.getElementById('quiz').offsetTop-80,behavior:'smooth'});
 });
-
-document.getElementById('printBtn').addEventListener('click', ()=>window.print());
 </script>
 </body>
 </html>
