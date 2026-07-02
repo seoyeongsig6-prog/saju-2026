@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AXIS AX COLLABORATION 워크숍 - 모바일 상세페이지</title>
+</head>
+<body style="margin:0;padding:0;background:#fff;">
+
+<!-- ▼▼▼ 아래 <style> 태그부터 마지막 </div>(axis-mobile-detail 닫는 태그)까지 통째로 복사해서 아임웹 HTML 위젯에 붙여넣으세요 ▼▼▼ -->
+
+<style>
+.axis-mobile-detail, .axis-mobile-detail * { box-sizing: border-box; }
+.axis-mobile-detail {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+  background: #ffffff;
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+  color: #222222;
+  line-height: 1.6;
+  word-break: keep-all;
+  overflow: hidden;
+}
+.axis-mobile-detail h1, .axis-mobile-detail h2, .axis-mobile-detail h3, .axis-mobile-detail p, .axis-mobile-detail ul, .axis-mobile-detail li {
+  margin: 0; padding: 0; list-style: none;
+}
+
+/* ---------- 공통 ---------- */
+.axis-mobile-detail .ax-section { padding: 56px 24px; }
+.axis-mobile-detail .ax-badge {
+  display: inline-block;
+  background: #D9FF3E;
+  color: #17190F;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  padding: 7px 16px;
+  border-radius: 999px;
+  margin-bottom: 18px;
+}
+.axis-mobile-detail .ax-title {
+  font-size: 24px;
+  font-weight: 800;
+  color: #111;
+  line-height: 1.4;
+  margin-bottom: 32px;
+}
+
+/* ---------- 히어로 ---------- */
+.axis-mobile-detail .hero {
+  background: #14150F;
+  color: #fff;
+  padding: 44px 24px 52px;
+}
+.axis-mobile-detail .hero-top {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 18px;
+}
+.axis-mobile-detail .hero-logo {
+  font-size: 15px; font-weight: 900; letter-spacing: 0.08em; color: #D9FF3E;
+}
+.axis-mobile-detail .hero-tag {
+  font-size: 11px; font-weight: 700; color: #cfcfcf;
+  border: 1px solid #4a4a44; border-radius: 999px; padding: 4px 10px;
+}
+.axis-mobile-detail .hero-pill {
+  display: inline-block; background: #D9FF3E; color: #17190F;
+  font-size: 12px; font-weight: 800; padding: 6px 14px; border-radius: 999px;
+  margin-bottom: 16px;
+}
+.axis-mobile-detail .hero h1 {
+  font-size: 28px; font-weight: 800; line-height: 1.4; margin-bottom: 20px; color: #fff;
+}
+.axis-mobile-detail .hero p {
+  font-size: 14.5px; color: #c9c9c1; line-height: 1.75;
+}
+
+/* ---------- 현상 리스트 ---------- */
+.axis-mobile-detail .problem-list li {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 16px 0; border-bottom: 1px solid #eeeeea;
+  font-size: 14.5px; color: #333; line-height: 1.6;
+}
+.axis-mobile-detail .problem-list li:last-child { border-bottom: none; }
+.axis-mobile-detail .problem-icon {
+  flex: none; width: 22px; height: 22px; border-radius: 6px;
+  background: #FFEBEA; color: #E4514A; font-weight: 900; font-size: 13px;
+  display: flex; align-items: center; justify-content: center; margin-top: 1px;
+}
+
+/* ---------- 대상 ---------- */
+.axis-mobile-detail .ax-section-dim { background: #F7F7F2; }
+.axis-mobile-detail .target-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px;
+}
+.axis-mobile-detail .target-item {
+  grid-column: span 1;
+}
+.axis-mobile-detail .target-item.wide { grid-column: span 2; }
+.axis-mobile-detail .target-circle {
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  background: #F3EEDD;
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  font-size: 13.5px; font-weight: 700; color: #17190F; line-height: 1.35;
+  padding: 10px; max-width: 168px; margin: 0 auto;
+}
+.axis-mobile-detail .target-item.wide .target-circle { max-width: 100%; aspect-ratio: auto; border-radius: 24px; padding: 20px; }
+
+/* ---------- 프로그램 카드 ---------- */
+.axis-mobile-detail .program-card {
+  background: #ffffff;
+  border: 1px solid #ededea;
+  border-radius: 20px;
+  padding: 26px 22px;
+  margin-bottom: 18px;
+  box-shadow: 0 6px 18px rgba(20,20,15,0.05);
+}
+.axis-mobile-detail .program-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.axis-mobile-detail .program-num {
+  flex: none; width: 30px; height: 30px; border-radius: 50%;
+  background: #17190F; color: #D9FF3E; font-weight: 800; font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+}
+.axis-mobile-detail .program-tag {
+  display: inline-block; background: #17190F; color: #D9FF3E;
+  font-size: 11.5px; font-weight: 800; padding: 5px 12px; border-radius: 999px;
+}
+.axis-mobile-detail .program-card h3 {
+  font-size: 18px; font-weight: 800; color: #111; line-height: 1.4; margin-bottom: 12px;
+}
+.axis-mobile-detail .program-card > p {
+  font-size: 13.5px; color: #666; line-height: 1.7; margin-bottom: 18px;
+}
+.axis-mobile-detail .sub-list li {
+  display: flex; gap: 8px; align-items: flex-start;
+  font-size: 13.5px; color: #333; padding: 7px 0;
+}
+.axis-mobile-detail .sub-list li::before {
+  content: ""; flex: none; width: 5px; height: 5px; border-radius: 50%;
+  background: #B7CE2E; margin-top: 8px;
+}
+
+/* ---------- 워크숍 이후 (다크) ---------- */
+.axis-mobile-detail .ax-section-dark {
+  background: #4B4B47; color: #fff; text-align: center;
+}
+.axis-mobile-detail .ax-section-dark h2 {
+  font-size: 24px; font-weight: 800; margin-bottom: 34px; line-height: 1.4;
+}
+.axis-mobile-detail .check-list { text-align: left; }
+.axis-mobile-detail .check-list li {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 14px 4px; border-bottom: 1px solid rgba(255,255,255,0.12);
+  font-size: 14px; color: #f1f1ec; line-height: 1.6;
+}
+.axis-mobile-detail .check-list li:last-child { border-bottom: none; }
+.axis-mobile-detail .check-icon {
+  flex: none; width: 20px; height: 20px; margin-top: 2px;
+}
+
+/* ---------- 기대효과 ---------- */
+.axis-mobile-detail .benefit-card {
+  border: 2px solid #17190F; border-radius: 22px;
+  padding: 28px 24px; margin-bottom: 18px;
+}
+.axis-mobile-detail .benefit-head { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.axis-mobile-detail .benefit-name {
+  background: #17190F; color: #D9FF3E; font-weight: 800; font-size: 14px;
+  padding: 5px 14px; border-radius: 999px;
+}
+.axis-mobile-detail .benefit-icon { flex: none; width: 26px; height: 26px; color: #17190F; }
+.axis-mobile-detail .benefit-card ul li {
+  font-size: 13.5px; color: #333; padding: 6px 0 6px 16px; position: relative; line-height: 1.6;
+}
+.axis-mobile-detail .benefit-card ul li::before {
+  content: "•"; position: absolute; left: 0; color: #B7CE2E; font-weight: 900;
+}
+
+/* ---------- 푸터 ---------- */
+.axis-mobile-detail .ax-footer {
+  background: #17190F; color: #fff; text-align: center;
+}
+.axis-mobile-detail .ax-footer .foot-logo {
+  font-size: 13px; font-weight: 900; letter-spacing: 0.1em; color: #D9FF3E; margin-bottom: 10px;
+}
+.axis-mobile-detail .ax-footer h3 {
+  font-size: 20px; font-weight: 800; margin-bottom: 16px;
+}
+.axis-mobile-detail .ax-footer p {
+  font-size: 13px; color: #bdbdb5; line-height: 1.8;
+}
+</style>
+
+<div class="axis-mobile-detail">
+
+  <!-- 히어로 -->
+  <section class="hero">
+    <div class="hero-top">
+      <span class="hero-logo">AXIS</span>
+      <span class="hero-tag">AX COLLABORATION 워크숍</span>
+    </div>
+    <span class="hero-pill">AI시대 일하는 방식 혁신 워크숍</span>
+    <h1>AI 시대,<br>일하는 방식의 혁신이 필요합니다.</h1>
+    <p>
+      AI 시대의 협업에는 새로운 소통 방식이 필요합니다.<br><br>
+      구성원 간 업무 방식과 결과물, 팀 리더와 팀원의 역할과 책임을
+      명확하게 정의하고 협업할 수 있어야 합니다.<br><br>
+      본 워크숍은 AI 시대에 달라지는 소통과 협업의 변화를 이해하고,
+      우리 팀과 조직에 맞는 협업 방식을 함께 만들어갑니다.
+    </p>
+  </section>
+
+  <!-- 이런 현상이 나타나고 있나요 -->
+  <section class="ax-section">
+    <h2 class="ax-title">이런 현상이<br>나타나고 있나요?</h2>
+    <ul class="problem-list">
+      <li><span class="problem-icon">!</span>팀마다 업무 속도와 결과물 수준의 차이가 커진다.</li>
+      <li><span class="problem-icon">!</span>AI 결과물을 팀에서 어떻게 검토해야 할지 기준이 없다.</li>
+      <li><span class="problem-icon">!</span>AI가 만든 자료를 그대로 공유해도 되는지 구성원들이 헷갈린다.</li>
+      <li><span class="problem-icon">!</span>팀 안에서 AI 실험 경험과 노하우가 공유되지 않는다.</li>
+      <li><span class="problem-icon">!</span>AI를 활용해도 협업 방식은 여전히 기존 방식 그대로다.</li>
+      <li><span class="problem-icon">!</span>새로운 도구와 방식은 늘어나면서 역할과 책임이 모호해진다.</li>
+      <li><span class="problem-icon">!</span>개인 생산성은 높아졌지만 팀의 실행 속도는 크게 달라지지 않는다.</li>
+    </ul>
+  </section>
+
+  <!-- 대상 -->
+  <section class="ax-section ax-section-dim">
+    <h2 class="ax-title" style="margin-bottom:24px;">대상</h2>
+    <div class="target-grid">
+      <div class="target-item"><div class="target-circle">전사 구성원</div></div>
+      <div class="target-item"><div class="target-circle">팀장 및<br>실무 리더</div></div>
+      <div class="target-item"><div class="target-circle">프로젝트 리더</div></div>
+      <div class="target-item"><div class="target-circle">HRD·조직문화<br>담당자</div></div>
+      <div class="target-item wide"><div class="target-circle">팀워크와 협업 방식을<br>개선하고 싶은 조직</div></div>
+    </div>
+  </section>
+
+  <!-- 프로그램 -->
+  <section class="ax-section">
+    <h2 class="ax-title" style="margin-bottom:24px;">프로그램</h2>
+
+    <div class="program-card">
+      <div class="program-head">
+        <span class="program-num">1</span>
+        <span class="program-tag">Collaboration Shift</span>
+      </div>
+      <h3>AI 시대, 소통과 협업은<br>어떻게 달라지는가</h3>
+      <p>
+        AI가 업무에 들어오면서 구성원 간 업무 속도, 정보 처리량, 결과물 수준이
+        달라지고 있습니다. 이 세션에서는 AI 시대 협업 환경의 변화를 이해하고,
+        우리 팀에서 나타나는 소통·협업 방식의 변화를 짚어봅니다.
+      </p>
+      <ul class="sub-list">
+        <li>AI 시대 협업 환경 변화</li>
+        <li>구성원 간 업무 속도와 방식의 차이</li>
+        <li>개인 AI 활용이 팀 업무에 미치는 영향</li>
+        <li>AI 시대 팀워크의 새로운 기준</li>
+      </ul>
+    </div>
+
+    <div class="program-card">
+      <div class="program-head">
+        <span class="program-num">2</span>
+        <span class="program-tag">Communication &amp; Sharing</span>
+      </div>
+      <h3>공유하지 않는 조직에서<br>함께 성장하는 조직으로</h3>
+      <p>
+        AI 시대에는 정보와 노하우를 얼마나 잘 공유하느냐가 팀의 협업 수준을
+        결정합니다. 이 세션에서는 구성원들이 AI 활용 경험, 프로세스, 결과물,
+        업무 노하우를 공유해야 하는 이유와 안전하게 공유할 수 있는 소통 방식을
+        다룹니다.
+      </p>
+      <ul class="sub-list">
+        <li>AI 활용 노하우가 공유되지 않는 이유</li>
+        <li>결과물 공유에 대한 부담과 방어 본능</li>
+        <li>오해를 줄이는 질문의 힘</li>
+        <li>공유를 촉진하는 팀 소통 기술</li>
+      </ul>
+    </div>
+
+    <div class="program-card">
+      <div class="program-head">
+        <span class="program-num">3</span>
+        <span class="program-tag">Collaboration Practice</span>
+      </div>
+      <h3>팀원과 팀 간의<br>협업 방식을 개선하는 법</h3>
+      <p>
+        AI 시대에는 팀원 간, 부서 간 업무 속도와 결과물 수준이 달라지고
+        있습니다. 이 세션에서는 역할과 책임을 명확히 하고, 피드백과 검토
+        방식을 정립하며, 협업 과정의 신뢰를 회복하는 방법을 학습합니다.
+      </p>
+      <ul class="sub-list">
+        <li>팀 내 협업에서 발생하는 새로운 갈등</li>
+        <li>팀 간 정보 격차와 협업 시차</li>
+        <li>역할과 책임의 명확화</li>
+        <li>결과물 공유와 피드백 방식</li>
+        <li>협업 과정의 신뢰 회복</li>
+      </ul>
+    </div>
+
+    <div class="program-card" style="margin-bottom:0;">
+      <div class="program-head">
+        <span class="program-num">4</span>
+        <span class="program-tag">Collaboration Action</span>
+      </div>
+      <h3>우리 팀의 소통·공유·협업<br>실행원칙 만들기</h3>
+      <p>
+        마지막 세션에서는 앞서 논의한 내용을 바탕으로 우리 팀에 바로 적용할
+        수 있는 소통·공유·협업 원칙과 실행 액션을 도출합니다. 팀 내 협업,
+        팀 간 협업, AI 결과물을 공유할 때 필요한 기준을 정리합니다.
+      </p>
+      <ul class="sub-list">
+        <li>팀 내 협업 이슈 정리</li>
+        <li>공유가 필요한 업무 장면 선정</li>
+        <li>팀 내·팀 간 협업 원칙 도출</li>
+        <li>AI 활용 경험 공유 방식 설계</li>
+        <li>실무 적용 액션플랜 작성</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 워크숍 이후 참가자는 -->
+  <section class="ax-section ax-section-dark">
+    <h2>워크숍 이후<br>참가자는</h2>
+    <ul class="check-list">
+      <li>
+        <svg class="check-icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" stroke="#D9FF3E" stroke-width="2"/><path d="M7 12.5l3 3 7-7" stroke="#D9FF3E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        AI 시대 소통과 협업 방식의 변화를 이해합니다.
+      </li>
+      <li>
+        <svg class="check-icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" stroke="#D9FF3E" stroke-width="2"/><path d="M7 12.5l3 3 7-7" stroke="#D9FF3E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        구성원 간 업무 속도와 방식 차이에서 생기는 협업 이슈를 파악합니다.
+      </li>
+      <li>
+        <svg class="check-icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" stroke="#D9FF3E" stroke-width="2"/><path d="M7 12.5l3 3 7-7" stroke="#D9FF3E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        팀 내 정보 공유와 피드백 방식을 개선할 수 있습니다.
+      </li>
+      <li>
+        <svg class="check-icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" stroke="#D9FF3E" stroke-width="2"/><path d="M7 12.5l3 3 7-7" stroke="#D9FF3E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        팀 간 협업에서 필요한 맥락 공유와 역할 정립 방법을 익힙니다.
+      </li>
+      <li>
+        <svg class="check-icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" stroke="#D9FF3E" stroke-width="2"/><path d="M7 12.5l3 3 7-7" stroke="#D9FF3E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        AI 결과물을 둘러싼 검토, 책임, 판단 기준을 이해합니다.
+      </li>
+      <li>
+        <svg class="check-icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" stroke="#D9FF3E" stroke-width="2"/><path d="M7 12.5l3 3 7-7" stroke="#D9FF3E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        우리 팀에 맞는 소통·협업 원칙을 도출합니다.
+      </li>
+      <li>
+        <svg class="check-icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" stroke="#D9FF3E" stroke-width="2"/><path d="M7 12.5l3 3 7-7" stroke="#D9FF3E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        실제 업무에서 바로 적용할 협업 개선 액션을 정합니다.
+      </li>
+    </ul>
+  </section>
+
+  <!-- 기대효과 -->
+  <section class="ax-section">
+    <span class="ax-badge">기대효과</span>
+
+    <div class="benefit-card">
+      <div class="benefit-head">
+        <svg class="benefit-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.6.45 1.1 1.2 1.1 2.2h5c0-1 .5-1.75 1.1-2.2A6 6 0 0 0 12 3z"/></svg>
+        <span class="benefit-name">개인</span>
+      </div>
+      <ul>
+        <li>AI 시대 협업 변화 이해</li>
+        <li>명확한 소통 역량 향상</li>
+        <li>피드백과 검토 역량 강화</li>
+        <li>협업 과정의 역할 인식 향상</li>
+        <li>변화된 업무 환경에 대한 적응력 강화</li>
+      </ul>
+    </div>
+
+    <div class="benefit-card">
+      <div class="benefit-head">
+        <svg class="benefit-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="8" r="3"/><circle cx="16" cy="8" r="3"/><path d="M2 20c0-3 2.5-5 6-5s6 2 6 5M10 20c0-3 2.5-5 6-5s6 2 6 5"/></svg>
+        <span class="benefit-name">팀</span>
+      </div>
+      <ul>
+        <li>팀 내 소통 오류 감소</li>
+        <li>역할과 책임 명확화</li>
+        <li>결과물 공유와 피드백 방식 개선</li>
+        <li>협업 속도와 품질 향상</li>
+        <li>팀워크와 신뢰 강화</li>
+      </ul>
+    </div>
+
+    <div class="benefit-card" style="margin-bottom:0;">
+      <div class="benefit-head">
+        <svg class="benefit-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="10" height="18"/><rect x="14" y="8" width="6" height="13"/><path d="M7 7h1M10 7h1M7 11h1M10 11h1M7 15h1M10 15h1"/></svg>
+        <span class="benefit-name">회사</span>
+      </div>
+      <ul>
+        <li>부서 간 협업 품질 향상</li>
+        <li>AI 시대 조직 소통 방식 개선</li>
+        <li>협업 과정의 혼선과 갈등 감소</li>
+        <li>AX 기반 조직문화 확산</li>
+        <li>변화에 강한 협업 문화 구축</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 푸터 -->
+  <section class="ax-section ax-footer">
+    <div class="foot-logo">AXIS Expert Group</div>
+    <h3>AX 시대 조직 변화를 함께 설계합니다</h3>
+    <p>
+      AXIS Expert Group은 AX 시대의 조직 변화에 알맞은 문화 전환을 연구하고,
+      이를 기업 현장에 적용하는 전문가 집단입니다.<br><br>
+      다양한 대기업 조직문화 구축 프로젝트와 대형 그룹사 경영 세미나를
+      진행하며, AX 전환에 필요한 실질적인 인사이트를 제공합니다.
+    </p>
+  </section>
+
+</div>
+
+<!-- ▲▲▲ 여기까지 복사해서 붙여넣으세요 ▲▲▲ -->
+
+</body>
+</html>
