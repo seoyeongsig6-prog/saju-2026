@@ -786,10 +786,11 @@ document.getElementById('shareBtn').addEventListener('click', async ()=>{
   if (navigator.share) {
     try {
       await navigator.share(shareData);
+      return;
     } catch (err) {
-      // 사용자가 공유를 취소한 경우 등은 조용히 무시
+      if (err && err.name === 'AbortError') return; // 사용자가 직접 취소한 경우
+      // 그 외(iframe 권한 차단 등)에는 아래 클립보드 복사로 대체
     }
-    return;
   }
 
   try {
