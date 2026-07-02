@@ -1,5 +1,5 @@
 /**
- * AXIS AX 조직문화 진단 - 리드 저장 + 결과 이메일 발송용 Google Apps Script
+ * AXIS AX 조직문화 진단 - 리드(고객정보+점수) 저장용 Google Apps Script
  *
  * 설치 방법 (코드를 몰라도 순서대로만 따라하면 됩니다):
  * 1. sheets.google.com 에서 새 스프레드시트를 만든다 (이름은 자유롭게, 예: "AXIS AX진단 리드").
@@ -14,24 +14,23 @@
  * 9. 배포가 끝나면 나오는 "웹 앱 URL"을 복사한다.
  * 10. index.html 안의 CONFIG.SUBMIT_ENDPOINT_URL 값을 그 URL로 바꾼다.
  *
- * 이후 진단 완료 후 "진단결과 메일로 받기"를 누르면:
- *  - 이 스프레드시트의 "Leads" 시트에 응답자 정보 + 점수가 한 줄씩 쌓이고 (마케팅 DB 용도),
- *  - 응답자가 입력한 이메일로 진단결과 PDF가 자동으로 발송됩니다.
+ * 이미 배포한 뒤 이 코드를 다시 바꿨다면, 코드만 저장해서는 반영되지 않습니다.
+ * "배포(Deploy)" > "배포 관리(Manage deployments)" > 연필(수정) 아이콘 > 버전을 "새 버전"으로
+ * 선택 > "배포"를 다시 눌러야 실제 웹 앱에 반영됩니다 (URL은 그대로 유지됩니다).
+ *
+ * 이후 진단 완료 후 "진단 결과 다운로드"를 누르면:
+ *  - 고객은 결과서 PDF를 자신의 브라우저로 바로 다운로드 받고,
+ *  - 이 스프레드시트의 "Leads" 시트에는 응답자 정보 + 점수가 한 줄씩 쌓입니다 (마케팅 DB 용도).
+ *  - 고객에게 이메일은 발송되지 않습니다.
  */
 
 var SHEET_NAME = 'Leads';
-
-// 진단 결과 이메일을 이 주소로도 참조(BCC)받고 싶다면 이메일 주소를 입력하세요. 필요 없으면 빈 문자열로 둡니다.
-var BCC_EMAIL = '';
 
 function doPost(e) {
   var data = JSON.parse(e.postData.contents);
 
   if (data.type === 'diagnosis') {
     saveLead_(data);
-    if (data.email && data.pdfBase64) {
-      sendReportEmail_(data);
-    }
   }
 
   return ContentService
@@ -61,25 +60,4 @@ function getSheet_() {
     sheet.appendRow(['제출일시', '이름', '회사명', '이메일', '연락처', 'AX 준비도 점수', '단계', '영역별 점수(JSON)']);
   }
   return sheet;
-}
-
-function sendReportEmail_(data) {
-  var pdfBlob = Utilities.newBlob(
-    Utilities.base64Decode(data.pdfBase64),
-    'application/pdf',
-    'AXIS_AX조직문화_진단결과서.pdf'
-  );
-
-  var body =
-    data.name + '님, 안녕하세요.\n\n' +
-    'AXIS AX 조직문화 진단 결과서를 첨부파일로 보내드립니다.\n\n' +
-    'AX 준비도 점수: ' + data.overallPct + '점 (' + data.level + ')\n\n' +
-    '더 자세한 진단과 맞춤 전략이 궁금하시다면 아래 링크에서 상담을 신청해주세요.\n' +
-    'http://axisway.co.kr/Contact\n\n' +
-    '감사합니다.\nAXIS 드림';
-
-  var options = { attachments: [pdfBlob] };
-  if (BCC_EMAIL) options.bcc = BCC_EMAIL;
-
-  MailApp.sendEmail(data.email, '[AXIS] AX 조직문화 진단결과서', body, options);
 }

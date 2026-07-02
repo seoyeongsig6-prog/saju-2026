@@ -255,7 +255,7 @@
       <div class="score-circle-inner"><b id="quickScoreNum">0</b><span>AX 준비도 점수</span></div>
     </div>
     <p style="font-size:14px;color:var(--muted);margin:0 0 20px;">전체 결과가 계산되었습니다. 영역별 상세 분석과 맞춤 보완 방안을 확인해보세요.</p>
-    <button class="btn btn-primary" id="showReportBtn">진단결과 메일로 받기 →</button>
+    <button class="btn btn-primary" id="showReportBtn">진단 결과 다운로드 →</button>
   </div>
 </section>
 
@@ -310,8 +310,9 @@
 <script>
 /* ---------------- 연동 설정 ----------------
    Google Apps Script Web App을 배포한 뒤 발급되는 URL을 아래에 붙여넣으면
-   진단 결과가 이메일 발송 + 구글시트 저장으로 자동 연동됩니다.
-   배포 방법은 함께 제공된 apps-script-backend.gs / EMAIL_SETUP.md 파일을 참고하세요. */
+   진단 결과(고객정보+점수)가 구글시트 DB에 자동으로 쌓입니다. 고객에게는
+   이메일이 발송되지 않고, 결과 PDF는 고객 브라우저에서 바로 다운로드됩니다.
+   배포 방법은 함께 제공된 apps-script-backend.gs 파일 상단 주석을 참고하세요. */
 const CONFIG = {
   SUBMIT_ENDPOINT_URL: 'https://script.google.com/macros/s/AKfycbwD4AYmkufGTnAHP9f-649rXdSSQZ2_QnNUNg_o42JZ_v-pyRavpag4LcugJsCzjYQ/exec'
 };
@@ -618,10 +619,7 @@ async function handleGetReport(){
   // 리포트가 화면에 그려질 시간을 잠깐 준다 (PDF 캡처 전 레이아웃 안정화)
   await new Promise(resolve => setTimeout(resolve, 350));
 
-  const pdfBase64 = await downloadReportPdf().catch(err => {
-    console.warn('PDF 생성 실패', err);
-    return null;
-  });
+  downloadReportPdf().catch(err => console.warn('PDF 생성 실패', err));
 
   const lvl = levelFor(RESULT.overallPct);
   const dimScoreMap = {};
@@ -636,7 +634,6 @@ async function handleGetReport(){
     overallPct: RESULT.overallPct,
     level: lvl.label,
     dimScores: dimScoreMap,
-    pdfBase64,
     submittedAt: new Date().toISOString()
   });
 }
@@ -652,7 +649,7 @@ function showReport(){
   window.scrollTo({top:document.getElementById('report').offsetTop-80,behavior:'smooth'});
 }
 
-/* PDF 생성: 결과서 영역을 캡처해 A4 PDF로 만들고 브라우저에서 바로 다운로드, base64도 반환(이메일 첨부용) */
+/* PDF 생성: 결과서 영역을 캡처해 A4 PDF로 만들고 브라우저에서 바로 다운로드 */
 async function downloadReportPdf(){
   const reportEl = document.getElementById('report');
   const canvas = await html2canvas(reportEl, { scale: 1.5, backgroundColor: '#ffffff', useCORS: true });
@@ -678,8 +675,6 @@ async function downloadReportPdf(){
 
   const fileLabel = [respondent.company, respondent.name].filter(Boolean).join('_') || '진단결과';
   pdf.save(`AXIS_AX조직문화_진단결과서_${fileLabel}.pdf`);
-
-  return pdf.output('datauristring').split(',')[1];
 }
 
 /* ---------------- 레이더 차트 ---------------- */
