@@ -297,10 +297,8 @@
     <p>이 진단은 러프한 자가 점검 결과입니다. AXIS 전문가와의 상담을 통해 정확한 진단과 실행 로드맵을 받아보세요.</p>
     <div class="btns">
       <a href="http://axisway.co.kr/Contact" target="_blank" rel="noopener" class="btn btn-primary">AXIS 상담신청</a>
-      <button class="btn btn-outline" id="shareBtn">결과 공유하기</button>
       <button class="btn btn-outline" id="retakeBtn">다시 진단하기</button>
     </div>
-    <p id="shareStatus" style="font-size:12px;color:#c7cbea;margin:14px 0 0;min-height:16px;"></p>
   </div>
 </section>
 
@@ -772,34 +770,6 @@ function renderReport(result){
       </div>`;
   }).join('');
 }
-
-/* ---------------- 결과 공유하기 ---------------- */
-document.getElementById('shareBtn').addEventListener('click', async ()=>{
-  const lvl = levelFor(RESULT.overallPct);
-  const shareData = {
-    title: 'AX 조직문화 진단결과 | AXIS',
-    text: `우리 조직의 AX 준비도는 ${RESULT.overallPct}점(${lvl.label})입니다. AXIS의 AX 조직문화 진단, 우리 회사도 확인해보세요!`,
-    url: 'https://seoyeongsig6-prog.github.io/saju-2026/'
-  };
-  const statusEl = document.getElementById('shareStatus');
-
-  if (navigator.share) {
-    try {
-      await navigator.share(shareData);
-      return;
-    } catch (err) {
-      if (err && err.name === 'AbortError') return; // 사용자가 직접 취소한 경우
-      // 그 외(iframe 권한 차단 등)에는 아래 클립보드 복사로 대체
-    }
-  }
-
-  try {
-    await navigator.clipboard.writeText(`${shareData.text}\n${shareData.url}`);
-    statusEl.textContent = '링크가 복사되었습니다. 카카오톡 등에 붙여넣기 해보세요!';
-  } catch (err) {
-    statusEl.textContent = shareData.url;
-  }
-});
 
 /* ---------------- 재진단 / 인쇄 ---------------- */
 document.getElementById('retakeBtn').addEventListener('click', ()=>{
