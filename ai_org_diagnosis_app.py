@@ -3,6 +3,7 @@ import google.generativeai as genai
 import datetime
 import json
 import smtplib
+import threading
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -17,12 +18,13 @@ def get_secret(key, default=None):
 
 
 model = None
-try:
-    if "GEMINI_API_KEY" in st.secrets:
-        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+_gemini_key = get_secret("GEMINI_API_KEY")
+if _gemini_key:
+    try:
+        genai.configure(api_key=_gemini_key)
         model = genai.GenerativeModel("gemini-2.0-flash")
-except Exception:
-    model = None
+    except Exception:
+        model = None
 
 st.set_page_config(page_title="AI 조직 세부진단 키트 (Pro)", layout="centered")
 
@@ -388,6 +390,17 @@ def wkey(section_key, qid):
     return f"w_{section_key}.{qid}"
 
 
+def _option_index(options, current):
+    """현재 값이 옵션 목록에 있으면 그 인덱스를, 없으면(=미응답) None을 반환한다.
+
+    None을 반환하면 select/radio가 아무 것도 선택되지 않은 상태로 렌더링되어
+    '미응답'과 '첫 번째(대개 최악의) 보기를 실제로 선택함'이 구분된다.
+    """
+    if current in options:
+        return options.index(current)
+    return None
+
+
 # ============================================================
 # 4. 렌더링 / 스코어링 / 프롬프트 유틸
 # ============================================================
@@ -402,14 +415,14 @@ def render_question(section_key, q):
         val = st.text_input(label, value=current or "", key=key)
     elif qtype == "select":
         options = q["options"]
-        idx = options.index(current) if current in options else 0
-        val = st.selectbox(label, options, index=idx, key=key)
+        val = st.selectbox(label, options, index=_option_index(options, current), key=key)
     elif qtype == "radio":
         options = q["options"]
-        idx = options.index(current) if current in options else 0
-        val = st.radio(label, options, index=idx, key=key)
+        val = st.radio(label, options, index=_option_index(options, current), key=key)
     elif qtype == "multiselect":
-        val = st.multiselect(label, q["options"], default=current or [], key=key)
+        options = q["options"]
+        safe_default = [v for v in (current or []) if v in options]
+        val = st.multiselect(label, options, default=safe_default, key=key)
     elif qtype == "textarea":
         val = st.text_area(label, value=current or "", key=key, height=90)
 
@@ -587,10 +600,16 @@ def send_backup_email(company_name: str, report_text: str, answer_summary: str):
 st.title("🧭 AI 조직 세부진단 키트 (Pro)")
 st.caption("90개 이상의 문항으로 조직의 AI 도입 현황을 다각도로 정밀 진단하는 유료 리포트입니다.")
 
-valid_codes = None
 raw_codes = get_secret("ACCESS_CODES", "")
 valid_codes = [c.strip() for c in raw_codes.split(",") if c.strip()] if raw_codes else []
 imweb_url = get_secret("IMWEB_PRODUCT_URL")
+
+if raw_codes and not valid_codes:
+    # ACCESS_CODES가 설정은 됐지만(콤마/공백만 있는 등) 파싱 후 남는 코드가 없는 경우:
+    # "설정 안 함(오픈)"과 "설정했으나 값이 잘못됨"을 반드시 구분해서, 후자는 절대
+    # 열어주지 않고 막아야 한다 (그렇지 않으면 유료 진단이 조용히 무료로 뚫려버린다).
+    st.error("⚠️ ACCESS_CODES 시크릿 설정에 오류가 있어 접근을 확인할 수 없습니다. 관리자에게 문의하세요.")
+    st.stop()
 
 if valid_codes and not st.session_state.unlocked:
     st.info("본 진단은 결제 후 이용 가능합니다. 아임웹에서 결제를 완료하면 발급되는 주문번호를 접근 코드로 입력해 주세요.")
@@ -612,6 +631,14 @@ if valid_codes and not st.session_state.unlocked:
 elif not valid_codes:
     st.caption("⚠️ 접근 코드가 설정되어 있지 않아 테스트 모드로 열려 있습니다. (운영 전 ACCESS_CODES 시크릿을 설정하세요)")
 
+if model is None:
+    # 문항 작성 자체는 막지 않되(응답은 저장 가능), 90개 문항을 다 채운 뒤
+    # 마지막 단계에서야 실패를 알게 되는 일이 없도록 미리 경고한다.
+    st.warning(
+        "⚠️ GEMINI_API_KEY가 설정되어 있지 않습니다. 문항은 작성/저장할 수 있지만, "
+        "마지막 단계의 '진단 결과 생성'은 지금 실패합니다. 운영 전 시크릿을 설정해 주세요."
+    )
+
 # ============================================================
 # 5-1. 진행상황 저장/이어하기 (중단·접속끊김 대비)
 # ============================================================
@@ -621,7 +648,9 @@ with st.expander("💾 진행 상황 저장 / 이어서 하기 (중간에 중단
     st.caption(
         "문항이 많아 한 번에 끝내기 어려울 수 있습니다. 언제든 아래 버튼으로 지금까지의 "
         "답변을 파일로 저장해두었다가, 나중에 그 파일을 업로드하면 저장한 시점부터 이어서 "
-        "진행할 수 있습니다. (단, 현재 페이지는 '다음/이전' 버튼을 한 번 눌러야 저장 대상에 포함됩니다.)"
+        "진행할 수 있습니다. (단, 현재 페이지는 '다음/이전' 버튼을 한 번 눌러야 저장 대상에 포함되며, "
+        "결제 확인(접근 코드)은 이 파일에 포함되지 않으므로 세션이 끊긴 뒤에는 접근 코드를 다시 "
+        "입력한 후 이 파일을 불러오면 됩니다.)"
     )
     progress_payload = {
         "step": st.session_state.step,
@@ -638,12 +667,17 @@ with st.expander("💾 진행 상황 저장 / 이어서 하기 (중간에 중단
     if uploaded_progress is not None and st.button("📂 불러온 내용으로 이어서 진행하기"):
         try:
             loaded = json.loads(uploaded_progress.read().decode("utf-8"))
-            st.session_state.answers.update(loaded.get("answers", {}))
-            st.session_state.step = loaded.get("step", 0)
+            if not isinstance(loaded.get("answers"), dict):
+                raise ValueError("answers 필드가 없거나 형식이 올바르지 않습니다.")
+            loaded_step = loaded.get("step", 0)
+            if not isinstance(loaded_step, int) or not (0 <= loaded_step < TOTAL_STEPS):
+                raise ValueError(f"step 값이 올바르지 않습니다: {loaded_step!r}")
+            st.session_state.answers.update(loaded["answers"])
+            st.session_state.step = loaded_step
             st.success("진행 상황을 불러왔습니다.")
             st.rerun()
         except Exception as e:
-            st.error(f"파일을 불러오는 중 오류가 발생했습니다: {e}")
+            st.error(f"파일을 불러오는 중 오류가 발생했습니다: {e} (올바른 저장 파일인지 확인해 주세요)")
 
 # ============================================================
 # 6. 진단 위저드
@@ -695,11 +729,14 @@ if next_clicked:
                     )
                     st.session_state.report = response.text
                     company_name = get_answer("basic", "company_name") or "무명 조직"
-                    sent_ok, sent_err = send_backup_email(
-                        company_name, response.text, build_answer_summary()
-                    )
-                    st.session_state.backup_sent = sent_ok
-                    st.session_state.backup_err = sent_err
+                    # 백업 메일은 사용자 화면 표시를 막아서는 안 되는 부가 기능이므로,
+                    # 별도 스레드에서 발송하고 결과를 기다리지 않는다(성공 여부는 확인 못함).
+                    threading.Thread(
+                        target=send_backup_email,
+                        args=(company_name, response.text, build_answer_summary()),
+                        daemon=True,
+                    ).start()
+                    st.session_state.backup_attempted = True
                 except Exception as e:
                     st.error(f"오류: {e}")
 
@@ -721,10 +758,8 @@ if st.session_state.report:
         mime="text/markdown",
     )
 
-    if st.session_state.get("backup_sent"):
-        st.caption("✅ 진단 결과가 회사 백업 메일함으로 자동 발송되었습니다.")
-    elif st.session_state.get("backup_err"):
-        st.caption(f"⚠️ 백업 메일 발송 실패: {st.session_state.backup_err}")
+    if st.session_state.get("backup_attempted"):
+        st.caption("📧 회사 백업 메일함으로 발송을 시도했습니다. (실패하더라도 위 다운로드 버튼으로 항상 보관 가능합니다)")
 
     st.divider()
     if st.button("🔄 새 진단 시작하기"):
