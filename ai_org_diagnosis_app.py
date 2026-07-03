@@ -721,11 +721,14 @@ if next_clicked:
                 st.session_state.scores = scores
                 prompt = build_prompt(scores, flags)
                 try:
-                    response = claude_client.messages.create(
+                    # 9개 섹션 분량 리포트는 8192 토큰으로는 중간에 잘린다(실측 확인).
+                    # 20000 토큰처럼 큰 max_tokens는 스트리밍으로 받아야 타임아웃을 피할 수 있다.
+                    with claude_client.messages.stream(
                         model=CLAUDE_MODEL,
-                        max_tokens=8192,
+                        max_tokens=20000,
                         messages=[{"role": "user", "content": prompt}],
-                    )
+                    ) as stream:
+                        response = stream.get_final_message()
                     report_text = "".join(
                         block.text for block in response.content if block.type == "text"
                     )
