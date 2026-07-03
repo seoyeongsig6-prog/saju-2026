@@ -1,5 +1,5 @@
 import streamlit as st
-import google.generativeai as genai
+import anthropic
 import datetime
 import json
 import smtplib
@@ -17,14 +17,15 @@ def get_secret(key, default=None):
         return default
 
 
-model = None
-_gemini_key = get_secret("GEMINI_API_KEY")
-if _gemini_key:
+CLAUDE_MODEL = "claude-sonnet-5"
+
+claude_client = None
+_claude_key = get_secret("ANTHROPIC_API_KEY")
+if _claude_key:
     try:
-        genai.configure(api_key=_gemini_key)
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        claude_client = anthropic.Anthropic(api_key=_claude_key)
     except Exception:
-        model = None
+        claude_client = None
 
 st.set_page_config(page_title="AI 조직 세부진단 키트 (Pro)", layout="centered")
 
@@ -631,11 +632,11 @@ if valid_codes and not st.session_state.unlocked:
 elif not valid_codes:
     st.caption("⚠️ 접근 코드가 설정되어 있지 않아 테스트 모드로 열려 있습니다. (운영 전 ACCESS_CODES 시크릿을 설정하세요)")
 
-if model is None:
+if claude_client is None:
     # 문항 작성 자체는 막지 않되(응답은 저장 가능), 90개 문항을 다 채운 뒤
     # 마지막 단계에서야 실패를 알게 되는 일이 없도록 미리 경고한다.
     st.warning(
-        "⚠️ GEMINI_API_KEY가 설정되어 있지 않습니다. 문항은 작성/저장할 수 있지만, "
+        "⚠️ ANTHROPIC_API_KEY가 설정되어 있지 않습니다. 문항은 작성/저장할 수 있지만, "
         "마지막 단계의 '진단 결과 생성'은 지금 실패합니다. 운영 전 시크릿을 설정해 주세요."
     )
 
@@ -712,28 +713,29 @@ if next_clicked:
         st.session_state.step += 1
         st.rerun()
     else:
-        if model is None:
-            st.error("API 키 설정을 확인하세요 (GEMINI_API_KEY 시크릿 필요).")
+        if claude_client is None:
+            st.error("API 키 설정을 확인하세요 (ANTHROPIC_API_KEY 시크릿 필요).")
         else:
             with st.spinner("90개 이상의 응답을 종합하여 정밀 진단 보고서를 생성 중입니다..."):
                 scores, flags = compute_scores()
                 st.session_state.scores = scores
                 prompt = build_prompt(scores, flags)
                 try:
-                    response = model.generate_content(
-                        prompt,
-                        generation_config=genai.types.GenerationConfig(
-                            temperature=0.4,
-                            max_output_tokens=8192,
-                        ),
+                    response = claude_client.messages.create(
+                        model=CLAUDE_MODEL,
+                        max_tokens=8192,
+                        messages=[{"role": "user", "content": prompt}],
                     )
-                    st.session_state.report = response.text
+                    report_text = "".join(
+                        block.text for block in response.content if block.type == "text"
+                    )
+                    st.session_state.report = report_text
                     company_name = get_answer("basic", "company_name") or "무명 조직"
                     # 백업 메일은 사용자 화면 표시를 막아서는 안 되는 부가 기능이므로,
                     # 별도 스레드에서 발송하고 결과를 기다리지 않는다(성공 여부는 확인 못함).
                     threading.Thread(
                         target=send_backup_email,
-                        args=(company_name, response.text, build_answer_summary()),
+                        args=(company_name, report_text, build_answer_summary()),
                         daemon=True,
                     ).start()
                     st.session_state.backup_attempted = True
