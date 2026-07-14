@@ -1,0 +1,78 @@
+# 갈등 은행 — 윤소희 (빵집)
+- id: sk_rent
+  scenario: shopkeeper
+  type: 재정
+  scale: 대
+  min_act: 1
+  title: "밀린 월세 석 달"
+  seed: "정 여사가 가게 앞을 말없이 오래 서성이다 갔다"
+  rise: "내용증명 봉투가 우편함에 꽂혀 있다"
+  climax: "정 여사와 마주 앉는다 — 나가라는 말이 나올까"
+  resolve_good: "새벽 반죽을 지켜본 정 여사가 분납을 받아준다 — 단팥빵 값이라며"
+  resolve_bad: "석 달 안에 정리하라는 통보 — 시한부가 붙었다"
+  luck_hook: "오래 비어 있던 정 여사의 2층에 세입자가 들어온다"
+
+- id: sk_franchise
+  scenario: shopkeeper
+  type: 권력
+  scale: 대
+  min_act: 2
+  title: "프랜차이즈의 제안"
+  seed: "구 부장이 명함을 놓고 갔다 — 이 자리에 체인점을 내고 싶다고"
+  rise: "권리금에 웃돈을 얹겠다는 두 번째 방문, 정 여사도 흔들린다"
+  climax: "계약서 한 장이 테이블 위에 놓인다 — 사인하면 빚이 사라진다"
+  resolve_good: "골목 상인들이 연판장을 들고 와 함께 버텨준다"
+  resolve_bad: "옆 골목 상가가 통째로 넘어가고, 손님 발길이 그쪽으로 쏠린다"
+  luck_hook: "구청 골목상권 보호구역 지정 공고가 뜬다"
+
+- id: sk_oven
+  scenario: shopkeeper
+  type: 재정
+  scale: 중
+  min_act: 1
+  title: "오븐이 식는 날"
+  seed: "데크 오븐 온도가 오락가락한다"
+  rise: "수리 기사 왈, 부품 단종 — 중고 교체에 삼백은 든다"
+  climax: "축제 주문을 받아둔 주말, 오븐이 완전히 멎는다"
+  resolve_good: "재민이가 폐업한 빵집의 오븐을 수소문해 온다 — 밤새 옮겨 단다"
+  resolve_bad: "주말 주문을 다 돌려보내고, 단골 둘을 잃는다"
+  luck_hook: "은퇴한 오븐 수리 명장이 미란의 꽃집 단골이었다"
+
+- id: sk_recipe
+  scenario: shopkeeper
+  type: 내면
+  scale: 중
+  min_act: 1
+  title: "누구의 빵인가"
+  seed: "잘 팔리는 건 유행 빵인데, 굽고 싶은 건 어릴 적 그 단팥빵이다"
+  rise: "신메뉴가 연달아 팔리지 않고, 새벽 반죽 앞에서 손이 멈춘다"
+  climax: "축제 대표 메뉴를 정해야 하는 밤 — 팔리는 빵이냐 나의 빵이냐"
+  resolve_good: "할머니 레시피를 다시 살린 단팥빵이 소희의 답이 된다"
+  resolve_bad: "이도 저도 아닌 메뉴로 축제 부스에서 쓴맛을 본다"
+  luck_hook: "돌아가신 할머니의 레시피 노트가 창고 상자에서 나온다"
+
+- id: sk_review
+  scenario: shopkeeper
+  type: 관계
+  scale: 소
+  min_act: 1
+  title: "별점 테러"
+  seed: "낯선 계정이 악의적인 후기를 연달아 올린다"
+  rise: "지도 앱 별점이 떨어지고 첫 방문 손님이 준다"
+  climax: "후기 작성자가 누군지 짐작 가는 얼굴이 있다"
+  resolve_good: "정면 대응 대신 손님들의 진짜 후기가 쌓여 소문을 덮는다"
+  resolve_bad: "감정 대응 댓글이 캡처되어 더 큰 입방아에 오른다"
+  luck_hook: "동네 커뮤니티의 유명 회원이 직접 다녀가 긴 반박 글을 쓴다"
+
+- id: sk_jaemin
+  scenario: shopkeeper
+  type: 관계
+  scale: 소
+  min_act: 1
+  title: "재민이의 사정"
+  seed: "재민이가 요즘 자꾸 지각을 한다"
+  rise: "가정 형편이 어려워 알바를 하나 더 구한다는 눈치다"
+  climax: "재민이가 사직 얘기를 꺼내려 머뭇거린다"
+  resolve_good: "새벽 제빵 수업을 조건으로 재민이를 정식 제자로 들인다"
+  resolve_bad: "재민이가 떠나고, 새벽 일이 두 배가 된다"
+  luck_hook: "제빵 명장 장학 프로그램 공고가 뜬다"

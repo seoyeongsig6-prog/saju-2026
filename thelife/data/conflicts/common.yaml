@@ -1,0 +1,78 @@
+# 갈등 은행 — 공용 카드 (커스텀 아바타 등 모든 현실 시나리오에서 변주되어 쓰인다)
+- id: cm_debt_friend
+  scenario: common
+  type: 관계
+  scale: 중
+  min_act: 1
+  title: "옛 친구의 부탁"
+  seed: "오랜만에 연락 온 옛 친구가 돈 얘기를 꺼낸다"
+  rise: "거절 후 소원해진 사이 — 그런데 그 친구가 정말 어려운 모양이다"
+  climax: "친구를 외면하느냐, 목표를 미루고 손을 내미느냐"
+  resolve_good: "돈 대신 함께 일할 자리를 만들어 준다 — 우정도 목표도 지킨다"
+  resolve_bad: "빌려준 돈이 돌아오지 않고, 계획이 몇 걸음 밀린다"
+  luck_hook: "친구의 사정이 뜻밖의 방향으로 풀린다"
+
+- id: cm_rumor
+  scenario: common
+  type: 관계
+  scale: 소
+  min_act: 1
+  title: "동네에 도는 소문"
+  seed: "나에 대한 이상한 말이 돌기 시작한다"
+  rise: "인사를 받아주지 않는 얼굴이 하나둘 늘어난다"
+  climax: "소문의 출처와 마주친다"
+  resolve_good: "정면으로, 그러나 조용히 오해를 푼다 — 오히려 신뢰가 깊어진다"
+  resolve_bad: "다툼이 커져 한동안 발붙이기 어색해진다"
+  luck_hook: "소문의 진실을 아는 이가 나서서 바로잡아 준다"
+
+- id: cm_health
+  scenario: common
+  type: 신체
+  scale: 중
+  min_act: 1
+  title: "몸이 보내는 신호"
+  seed: "요즘 들어 쉽게 지치고 잠이 얕다"
+  rise: "일하다 어지럼증에 주저앉았다 — 주변에서 병원을 권한다"
+  climax: "검사 결과를 들으러 가는 길"
+  resolve_good: "다행히 과로 — 삶의 속도를 스스로 고쳐 잡는다"
+  resolve_bad: "당분간 무리하지 말라는 진단, 계획이 통째로 늦어진다"
+  luck_hook: "명의로 소문난 의사가 마침 그 병원에 있다"
+
+- id: cm_chance
+  scenario: common
+  type: 재정
+  scale: 대
+  min_act: 2
+  title: "일생일대의 기회"
+  seed: "목표를 앞당길 수 있는 큰 기회의 소문이 들려온다"
+  rise: "경쟁자도 그 기회를 노리고 있다"
+  climax: "가진 것을 전부 걸어야 잡을 수 있는 판"
+  resolve_good: "준비된 자의 승부수 — 기회를 붙잡는다"
+  resolve_bad: "한발 늦었다. 그러나 그 과정에서 얻은 인연이 남는다"
+  luck_hook: "결정적인 순간, 뜻밖의 조력자가 나타난다"
+
+- id: cm_loss
+  scenario: common
+  type: 내면
+  scale: 중
+  min_act: 2
+  title: "그만두고 싶은 밤"
+  seed: "거듭된 실패에 처음으로 '여기까지인가' 하는 생각이 든다"
+  rise: "주변에서도 이제 그만하면 됐다고 말리기 시작한다"
+  climax: "모든 것을 접겠다고 마음먹은 새벽"
+  resolve_good: "처음 이 길을 시작한 이유를 기억해 낸다 — 다시 신발끈을 묶는다"
+  resolve_bad: "며칠을 앓아눕듯 흘려보낸다. 그래도 아침은 온다"
+  luck_hook: "잊고 있던 이가 보낸 편지 한 통이 도착한다"
+
+- id: cm_theft
+  scenario: common
+  type: 재정
+  scale: 소
+  min_act: 1
+  title: "사라진 지갑"
+  seed: "아껴 모은 돈이 든 지갑이 사라졌다"
+  rise: "짚이는 곳을 다 뒤져도 나오지 않는다"
+  climax: "포기하려는 순간, 마지막 한 곳이 떠오른다"
+  resolve_good: "지갑이 주인을 찾아 돌아온다 — 세상엔 아직 좋은 사람이 많다"
+  resolve_bad: "지갑은 끝내 돌아오지 않았다. 처음부터 다시 모으는 수밖에"
+  luck_hook: "지갑이 돌아왔는데, 이상하게 잃어버린 돈이 그대로다"

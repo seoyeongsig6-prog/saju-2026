@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Life</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- ===== 아바타 생성 화면 ===== -->
+<div id="view-create" class="view hidden">
+  <div class="create-hero">
+    <h1>The Life</h1>
+    <p class="tagline">가장 너답게, 가장 특별한 삶을 경험하라</p>
+  </div>
+
+  <div class="create-section">
+    <h2>어떤 삶을 지켜볼까요?</h2>
+    <div class="search-row">
+      <input id="person-search" placeholder="실존 인물 이름 검색 (예: 이순신)">
+      <button id="btn-search">검색</button>
+    </div>
+    <div id="search-result" class="search-result hidden"></div>
+    <div id="preset-list" class="preset-list"></div>
+  </div>
+
+  <div class="create-section">
+    <h2>또는, 나의 아바타 만들기</h2>
+    <div class="form">
+      <input id="c-name" placeholder="이름">
+      <div class="row2">
+        <input id="c-age" placeholder="나이 (예: 30)">
+        <input id="c-occupation" placeholder="직업 (예: 목수)">
+      </div>
+      <select id="c-era">
+        <option value="현대 한국">현대 한국</option>
+        <option value="조선 시대">조선 시대</option>
+        <option value="1980년대 한국">1980년대 한국</option>
+        <option value="중세 유럽">중세 유럽</option>
+        <option value="대항해시대">대항해시대</option>
+      </select>
+      <input id="c-persona" placeholder="성격 (예: 신중하지만 정이 많다)">
+      <input id="c-goal" placeholder="인생 목표 (예: 내 공방을 연다)">
+      <button id="btn-custom" class="primary">이 삶을 시작한다</button>
+    </div>
+  </div>
+  <p class="fine">이 게임 속의 나에겐 단 한 발자국도 접근할 수 없습니다.<br>당신은 그저 지켜볼 뿐 — 시즌에 딱 세 번의 행운을 빼고는.</p>
+</div>
+
+<!-- ===== 메인 화면 ===== -->
+<div id="view-main" class="view hidden">
+  <header>
+    <div class="head-top">
+      <div>
+        <div id="h-name" class="h-name"></div>
+        <div id="h-goal" class="h-goal"></div>
+      </div>
+      <div class="h-right">
+        <div id="h-day" class="h-day"></div>
+        <button id="btn-reset" title="새 삶 시작">↺</button>
+      </div>
+    </div>
+    <div class="head-bottom">
+      <div class="luck-box" id="btn-gauge">
+        <span class="luck-icon">✦</span> <span id="h-luck">0</span>
+      </div>
+      <div class="slots" id="h-slots" title="이번 시즌 남은 개입"></div>
+      <button id="btn-intervene" class="intervene-btn">행운 보내기</button>
+    </div>
+    <div class="progress"><div id="h-progress" class="progress-fill"></div></div>
+  </header>
+
+  <main id="panes">
+    <!-- 지금 -->
+    <section id="pane-now" class="pane">
+      <div class="now-time" id="now-time"></div>
+      <div id="now-scene" class="chat"></div>
+      <button id="btn-peek" class="peek">다시 들여다보기</button>
+    </section>
+    <!-- 그동안 -->
+    <section id="pane-feed" class="pane hidden">
+      <div id="feed-list" class="feed"></div>
+    </section>
+    <!-- 이야기 -->
+    <section id="pane-story" class="pane hidden">
+      <div id="story-body"></div>
+    </section>
+  </main>
+
+  <nav>
+    <button data-pane="now" class="tab active">지금</button>
+    <button data-pane="feed" class="tab">그동안 <span id="unread" class="badge hidden"></span></button>
+    <button data-pane="story" class="tab">이야기</button>
+  </nav>
+
+  <div class="debugbar">
+    <span id="mockmark"></span>
+    <button id="btn-warp1">+1일 ▸</button>
+    <button id="btn-warp7">+7일 ▸▸</button>
+  </div>
+</div>
+
+<!-- ===== 행운 모달 ===== -->
+<div id="modal" class="modal hidden">
+  <div class="modal-card">
+    <h3>행운 보내기</h3>
+    <p class="modal-sub">아바타는 당신을 모릅니다. 행운은 그 세계의 우연으로 배달됩니다.<br>
+       이번 시즌 남은 기회: <b id="m-left"></b>번 · 보유 행운: <b id="m-luck"></b></p>
+    <div class="size-list">
+      <button class="size" data-size="소"><b>작은 행운</b><span>✦10 — 잔잔한 도움</span></button>
+      <button class="size" data-size="중"><b>큰 행운</b><span>✦50 — 은인이 나선다</span></button>
+      <button class="size" data-size="대"><b>운명적 행운</b><span>✦100 — 거북선 한 척</span></button>
+    </div>
+    <div class="charge-row">
+      <button id="btn-ad">광고 보기 +10 (<span id="m-ads"></span>회 남음)</button>
+      <button id="btn-buy">충전 +100 (결제 목업)</button>
+    </div>
+    <button id="btn-close" class="ghost">닫기</button>
+  </div>
+</div>
+
+<!-- ===== 차단/알림 모달 ===== -->
+<div id="notice" class="modal hidden">
+  <div class="modal-card">
+    <p id="notice-text" class="notice-text"></p>
+    <button id="notice-close" class="ghost">알겠어요</button>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,91 @@
+# 갈등 은행 — 이순신 (실제 생애 갈등 + 시대 텍스처 생성 갈등)
+- id: ys_twelve_ships
+  scenario: yi_sunsin
+  type: 권력
+  scale: 대
+  min_act: 1
+  title: "남은 것은 열두 척"
+  seed: "칠천량의 패전 소식과 함께, 남은 배가 겨우 열두 척이라는 장부가 올라온다"
+  rise: "조정에서 수군을 파하고 육군에 합류하라는 유지가 내려온다"
+  climax: "수군 폐지의 유지에 답해야 하는 밤 — 붓끝이 떨린다"
+  resolve_good: "\"신에게는 아직 열두 척의 배가 남아 있습니다\" — 장계가 조정을 움직인다"
+  resolve_bad: "장계가 묵살되고, 수군의 사기가 바닥까지 떨어진다"
+  luck_hook: "조정의 대신 하나가 은밀히 힘을 보탠다"
+
+- id: ys_deserters
+  scenario: yi_sunsin
+  type: 관계
+  scale: 중
+  min_act: 1
+  title: "달아나는 격군들"
+  seed: "밤사이 격군 여섯이 배를 버리고 달아났다"
+  rise: "탈영이 번지고, 남은 자들의 눈에도 두려움이 짙다"
+  climax: "붙잡혀 온 탈영병을 군율로 다스려야 하는 아침"
+  resolve_good: "엄정하되 그 가족을 거두어, 군심이 오히려 단단해진다"
+  resolve_bad: "처형은 집행됐으나 민심이 얼어붙고, 김돌쇠마저 눈을 피한다"
+  luck_hook: "흩어졌던 노병들이 소문을 듣고 스스로 돌아온다"
+
+- id: ys_provisions
+  scenario: yi_sunsin
+  type: 재정
+  scale: 중
+  min_act: 1
+  title: "바닥난 군량"
+  seed: "군량 창고의 쌀이 보름치도 남지 않았다"
+  rise: "굶주린 병사들 사이에 흉흉한 말이 돈다"
+  climax: "피난민의 곡식을 징발하느냐, 병사를 굶기느냐의 갈림길"
+  resolve_good: "해로통행첩을 발행해 피난선의 곡식을 정당하게 모은다"
+  resolve_bad: "징발 과정에서 민심을 잃고, 어부들이 물길 정보를 감춘다"
+  luck_hook: "곡식을 실은 피난선이 스스로 진영에 찾아온다"
+
+- id: ys_spy
+  scenario: yi_sunsin
+  type: 권력
+  scale: 소
+  min_act: 1
+  title: "수상한 척후"
+  seed: "척후의 보고가 이틀째 어긋난다"
+  rise: "진중에 왜의 간자가 섞였다는 말이 돈다"
+  climax: "송희립이 지목한 자를 심문하는 밤"
+  resolve_good: "간자를 가려내고, 오히려 거짓 정보를 흘려보낸다"
+  resolve_bad: "무고한 자를 다그쳐 군심에 금이 간다"
+  luck_hook: "피난민 아이가 결정적인 목격담을 들려준다"
+
+- id: ys_ill
+  scenario: yi_sunsin
+  type: 신체
+  scale: 소
+  min_act: 1
+  title: "깊어지는 몸살"
+  seed: "찬 바닷바람에 몸이 무겁고 식은땀이 흐른다"
+  rise: "고열 속에서도 물때 관측을 거르지 않는다"
+  climax: "결전을 앞두고 몸이 무너지는가"
+  resolve_good: "안위가 구해온 탕약과 하룻밤의 잠으로 몸을 추스른다"
+  resolve_bad: "몸이 회복되지 않은 채 중요한 회의를 놓친다"
+  luck_hook: "명의가 피난민 틈에 섞여 있었다"
+
+- id: ys_currents
+  scenario: yi_sunsin
+  type: 자연
+  scale: 대
+  min_act: 2
+  title: "울돌목의 물길"
+  seed: "울돌목의 조류는 하루 네 번 뒤집힌다 — 그 시각을 아는 자가 없다"
+  rise: "관측 기록이 쌓이지만, 결정적인 한 조각이 비어 있다"
+  climax: "물길이 뒤집히는 정확한 때 — 이것에 전부를 걸 수 있는가"
+  resolve_good: "늙은 어부의 증언과 관측이 맞아떨어진다. 물길이 손에 잡힌다"
+  resolve_bad: "관측선이 급류에 휩쓸려 사람과 기록을 함께 잃는다"
+  luck_hook: "삼대째 울돌목에서 고기 잡은 노인이 물때표를 들고 찾아온다"
+
+- id: ys_wae_fleet
+  scenario: yi_sunsin
+  type: 권력
+  scale: 대
+  min_act: 3
+  title: "다가오는 대선단"
+  seed: "왜선 백서른세 척이 어란포에 모였다는 척후 보고"
+  rise: "진을 우수영으로 물리고, 마지막 채비를 서두른다"
+  climax: "울돌목 좁은 물길 — 열세 척이 백서른세 척을 마주한다"
+  resolve_good: "물길이 뒤집히는 순간을 붙잡아 대선단을 꺾는다"
+  resolve_bad: "선봉이 무너지고 안위의 배가 포위된다 — 피로 물든 후퇴"
+  luck_hook: "결전의 아침, 물때가 아군 쪽으로 먼저 돌아선다"
