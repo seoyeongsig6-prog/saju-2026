@@ -12,6 +12,10 @@ let STATE = null;
 /* ---------- 부팅 ---------- */
 async function boot() {
   STATE = await api("/api/state");
+  if (STATE && STATE.detail) {  // 서버 오류 — 원인을 그대로 보여준다 (디버그)
+    notice(`${STATE.error}\n\n${STATE.detail}\n${(STATE.trace || []).join("\n")}`);
+    return;
+  }
   if (!STATE.avatar) {
     showCreate();
   } else {
@@ -61,7 +65,10 @@ $("#btn-custom").onclick = async () => {
   $("#btn-custom").disabled = false;
   $("#btn-custom").textContent = "이 삶을 시작한다";
   if (r.blocked) { notice(r.message); return; }
-  if (!r.ok) { notice(r.error || "잠시 후 다시 시도해 주세요."); return; }
+  if (!r.ok) {
+    notice((r.error || "잠시 후 다시 시도해 주세요.") + (r.detail ? `\n\n${r.detail}` : ""));
+    return;
+  }
   boot();
 };
 

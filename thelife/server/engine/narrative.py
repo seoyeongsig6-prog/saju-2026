@@ -2,7 +2,7 @@
 import json
 import random
 import sqlite3
-from typing import Generator
+from typing import Generator, Optional
 
 from ..llm import llm
 
@@ -140,7 +140,7 @@ def intervention_text(
 def generate_conflict(
     c: sqlite3.Connection, avatar: dict, scenario: dict, season: dict,
     scale: str, avoid_titles: list,
-) -> dict | None:
+) -> Optional[dict]:
     """즉흥 갈등 발제 — 지금 이 삶의 상황에서 새 갈등을 만들어 구조로 반환.
     LLM이 없거나 실패하면 None (갈등 은행으로 폴백)."""
     from . import world  # 순환 참조 방지용 지연 임포트

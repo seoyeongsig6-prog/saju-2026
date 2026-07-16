@@ -18,6 +18,21 @@ from .llm import llm
 app = FastAPI(title="The Life")
 WEB = Path(__file__).resolve().parent.parent / "web"
 
+
+@app.exception_handler(Exception)
+async def debug_errors(request, exc):
+    """프로토타입 디버그 — 500 대신 원인을 그대로 보여준다 (베타 전 제거)."""
+    import traceback
+    from fastapi.responses import JSONResponse
+    tb = traceback.format_exc()
+    print(tb, flush=True)
+    return JSONResponse(status_code=500, content={
+        "ok": False,
+        "error": "서버 오류 (아래 내용을 캡처해서 알려주세요)",
+        "detail": f"{type(exc).__name__}: {exc}",
+        "trace": tb.splitlines()[-6:],
+    })
+
 db.init()
 SCENARIOS = world.load_scenarios()
 CARDS_BY_ID = world.load_conflict_cards()
