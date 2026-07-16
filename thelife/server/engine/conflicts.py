@@ -145,7 +145,7 @@ def _resolve_hunch(c, avatar: dict, season: dict, conflict_id: int, card: dict,
     c.execute("UPDATE hunches SET status=?, payout=?, resolved_day=? WHERE id=?",
               ("won" if won else "lost", payout, day, h["id"]))
     if won:
-        c.execute("UPDATE gauge SET luck=luck+? WHERE id=1", (payout,))
+        c.execute("UPDATE user_gauge SET luck=luck+? WHERE user_id=?", (payout, avatar.get("user_id") or "solo"))
         guess = "이겨낼 것이라던" if h["direction"] == "good" else "쉽지 않으리라던"
         _emit(c, avatar, season, day, "hunch", "예감이 맞았다",
               f"'{card['title']}' — {guess} 당신의 예감대로였다. "

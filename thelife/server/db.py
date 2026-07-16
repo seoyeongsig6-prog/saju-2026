@@ -19,8 +19,15 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS kv (
     k TEXT PRIMARY KEY, v TEXT
 );
+CREATE TABLE IF NOT EXISTS user_gauge (
+    user_id TEXT PRIMARY KEY,
+    luck INTEGER DEFAULT 30,
+    ads_today INTEGER DEFAULT 0,
+    ads_date TEXT
+);
 CREATE TABLE IF NOT EXISTS avatars (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT,
     name TEXT NOT NULL,
     scenario_id TEXT NOT NULL,
     category TEXT NOT NULL,
@@ -189,6 +196,7 @@ def init() -> None:
             "ALTER TABLE active_conflicts ADD COLUMN card_json TEXT",
             "ALTER TABLE cast_members ADD COLUMN last_met TEXT",
             "ALTER TABLE events ADD COLUMN detail TEXT",
+            "ALTER TABLE avatars ADD COLUMN user_id TEXT",
         ):
             try:
                 c.execute(ddl)

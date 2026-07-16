@@ -5,7 +5,7 @@ GEMINI_API_KEY 환경변수가 있으면 실제 LLM으로, 없으면 목업 텍�
 """
 import json
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Header
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -47,10 +47,10 @@ def _day_no(start_day: str, day: str) -> int:
         return 1
 
 
-def _loaded(c):
+def _loaded(c, user: str = "solo"):
     """아바타 + 시나리오 + 시즌 로드 후 따라잡기 시뮬레이션까지.
     반환: (avatar, scenario, season, cards_by_id) — 즉석 생성 카드 포함 색인."""
-    avatar, scenario, season = season_mod.load_avatar(c)
+    avatar, scenario, season = season_mod.load_avatar(c, user)
     by_id = CARDS_BY_ID
     if avatar:
         cards, by_id = world.scenario_card_index(scenario, CARDS_BY_ID)
@@ -98,12 +98,12 @@ def presets():
 
 
 @app.get("/api/avatars")
-def list_avatars():
+def list_avatars(user: str = Header(default="solo", alias="X-User-Id")):
     """지켜보는 중인 삶들 — 동시에 여러 스토리를 살 수 있다."""
     with db.connect() as c:
-        active_id = db.kv_get(c, "active_avatar", "")
+        active_id = db.kv_get(c, f"active_avatar:{user}", "")
         out = []
-        for a in c.execute("SELECT id, name, category FROM avatars ORDER BY id").fetchall():
+        for a in c.execute("SELECT id, name, category FROM avatars WHERE user_id=? ORDER BY id", (user,)).fetchall():
             s = c.execute("SELECT * FROM seasons WHERE avatar_id=? ORDER BY no DESC LIMIT 1",
                           (a["id"],)).fetchone()
             unread = c.execute("SELECT COUNT(*) AS n FROM events WHERE avatar_id=? AND read=0",
@@ -137,9 +137,9 @@ def list_avatars():
 
 
 @app.get("/api/gauge")
-def get_gauge():
+def get_gauge(user: str = Header(default="solo", alias="X-User-Id")):
     with db.connect() as c:
-        g = intervention.gauge(c)
+        g = intervention.gauge(c, user)
         return {"luck": g["luck"], "ads_left": g["ads_left"]}
 
 
@@ -148,17 +148,17 @@ class SelectBody(BaseModel):
 
 
 @app.post("/api/avatar/select")
-def select_avatar(body: SelectBody):
+def select_avatar(body: SelectBody, user: str = Header(default="solo", alias="X-User-Id")):
     with db.connect() as c:
-        row = c.execute("SELECT id FROM avatars WHERE id=?", (body.id,)).fetchone()
+        row = c.execute("SELECT id FROM avatars WHERE id=? AND user_id=?", (body.id, user)).fetchone()
         if not row:
             return {"ok": False, "error": "그 삶을 찾을 수 없어요."}
-        db.kv_set(c, "active_avatar", str(body.id))
+        db.kv_set(c, f"active_avatar:{user}", str(body.id))
     return {"ok": True}
 
 
 @app.post("/api/avatar/create")
-def create_avatar(body: CreateBody):
+def create_avatar(body: CreateBody, user: str = Header(default="solo", alias="X-User-Id")):
     """자유 입력 아바타 생성 — 누구든, 어떤 목표든.
     이름이 예시 인물과 일치하고 목표를 따로 쓰지 않았으면 정성 제작 팩을 쓰고,
     그 외에는 LLM이 그 삶의 세계를 즉석에서 짓는다."""
@@ -166,7 +166,7 @@ def create_avatar(body: CreateBody):
     if not name:
         return {"ok": False, "error": "이름을 알려주세요."}
     with db.connect() as c:
-        n = c.execute("SELECT COUNT(*) AS n FROM avatars").fetchone()["n"]
+        n = c.execute("SELECT COUNT(*) AS n FROM avatars WHERE user_id=?", (user,)).fetchone()["n"]
         if n >= MAX_AVATARS:
             return {"ok": False,
                     "error": f"동시에 지켜볼 수 있는 삶은 {MAX_AVATARS}개까지예요. 먼저 한 삶을 떠나보내 주세요."}
@@ -177,7 +177,7 @@ def create_avatar(body: CreateBody):
     for s in SCENARIOS.values():
         if s["name"] == name and (not goal or goal == s["goal"]):
             with db.connect() as c:
-                _create_avatar(c, s, s["type"])
+                _create_avatar(c, s, s["type"], user)
             return {"ok": True}
 
     scenario = world.build_scenario(body.model_dump())
@@ -185,23 +185,23 @@ def create_avatar(body: CreateBody):
         return {"ok": False,
                 "error": "세계를 짓는 데 실패했어요. 잠시 후 한 번 더 시도해 주세요."}
     with db.connect() as c:
-        _create_avatar(c, scenario, scenario.get("type", "현실"))
+        _create_avatar(c, scenario, scenario.get("type", "현실"), user)
     return {"ok": True}
 
 
 MAX_AVATARS = 3  # 동시에 지켜볼 수 있는 삶 (기획: 최소 2)
 
 
-def _create_avatar(c, scenario: dict, category: str):
+def _create_avatar(c, scenario: dict, category: str, user: str = "solo"):
     day = db.vtoday(c)
     state = {"money": scenario.get("money_start", 100), "health": 80, "mood": "담담함"}
     avatar_id = c.insert_id(
-        "INSERT INTO avatars (name, scenario_id, category, scenario_json, state_json, "
-        "last_sim_day, created_at) VALUES (?,?,?,?,?,?,datetime('now'))",
-        (scenario["name"], scenario["id"], category,
+        "INSERT INTO avatars (user_id, name, scenario_id, category, scenario_json, state_json, "
+        "last_sim_day, created_at) VALUES (?,?,?,?,?,?,?,datetime('now'))",
+        (user, scenario["name"], scenario["id"], category,
          json.dumps(scenario, ensure_ascii=False), json.dumps(state, ensure_ascii=False), day),
     )
-    db.kv_set(c, "active_avatar", str(avatar_id))
+    db.kv_set(c, f"active_avatar:{user}", str(avatar_id))
     c.execute("INSERT INTO state_history (avatar_id, day, money, health) VALUES (?,?,?,?) "
               "ON CONFLICT(avatar_id, day) DO UPDATE SET money=excluded.money, health=excluded.health",
               (avatar_id, day, state["money"], state["health"]))
@@ -223,12 +223,12 @@ def _create_avatar(c, scenario: dict, category: str):
 
 
 @app.get("/api/state")
-def state():
+def state(user: str = Header(default="solo", alias="X-User-Id")):
     with db.connect() as c:
-        avatar, scenario, season, _ = _loaded(c)
+        avatar, scenario, season, _ = _loaded(c, user)
         if not avatar:
             return {"avatar": None}
-        g = intervention.gauge(c)
+        g = intervention.gauge(c, user)
         unread = c.execute(
             "SELECT COUNT(*) AS n FROM events WHERE avatar_id=? AND read=0", (avatar["id"],)
         ).fetchone()["n"]
@@ -252,10 +252,10 @@ def state():
 
 
 @app.get("/api/now/last")
-def now_last():
+def now_last(user: str = Header(default="solo", alias="X-User-Id")):
     """방금 지켜본 장면 — 다시 열면 재생성 없이 그대로 보여준다."""
     with db.connect() as c:
-        avatar, scenario, season, by_id = _loaded(c)
+        avatar, scenario, season, by_id = _loaded(c, user)
         if not avatar:
             return {"scene": None}
         today = db.vtoday(c)
@@ -280,10 +280,10 @@ def now_last():
 
 
 @app.get("/api/now")
-def now_scene():
+def now_scene(user: str = Header(default="solo", alias="X-User-Id")):
     """'지금' — 현재 진행형 라이브 장면 (스트리밍 + 기록 보존)."""
     with db.connect() as c:
-        avatar, scenario, season, by_id = _loaded(c)
+        avatar, scenario, season, by_id = _loaded(c, user)
         if not avatar:
             return {"error": "아바타가 없어요"}
         vnow = db.virtual_now(c)
@@ -318,10 +318,10 @@ def now_scene():
 
 
 @app.get("/api/dashboard")
-def dashboard():
+def dashboard(user: str = Header(default="solo", alias="X-User-Id")):
     """'상태' — 아바타 대시보드: 재산·체력·기분·관계·진행 중인 갈등·흉터."""
     with db.connect() as c:
-        avatar, scenario, season, by_id = _loaded(c)
+        avatar, scenario, season, by_id = _loaded(c, user)
         if not avatar:
             return {"avatar": None}
         state = json.loads(avatar.get("state_json") or "{}")
@@ -391,10 +391,10 @@ def dashboard():
 
 
 @app.get("/api/feed")
-def feed():
+def feed(user: str = Header(default="solo", alias="X-User-Id")):
     """'그동안' — 마지막 방문 이후의 소식들 (읽음 처리)."""
     with db.connect() as c:
-        avatar, scenario, season, _ = _loaded(c)
+        avatar, scenario, season, _ = _loaded(c, user)
         if not avatar:
             return {"events": []}
         rows = c.execute(
@@ -413,10 +413,10 @@ def feed():
 
 
 @app.get("/api/story")
-def story():
+def story(user: str = Header(default="solo", alias="X-User-Id")):
     """'이야기' — 마일스톤 진행, 대사건 아카이브, 완결 전기."""
     with db.connect() as c:
-        avatar, scenario, season, _ = _loaded(c)
+        avatar, scenario, season, _ = _loaded(c, user)
         if not avatar:
             return {"episodes": []}
         rows = c.execute(
@@ -443,10 +443,10 @@ class HunchBody(BaseModel):
 
 
 @app.get("/api/hunches")
-def hunches():
+def hunches(user: str = Header(default="solo", alias="X-User-Id")):
     """예감 — 절정으로 향하는 갈등 중 아직 예감을 맡기지 않은 것들."""
     with db.connect() as c:
-        avatar, scenario, season, by_id = _loaded(c)
+        avatar, scenario, season, by_id = _loaded(c, user)
         if not avatar:
             return {"offerable": [], "open": []}
         taken = {r["conflict_id"] for r in c.execute(
@@ -472,20 +472,20 @@ def hunches():
             card = conflicts.card_of(h, by_id)
             open_h.append({"title": card["title"] if card else "",
                            "direction": h["direction"], "luck": h["luck_staked"]})
-        g = intervention.gauge(c)
+        g = intervention.gauge(c, user)
         return {"offerable": offerable, "open": open_h, "luck": g["luck"]}
 
 
 @app.post("/api/hunch")
-def place_hunch(body: HunchBody):
+def place_hunch(body: HunchBody, user: str = Header(default="solo", alias="X-User-Id")):
     with db.connect() as c:
-        avatar, scenario, season, by_id = _loaded(c)
+        avatar, scenario, season, by_id = _loaded(c, user)
         if not avatar:
             return {"ok": False, "error": "아바타가 없어요"}
         if body.direction not in ("good", "bad"):
             return {"ok": False, "error": "예감은 '이겨낸다'거나 '어렵겠다' 둘 중 하나예요."}
         luck = max(5, min(100, int(body.luck)))
-        g = intervention.gauge(c)
+        g = intervention.gauge(c, user)
         if g["luck"] < luck:
             return {"ok": False, "error": f"행운이 부족해요. (보유 {g['luck']})"}
         cf = c.execute(
@@ -497,7 +497,7 @@ def place_hunch(body: HunchBody):
         dup = c.execute("SELECT 1 FROM hunches WHERE conflict_id=? ", (cf["id"],)).fetchone()
         if dup:
             return {"ok": False, "error": "이 일에는 이미 예감을 맡겨뒀어요."}
-        c.execute("UPDATE gauge SET luck=luck-? WHERE id=1", (luck,))
+        c.execute("UPDATE user_gauge SET luck=luck-? WHERE user_id=?", (luck, user))
         c.execute(
             "INSERT INTO hunches (avatar_id, season_id, conflict_id, direction, luck_staked, created_day) "
             "VALUES (?,?,?,?,?,?)",
@@ -507,30 +507,30 @@ def place_hunch(body: HunchBody):
 
 
 @app.post("/api/intervene")
-def intervene(body: SizeBody):
+def intervene(body: SizeBody, user: str = Header(default="solo", alias="X-User-Id")):
     with db.connect() as c:
-        avatar, scenario, season, by_id = _loaded(c)
+        avatar, scenario, season, by_id = _loaded(c, user)
         if not avatar:
             return {"ok": False, "error": "아바타가 없어요"}
         return intervention.intervene(c, avatar, scenario, season, by_id, body.size)
 
 
 @app.post("/api/ad")
-def ad():
+def ad(user: str = Header(default="solo", alias="X-User-Id")):
     with db.connect() as c:
-        return intervention.watch_ad(c)
+        return intervention.watch_ad(c, user)
 
 
 @app.post("/api/buy")
-def buy():
+def buy(user: str = Header(default="solo", alias="X-User-Id")):
     with db.connect() as c:
-        return intervention.buy_luck(c)
+        return intervention.buy_luck(c, user)
 
 
 @app.post("/api/season/next")
-def season_next(body: ContinueBody):
+def season_next(body: ContinueBody, user: str = Header(default="solo", alias="X-User-Id")):
     with db.connect() as c:
-        avatar, scenario, season, _ = _loaded(c)
+        avatar, scenario, season, _ = _loaded(c, user)
         if not avatar or season["status"] != "done":
             return {"ok": False, "error": "아직 시즌이 진행 중이에요"}
         if body.mode == "new":
@@ -556,23 +556,23 @@ def timewarp(body: WarpBody):
     with db.connect() as c:
         cur = int(db.kv_get(c, "time_offset_days", "0"))
         db.kv_set(c, "time_offset_days", str(cur + max(0, body.days)))
-        avatar, scenario, season, _ = _loaded(c)
+        avatar, scenario, season, _ = _loaded(c, user)
     return {"ok": True, "offset_days": cur + body.days}
 
 
 @app.delete("/api/avatar")
-def leave_avatar():
+def leave_avatar(user: str = Header(default="solo", alias="X-User-Id")):
     """활성 아바타의 삶을 떠나보낸다 — 다른 삶들은 그대로 이어진다."""
     with db.connect() as c:
-        avatar, _, _, _ = _loaded(c)
+        avatar, _, _, _ = _loaded(c, user)
         if not avatar:
             return {"ok": True}
         for t in ("seasons", "events", "schedules", "active_conflicts",
                   "interventions", "cast_members", "hunches", "state_history"):
             c.execute(f"DELETE FROM {t} WHERE avatar_id=?", (avatar["id"],))
         c.execute("DELETE FROM avatars WHERE id=?", (avatar["id"],))
-        nxt = c.execute("SELECT id FROM avatars ORDER BY id DESC LIMIT 1").fetchone()
-        db.kv_set(c, "active_avatar", str(nxt["id"]) if nxt else "")
+        nxt = c.execute("SELECT id FROM avatars WHERE user_id=? ORDER BY id DESC LIMIT 1", (user,)).fetchone()
+        db.kv_set(c, f"active_avatar:{user}", str(nxt["id"]) if nxt else "")
     return {"ok": True}
 
 

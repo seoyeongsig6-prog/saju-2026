@@ -8,12 +8,15 @@ CLAUDE_MODEL = os.environ.get("LLM_MODEL", "claude-sonnet-5")
 GEMINI_MODEL = "gemini-2.0-flash"
 
 
+PREFER = os.environ.get("LLM_PROVIDER", "").strip().lower()  # "gemini"면 무료 등급 우선
+
+
 class LLM:
     def __init__(self) -> None:
         self.provider: Optional[str] = None
         self.client = None
 
-        if os.environ.get("ANTHROPIC_API_KEY"):
+        if PREFER != "gemini" and os.environ.get("ANTHROPIC_API_KEY"):
             try:
                 import anthropic
                 self.client = anthropic.Anthropic()

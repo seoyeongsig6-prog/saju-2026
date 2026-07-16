@@ -12,27 +12,33 @@ AD_LUCK = 10
 BUY_LUCK = 100  # 결제 목업
 
 
-def gauge(c: sqlite3.Connection) -> dict:
-    row = c.execute("SELECT * FROM gauge WHERE id=1").fetchone()
+def gauge(c: sqlite3.Connection, user: str = "solo") -> dict:
+    row = c.execute("SELECT * FROM user_gauge WHERE user_id=?", (user,)).fetchone()
+    if not row:
+        c.execute("INSERT INTO user_gauge (user_id, luck) VALUES (?, 30) "
+                  "ON CONFLICT (user_id) DO NOTHING", (user,))
+        row = c.execute("SELECT * FROM user_gauge WHERE user_id=?", (user,)).fetchone()
     today = db.vtoday(c)
     g = dict(row)
     if g["ads_date"] != today:
-        c.execute("UPDATE gauge SET ads_today=0, ads_date=? WHERE id=1", (today,))
+        c.execute("UPDATE user_gauge SET ads_today=0, ads_date=? WHERE user_id=?", (today, user))
         g["ads_today"], g["ads_date"] = 0, today
     g["ads_left"] = ADS_PER_DAY - g["ads_today"]
     return g
 
 
-def watch_ad(c: sqlite3.Connection) -> dict:
-    g = gauge(c)
+def watch_ad(c: sqlite3.Connection, user: str = "solo") -> dict:
+    g = gauge(c, user)
     if g["ads_left"] <= 0:
         return {"ok": False, "error": "오늘의 광고 시청 횟수를 다 썼어요. 내일 다시 볼 수 있어요."}
-    c.execute("UPDATE gauge SET luck=luck+?, ads_today=ads_today+1 WHERE id=1", (AD_LUCK,))
+    c.execute("UPDATE user_gauge SET luck=luck+?, ads_today=ads_today+1 WHERE user_id=?",
+              (AD_LUCK, user))
     return {"ok": True, "added": AD_LUCK}
 
 
-def buy_luck(c: sqlite3.Connection) -> dict:
-    c.execute("UPDATE gauge SET luck=luck+? WHERE id=1", (BUY_LUCK,))
+def buy_luck(c: sqlite3.Connection, user: str = "solo") -> dict:
+    gauge(c, user)  # 행 보장
+    c.execute("UPDATE user_gauge SET luck=luck+? WHERE user_id=?", (BUY_LUCK, user))
     return {"ok": True, "added": BUY_LUCK}
 
 
@@ -44,7 +50,8 @@ def intervene(c: sqlite3.Connection, avatar: dict, scenario: dict, season: dict,
         return {"ok": False, "error": "시즌이 끝났어요. 다음 시즌에서 개입할 수 있어요."}
     if season["interventions_left"] <= 0:
         return {"ok": False, "error": "이번 시즌의 개입 3번을 모두 썼어요. 이제 지켜보는 일만 남았어요."}
-    g = gauge(c)
+    user = avatar.get("user_id") or "solo"
+    g = gauge(c, user)
     if g["luck"] < COST[size]:
         return {"ok": False, "error": f"행운이 부족해요. ({size}: {COST[size]} 필요, 보유 {g['luck']})"}
 
@@ -82,7 +89,7 @@ def intervene(c: sqlite3.Connection, avatar: dict, scenario: dict, season: dict,
     state["mood"] = "알 수 없는 든든함"
     conflicts_mod._save_state(c, avatar, state, day)
 
-    c.execute("UPDATE gauge SET luck=luck-? WHERE id=1", (COST[size],))
+    c.execute("UPDATE user_gauge SET luck=luck-? WHERE user_id=?", (COST[size], user))
     c.execute("UPDATE seasons SET interventions_left=interventions_left-1 WHERE id=?", (season["id"],))
     season["interventions_left"] -= 1
     c.execute(

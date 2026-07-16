@@ -7,14 +7,16 @@ from .. import db
 from . import conflicts, narrative, schedule
 
 
-def load_avatar(c: sqlite3.Connection):
-    """활성 아바타 — 유저가 마지막으로 고른 삶. 없으면 가장 최근 삶."""
+def load_avatar(c: sqlite3.Connection, user: str = "solo"):
+    """이 유저의 활성 아바타 — 마지막으로 고른 삶. 없으면 가장 최근 삶."""
     row = None
-    active_id = db.kv_get(c, "active_avatar", "")
+    active_id = db.kv_get(c, f"active_avatar:{user}", "")
     if active_id:
-        row = c.execute("SELECT * FROM avatars WHERE id=?", (int(active_id),)).fetchone()
+        row = c.execute("SELECT * FROM avatars WHERE id=? AND user_id=?",
+                        (int(active_id), user)).fetchone()
     if not row:
-        row = c.execute("SELECT * FROM avatars ORDER BY id DESC LIMIT 1").fetchone()
+        row = c.execute("SELECT * FROM avatars WHERE user_id=? ORDER BY id DESC LIMIT 1",
+                        (user,)).fetchone()
     if not row:
         return None, None, None
     avatar = dict(row)
@@ -64,7 +66,7 @@ def finish_season(c: sqlite3.Connection, avatar: dict, scenario: dict, season: d
     for h in c.execute(
         "SELECT * FROM hunches WHERE season_id=? AND status='open'", (season["id"],)
     ).fetchall():
-        c.execute("UPDATE gauge SET luck=luck+? WHERE id=1", (h["luck_staked"],))
+        c.execute("UPDATE user_gauge SET luck=luck+? WHERE user_id=?", (h["luck_staked"], avatar.get("user_id") or "solo"))
         c.execute("UPDATE hunches SET status='refunded', resolved_day=? WHERE id=?", (day, h["id"]))
     bio = narrative.biography_text(c, avatar, scenario, season)
     c.execute(

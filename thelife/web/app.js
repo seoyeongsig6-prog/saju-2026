@@ -1,8 +1,17 @@
 /* The Life — 프런트엔드 */
 const $ = (s) => document.querySelector(s);
+
+/* 기기별 사용자 — 로그인 없이 브라우저마다 자기 삶을 가진다 */
+let UID = localStorage.getItem("thelife_uid");
+if (!UID) {
+  UID = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now());
+  localStorage.setItem("thelife_uid", UID);
+}
+
 const api = async (path, opts = {}) => {
   const r = await fetch(path, {
-    headers: { "Content-Type": "application/json" }, ...opts,
+    ...opts,
+    headers: { "Content-Type": "application/json", "X-User-Id": UID, ...(opts.headers || {}) },
   });
   return r.json();
 };
@@ -285,7 +294,7 @@ async function loadNow(force = false) {
   box.innerHTML = "";
   shadowMode = false;
   try {
-    const r = await fetch("/api/now");
+    const r = await fetch("/api/now", { headers: { "X-User-Id": UID } });
     const reader = r.body.getReader();
     const dec = new TextDecoder();
     let buf = "";
