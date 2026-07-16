@@ -184,30 +184,56 @@ def state():
         }
 
 
+@app.get("/api/now/last")
+def now_last():
+    """방금 지켜본 장면 — 다시 열면 재생성 없이 그대로 보여준다."""
+    with db.connect() as c:
+        avatar, scenario, season, by_id = _loaded(c)
+        if not avatar:
+            return {"scene": None}
+        today = db.vtoday(c)
+        row = c.execute(
+            "SELECT title, body FROM events WHERE avatar_id=? AND kind='scene' AND day=? "
+            "AND created_at > datetime('now','-30 minutes') ORDER BY id DESC LIMIT 1",
+            (avatar["id"], today),
+        ).fetchone()
+        return {"scene": dict(row) if row else None}
+
+
 @app.get("/api/now")
 def now_scene():
-    """'지금' — 현재 진행형 라이브 장면 (스트리밍)."""
+    """'지금' — 현재 진행형 라이브 장면 (스트리밍 + 기록 보존)."""
     with db.connect() as c:
         avatar, scenario, season, by_id = _loaded(c)
         if not avatar:
             return {"error": "아바타가 없어요"}
         vnow = db.virtual_now(c)
-        day, hhmm = vnow.date().isoformat(), vnow.strftime("%H:%M")
-        slots = schedule.ensure_schedule(c, avatar["id"], scenario, day)
+        day_iso, hhmm = vnow.date().isoformat(), vnow.strftime("%H:%M")
+        slots = schedule.ensure_schedule(c, avatar["id"], scenario, day_iso)
         slot = schedule.current_slot(slots, hhmm)
         note = conflicts.active_conflict_note(c, avatar["id"], by_id)
-        day = f"{_day_no(season['started_day'], day)}일차"  # 프롬프트에도 달력 날짜 대신
+        day_label = f"{_day_no(season['started_day'], day_iso)}일차"
         c.execute("UPDATE avatars SET last_seen_at=datetime('now') WHERE id=?", (avatar["id"],))
         c.commit()
-        gen = list(  # 커넥션이 닫히기 전에 컨텍스트 준비를 끝낸다
-            [avatar, scenario, slot, note, hhmm, day]
-        )
+        ctx = [avatar, scenario, slot, note, hhmm, day_label]
+        meta = {"avatar_id": avatar["id"], "season_id": season["id"],
+                "day": day_iso, "hhmm": hhmm}
     from .engine import narrative
 
     def streamer():
+        chunks = []
         with db.connect() as c2:
-            for chunk in narrative.scene_stream(c2, gen[0], gen[1], gen[2], gen[3], gen[4], gen[5]):
+            for chunk in narrative.scene_stream(c2, ctx[0], ctx[1], ctx[2], ctx[3], ctx[4], ctx[5]):
+                chunks.append(chunk)
                 yield chunk
+            text = "".join(chunks).strip()
+            if text:  # 지켜본 장면은 기록으로 남는다 — 언제든 다시 읽을 수 있게
+                c2.execute(
+                    "INSERT INTO events (avatar_id, season_id, day, slot, kind, title, body, read, created_at) "
+                    "VALUES (?,?,?,?,?,?,?,1,datetime('now'))",
+                    (meta["avatar_id"], meta["season_id"], meta["day"], meta["hhmm"],
+                     "scene", f"{meta['hhmm']} — 지켜본 장면", text),
+                )
 
     return StreamingResponse(streamer(), media_type="text/plain; charset=utf-8")
 

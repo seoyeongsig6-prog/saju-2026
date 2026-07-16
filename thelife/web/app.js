@@ -204,14 +204,23 @@ async function loadDash() {
   `;
 }
 
-/* ---------- 지금 (스트리밍) ---------- */
+/* ---------- 지금 (스트리밍 + 기록 보존) ---------- */
 let streaming = false;
-async function loadNow() {
+async function loadNow(force = false) {
   if (streaming) return;
-  streaming = true;
   const box = $("#now-scene");
-  box.innerHTML = "";
   $("#now-time").textContent = `${dayLabel(STATE.season.day_count)} ${STATE.vtime} — 지금 이 순간`;
+  if (!force) {
+    // 방금 본 장면이 있으면 그대로 보여준다 (재생성 없음)
+    const last = await api("/api/now/last");
+    if (last.scene && last.scene.body) {
+      box.innerHTML = "";
+      last.scene.body.split("\n").forEach((ln) => addSceneLine(box, ln));
+      return;
+    }
+  }
+  streaming = true;
+  box.innerHTML = "";
   try {
     const r = await fetch("/api/now");
     const reader = r.body.getReader();
@@ -249,7 +258,7 @@ function addSceneLine(box, line) {
   box.appendChild(el);
   el.scrollIntoView({ behavior: "smooth", block: "end" });
 }
-$("#btn-peek").onclick = loadNow;
+$("#btn-peek").onclick = () => loadNow(true);
 
 /* ---------- 예감 ---------- */
 async function loadHunches() {

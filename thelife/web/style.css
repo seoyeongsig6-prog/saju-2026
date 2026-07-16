@@ -96,6 +96,9 @@ main { flex: 1; overflow-y: auto; }
 .card.k-scar { border-color: var(--bad); }
 .card.k-scar h4 { color: var(--bad); }
 .card.k-daily { opacity: .8; }
+.card.k-scene { opacity: .85; border-style: dashed; }
+.card.k-scene h4 { color: var(--dim); font-weight: 400; font-size: 12.5px; }
+.card.k-scene p { color: var(--text); }
 
 /* ===== 이야기 ===== */
 .mile { display: flex; gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px dashed var(--line); }
