@@ -73,6 +73,14 @@ def intervene(c: sqlite3.Connection, avatar: dict, scenario: dict, season: dict,
     slot_no = 4 - season["interventions_left"]
     title = f"행운이 닿다 ({size})"
 
+    # 행운의 물질적 흔적 — 재산·기분에 반영
+    from . import conflicts as conflicts_mod
+    state = conflicts_mod._load_state(avatar, scenario)
+    bump = {"소": 0.04, "중": 0.12, "대": 0.25}[size]
+    state["money"] = int(state["money"] * (1 + bump))
+    state["mood"] = "알 수 없는 든든함"
+    conflicts_mod._save_state(c, avatar, state, day)
+
     c.execute("UPDATE gauge SET luck=luck-? WHERE id=1", (COST[size],))
     c.execute("UPDATE seasons SET interventions_left=interventions_left-1 WHERE id=?", (season["id"],))
     season["interventions_left"] -= 1

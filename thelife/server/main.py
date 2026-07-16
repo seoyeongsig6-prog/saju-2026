@@ -105,7 +105,7 @@ def _create_avatar(c, scenario: dict, category: str):
     for t in ("seasons", "events", "schedules", "active_conflicts", "interventions", "cast_members"):
         c.execute(f"DELETE FROM {t}")
     day = db.vtoday(c)
-    state = {"mood": "담담함", "notes": []}
+    state = {"money": scenario.get("money_start", 100), "health": 80, "mood": "담담함"}
     cur = c.execute(
         "INSERT INTO avatars (name, scenario_id, category, scenario_json, state_json, "
         "last_sim_day, created_at) VALUES (?,?,?,?,?,?,datetime('now'))",
@@ -113,6 +113,8 @@ def _create_avatar(c, scenario: dict, category: str):
          json.dumps(scenario, ensure_ascii=False), json.dumps(state, ensure_ascii=False), day),
     )
     avatar_id = cur.lastrowid
+    c.execute("INSERT OR REPLACE INTO state_history (avatar_id, day, money, health) VALUES (?,?,?,?)",
+              (avatar_id, day, state["money"], state["health"]))
     for m in scenario.get("cast", []):
         c.execute(
             "INSERT INTO cast_members (avatar_id, name, role, note, affinity) VALUES (?,?,?,?,?)",
@@ -183,6 +185,64 @@ def now_scene():
                 yield chunk
 
     return StreamingResponse(streamer(), media_type="text/plain; charset=utf-8")
+
+
+@app.get("/api/dashboard")
+def dashboard():
+    """'상태' — 아바타 대시보드: 재산·체력·기분·관계·진행 중인 갈등·흉터."""
+    with db.connect() as c:
+        avatar, scenario, season, by_id = _loaded(c)
+        if not avatar:
+            return {"avatar": None}
+        state = json.loads(avatar.get("state_json") or "{}")
+        history = [dict(r) for r in c.execute(
+            "SELECT day, money, health FROM state_history WHERE avatar_id=? "
+            "ORDER BY day DESC LIMIT 14", (avatar["id"],),
+        ).fetchall()][::-1]
+        today = db.vtoday(c)
+        cast = []
+        for r in c.execute(
+            "SELECT name, role, note, affinity, last_met FROM cast_members "
+            "WHERE avatar_id=? ORDER BY affinity DESC", (avatar["id"],),
+        ).fetchall():
+            days_ago = None
+            if r["last_met"]:
+                import datetime as _dt
+                days_ago = (_dt.date.fromisoformat(today) - _dt.date.fromisoformat(r["last_met"])).days
+            cast.append({**dict(r), "days_ago": days_ago})
+        actives = []
+        for r in c.execute(
+            "SELECT * FROM active_conflicts WHERE avatar_id=? AND season_id=? AND stage != 'done'",
+            (avatar["id"], season["id"]),
+        ).fetchall():
+            card = conflicts.card_of(r, by_id)
+            if card:
+                actives.append({"title": card["title"], "stage": r["stage"],
+                                "stage_label": conflicts.STAGE_LABEL[r["stage"]]})
+        counts = c.execute(
+            "SELECT SUM(CASE WHEN kind='scar' THEN 1 ELSE 0 END) AS scars FROM events WHERE season_id=?",
+            (season["id"],),
+        ).fetchone()
+        overcome = c.execute(
+            "SELECT COUNT(*) AS n FROM active_conflicts WHERE season_id=? AND outcome='good'",
+            (season["id"],),
+        ).fetchone()["n"]
+        return {
+            "name": avatar["name"],
+            "money": state.get("money", 0),
+            "money_unit": scenario.get("money_unit", ""),
+            "health": state.get("health", 80),
+            "mood": state.get("mood", "담담함"),
+            "history": history,
+            "cast": cast,
+            "conflicts": actives,
+            "scars": counts["scars"] or 0,
+            "overcome": overcome,
+            "goal": season["goal"],
+            "milestone_idx": season["milestone_idx"],
+            "milestones": season["milestones"],
+            "interventions_left": season["interventions_left"],
+        }
 
 
 @app.get("/api/feed")

@@ -79,6 +79,10 @@
     <section id="pane-feed" class="pane hidden">
       <div id="feed-list" class="feed"></div>
     </section>
+    <!-- 상태 (대시보드) -->
+    <section id="pane-dash" class="pane hidden">
+      <div id="dash-body"></div>
+    </section>
     <!-- 이야기 -->
     <section id="pane-story" class="pane hidden">
       <div id="story-body"></div>
@@ -88,6 +92,7 @@
   <nav>
     <button data-pane="now" class="tab active">지금</button>
     <button data-pane="feed" class="tab">그동안 <span id="unread" class="badge hidden"></span></button>
+    <button data-pane="dash" class="tab">상태</button>
     <button data-pane="story" class="tab">이야기</button>
   </nav>
 

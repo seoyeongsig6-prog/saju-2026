@@ -97,6 +97,40 @@ def active_conflict_note(c: sqlite3.Connection, avatar_id: int, cards_by_id: dic
     return " / ".join(notes)
 
 
+MONEY_DELTA = {"소": 0.03, "중": 0.08, "대": 0.15}          # 극복 시 증가율
+MONEY_LOSS = {"소": 0.05, "중": 0.12, "대": 0.20}           # 패배 시 감소율
+HEALTH_LOSS = {"소": 4, "중": 8, "대": 14}
+
+
+def _load_state(avatar: dict, scenario: dict) -> dict:
+    state = json.loads(avatar.get("state_json") or "{}")
+    state.setdefault("money", scenario.get("money_start", 100))
+    state.setdefault("health", 80)
+    state.setdefault("mood", "담담함")
+    return state
+
+
+def _save_state(c, avatar: dict, state: dict, day: str) -> None:
+    c.execute("UPDATE avatars SET state_json=? WHERE id=?",
+              (json.dumps(state, ensure_ascii=False), avatar["id"]))
+    avatar["state_json"] = json.dumps(state, ensure_ascii=False)
+    c.execute(
+        "INSERT INTO state_history (avatar_id, day, money, health) VALUES (?,?,?,?) "
+        "ON CONFLICT(avatar_id, day) DO UPDATE SET money=excluded.money, health=excluded.health",
+        (avatar["id"], day, int(state["money"]), int(state["health"])),
+    )
+
+
+def _touch_cast(c, avatar_id: int, day: str, rng: random.Random, delta: int) -> None:
+    """사건을 함께 겪은 지인 — 마지막 만남과 친밀도가 움직인다."""
+    rows = c.execute("SELECT id, affinity FROM cast_members WHERE avatar_id=?", (avatar_id,)).fetchall()
+    if not rows:
+        return
+    m = rng.choice(rows)
+    c.execute("UPDATE cast_members SET last_met=?, affinity=? WHERE id=?",
+              (day, max(0, min(100, m["affinity"] + delta)), m["id"]))
+
+
 def daily_tick(
     c: sqlite3.Connection, avatar: dict, season: dict, day: str,
     scenario: dict, cards: list, cards_by_id: dict, slots: list,
@@ -104,6 +138,7 @@ def daily_tick(
     """하루치 갈등 전개. 반환: {'milestone_advanced': bool, 'had_event': bool}"""
     rng = random.Random(f"{avatar['id']}:{day}:tick")
     result = {"milestone_advanced": False, "had_event": False}
+    state = _load_state(avatar, scenario)
 
     active = c.execute(
         "SELECT * FROM active_conflicts WHERE avatar_id=? AND stage != 'done'", (avatar["id"],)
@@ -116,12 +151,15 @@ def daily_tick(
             continue
         if rng.random() > 0.65:  # 오늘은 조용히 지나간다 → 달성 시점의 예측 불가성
             continue
+        scale = card.get("scale", "중")
         if cf["stage"] in ("seed", "rise"):
             nxt = STAGES[STAGES.index(cf["stage"]) + 1]
             c.execute("UPDATE active_conflicts SET stage=? WHERE id=?", (nxt, cf["id"]))
             body = narrative.beat_text(c, avatar, scenario, nxt, card)
             _emit(c, avatar, season, day, "beat", f"{card['title']} — {STAGE_LABEL[nxt]}", body)
             result["had_event"] = True
+            state["mood"] = "긴장" if nxt == "climax" else "불안"
+            _touch_cast(c, avatar["id"], day, rng, -1)
         elif cf["stage"] == "climax":
             # 해소 판정 — 아바타의 힘 + (있다면) 행운의 보정
             success = rng.random() < min(0.55 + cf["boost"], 0.97)
@@ -133,6 +171,16 @@ def daily_tick(
             mark = "극복" if success else "패배"
             _emit(c, avatar, season, day, "beat", f"{card['title']} — {mark}", body)
             result["had_event"] = True
+            if success:
+                state["money"] = int(state["money"] * (1 + MONEY_DELTA[scale]))
+                state["health"] = min(100, state["health"] + 5)
+                state["mood"] = "뿌듯함" if scale != "대" else "벅찬 안도"
+                _touch_cast(c, avatar["id"], day, rng, +4)
+            else:
+                state["money"] = max(0, int(state["money"] * (1 - MONEY_LOSS[scale])))
+                state["health"] = max(5, state["health"] - HEALTH_LOSS[scale])
+                state["mood"] = "상심"
+                _touch_cast(c, avatar["id"], day, rng, -2)
             if success and card.get("scale") in ("중", "대"):
                 new_idx = season["milestone_idx"] + 1
                 c.execute("UPDATE seasons SET milestone_idx=? WHERE id=?", (new_idx, season["id"]))
@@ -173,9 +221,14 @@ def daily_tick(
             _emit(c, avatar, season, day, "beat", f"{card['title']} — 조짐", body)
             result["had_event"] = True
 
-    # 3) 갈등이 조용한 날엔 잔잔한 일상 한 줄
+    # 3) 갈등이 조용한 날엔 잔잔한 일상 한 줄 — 몸도 마음도 조금 회복된다
     if not result["had_event"]:
         _emit(c, avatar, season, day, "daily", "오늘",
               narrative.daily_text(avatar, scenario, slots, rng))
+        state["health"] = min(100, state["health"] + 3)
+        if state["mood"] in ("상심", "불안", "긴장"):
+            state["mood"] = "차분함"
+        _touch_cast(c, avatar["id"], day, rng, +1)
 
+    _save_state(c, avatar, state, day)
     return result

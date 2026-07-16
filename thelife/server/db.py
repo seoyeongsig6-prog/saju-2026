@@ -87,6 +87,13 @@ CREATE TABLE IF NOT EXISTS gauge (
     ads_today INTEGER DEFAULT 0,
     ads_date TEXT
 );
+CREATE TABLE IF NOT EXISTS state_history (
+    avatar_id INTEGER NOT NULL,
+    day TEXT NOT NULL,
+    money INTEGER,
+    health INTEGER,
+    PRIMARY KEY (avatar_id, day)
+);
 """
 
 
@@ -101,10 +108,14 @@ def init() -> None:
     with connect() as c:
         c.executescript(SCHEMA)
         c.execute("INSERT OR IGNORE INTO gauge (id, luck) VALUES (1, 30)")
-        try:  # 기존 DB 마이그레이션
-            c.execute("ALTER TABLE active_conflicts ADD COLUMN card_json TEXT")
-        except Exception:
-            pass
+        for ddl in (  # 기존 DB 마이그레이션
+            "ALTER TABLE active_conflicts ADD COLUMN card_json TEXT",
+            "ALTER TABLE cast_members ADD COLUMN last_met TEXT",
+        ):
+            try:
+                c.execute(ddl)
+            except Exception:
+                pass
 
 
 def kv_get(c: sqlite3.Connection, k: str, default: str = "") -> str:

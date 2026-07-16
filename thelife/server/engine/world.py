@@ -115,6 +115,7 @@ def build_scenario(form: dict) -> dict:
         "persona": f"{age or '30'}세. {persona or '성실하고 다정하다'}",
         "style": "담백하고 따뜻한 한국어. 직업의 디테일을 살린다.",
         "money_unit": "원" if "현대" in mock_era else "냥",
+        "money_start": 3000000 if "현대" in mock_era else 200,
         "cast": [
             {"name": "박씨", "role": f"오랜 동료 {mock_occ}", "affinity": 70, "note": "무뚝뚝하지만 정이 깊다"},
             {"name": "순임", "role": "단골 상인", "affinity": 60, "note": "소문에 밝다"},
@@ -175,6 +176,8 @@ JSON 스키마 (다른 텍스트 없이 JSON만 출력):
 - milestones는 목표까지의 단계 4개. 마지막은 목표 그 자체.
 - schedule은 그 인물의 현실적인 하루 6~8개 슬롯 (t는 "HH:MM").
 - luck_dict는 그 세계에서 행운이 나타나는 그럴듯한 형태 (소/중/대 각 2~3개).
+- money_unit은 그 세계의 돈 단위, money_start는 이 인물의 시작 재산
+  (그 신분·시대에 맞는 현실적인 숫자).
 - 출력은 오직 유효한 JSON 하나. 설명·주석·코드펜스 금지."""
 
     pack = None

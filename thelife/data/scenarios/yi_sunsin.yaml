@@ -7,6 +7,7 @@ goal: "명량에서 조선 수군을 지켜낸다"
 persona: "과묵하고 강직하다. 매일 일기를 쓴다. 부하를 아끼되 군율에 엄하고, 물길을 읽는 눈이 깊다."
 style: "절제된 사극 톤. 짧은 문장. 바다와 물때의 감각을 살린다."
 money_unit: "냥"
+money_start: 300
 cast:
   - { name: "송희립", role: "군관", affinity: 75, note: "직언을 아끼지 않는 참모" }
   - { name: "나대용", role: "선박 기술자", affinity: 68, note: "배 만드는 일에 미쳐 있다" }

@@ -103,11 +103,90 @@ document.querySelectorAll(".tab").forEach((t) => {
 function openPane(name) {
   document.querySelectorAll(".tab").forEach((t) =>
     t.classList.toggle("active", t.dataset.pane === name));
-  ["now", "feed", "story"].forEach((p) =>
+  ["now", "feed", "dash", "story"].forEach((p) =>
     $(`#pane-${p}`).classList.toggle("hidden", p !== name));
   if (name === "feed") loadFeed();
+  if (name === "dash") loadDash();
   if (name === "story") loadStory();
   if (name === "now") loadNow();
+}
+
+/* ---------- 상태 (대시보드) ---------- */
+function fmtMoney(n, unit) {
+  return `${Number(n).toLocaleString("ko-KR")}${unit}`;
+}
+function sparkline(hist, key, w = 150, h = 36) {
+  if (!hist || hist.length < 2) return "";
+  const vals = hist.map((r) => r[key]);
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const span = max - min || 1;
+  const pts = vals.map((v, i) =>
+    `${(i / (vals.length - 1)) * w},${h - 4 - ((v - min) / span) * (h - 8)}`).join(" ");
+  const up = vals[vals.length - 1] >= vals[0];
+  return `<svg viewBox="0 0 ${w} ${h}" class="spark"><polyline points="${pts}"
+    fill="none" stroke="${up ? "var(--accent)" : "var(--bad)"}" stroke-width="2"/></svg>`;
+}
+async function loadDash() {
+  const d = await api("/api/dashboard");
+  const box = $("#dash-body");
+  if (!d || !d.name) { box.innerHTML = ""; return; }
+  const hist = d.history || [];
+  const prev = hist.length > 1 ? hist[hist.length - 2] : null;
+  const moneyDiff = prev ? d.money - prev.money : 0;
+  const arrow = moneyDiff > 0 ? `<span class="up">▲ ${fmtMoney(moneyDiff, "")}</span>`
+    : moneyDiff < 0 ? `<span class="down">▼ ${fmtMoney(-moneyDiff, "")}</span>` : `<span class="flat">—</span>`;
+  const total = d.milestones.length || 1;
+
+  box.innerHTML = `
+    <div class="stat-grid">
+      <div class="stat wide">
+        <div class="stat-label">재산</div>
+        <div class="stat-value">${fmtMoney(d.money, d.money_unit)} ${arrow}</div>
+        ${sparkline(hist, "money")}
+      </div>
+      <div class="stat">
+        <div class="stat-label">체력</div>
+        <div class="stat-value">${d.health}</div>
+        <div class="hbar"><div class="hbar-fill ${d.health < 40 ? "low" : ""}" style="width:${d.health}%"></div></div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">지금의 마음</div>
+        <div class="stat-value mood">${d.mood}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">이겨낸 것 / 잃은 것</div>
+        <div class="stat-value">${d.overcome} <span class="dim">/</span> <span class="down">${d.scars}</span></div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">목표까지</div>
+        <div class="stat-value">${d.milestone_idx}<span class="dim">/${total}</span></div>
+        <div class="hbar"><div class="hbar-fill gold" style="width:${(d.milestone_idx / total) * 100}%"></div></div>
+      </div>
+    </div>
+
+    <div class="story-h">곁의 사람들</div>
+    <div class="cast-list">
+      ${d.cast.map((m) => `
+        <div class="cast-row">
+          <div class="cast-name">${m.name}<small> · ${m.role}</small></div>
+          <div class="cast-meta">${m.days_ago === null ? "아직 소식 없음" : m.days_ago === 0 ? "오늘 만남" : m.days_ago + "일 전"}</div>
+          <div class="abar"><div class="abar-fill" style="width:${m.affinity}%"></div></div>
+          <div class="cast-note">${m.note || ""}</div>
+        </div>`).join("")}
+    </div>
+
+    <div class="story-h">지금 그를 붙잡고 있는 것</div>
+    ${d.conflicts.length === 0 ? `<p class="hint">지금은 고요합니다. 폭풍 전일 수도 있고요.</p>` :
+      d.conflicts.map((cf) => `
+      <div class="conf-row">
+        <span>${cf.title}</span>
+        <span class="stages">
+          ${["seed", "rise", "climax"].map((s, i) =>
+            `<span class="sdot ${["seed","rise","climax"].indexOf(cf.stage) >= i ? "on" : ""}"></span>`).join("")}
+          <small>${cf.stage_label}</small>
+        </span>
+      </div>`).join("")}
+  `;
 }
 
 /* ---------- 지금 (스트리밍) ---------- */
