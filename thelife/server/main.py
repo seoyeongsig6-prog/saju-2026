@@ -24,29 +24,23 @@ CARDS_BY_ID = world.load_conflict_cards()
 
 
 def _loaded(c):
-    """아바타 + 시나리오 + 시즌 로드 후 따라잡기 시뮬레이션까지."""
+    """아바타 + 시나리오 + 시즌 로드 후 따라잡기 시뮬레이션까지.
+    반환: (avatar, scenario, season, cards_by_id) — 즉석 생성 카드 포함 색인."""
     avatar, scenario, season = season_mod.load_avatar(c)
+    by_id = CARDS_BY_ID
     if avatar:
-        season_mod.catch_up(c, avatar, scenario, season,
-                            world.cards_for(scenario, CARDS_BY_ID), CARDS_BY_ID)
-    return avatar, scenario, season
+        cards, by_id = world.scenario_card_index(scenario, CARDS_BY_ID)
+        season_mod.catch_up(c, avatar, scenario, season, cards, by_id)
+    return avatar, scenario, season, by_id
 
 
-class SearchBody(BaseModel):
+class CreateBody(BaseModel):
     name: str
-
-
-class CustomBody(BaseModel):
-    name: str
-    age: str = "30"
+    age: str = ""
     occupation: str = ""
-    era: str = "현대 한국"
+    era: str = ""
     persona: str = ""
-    goal: str
-
-
-class PresetBody(BaseModel):
-    scenario_id: str
+    goal: str = ""
 
 
 class SizeBody(BaseModel):
@@ -79,16 +73,28 @@ def presets():
     }
 
 
-@app.post("/api/search_person")
-def search_person(body: SearchBody):
+@app.post("/api/avatar/create")
+def create_avatar(body: CreateBody):
+    """자유 입력 아바타 생성 — 누구든, 어떤 목표든.
+    이름이 예시 인물과 일치하고 목표를 따로 쓰지 않았으면 정성 제작 팩을 쓰고,
+    그 외에는 LLM이 그 삶의 세계를 즉석에서 짓는다."""
     name = body.name.strip()
-    for s in SCENARIOS.values():
-        if s["name"] == name:
-            return {"found": True, "scenario_id": s["id"]}
+    if not name:
+        return {"ok": False, "error": "이름을 알려주세요."}
     if world.is_living_famous(name):
-        return {"found": False, "blocked": True, "message": world.BLOCK_MESSAGE}
-    return {"found": False, "blocked": False,
-            "message": "아직 이곳에 준비되지 않은 삶이에요. 프로토타입에서는 목록의 인물과 커스텀 아바타를 만날 수 있어요."}
+        return {"ok": False, "blocked": True, "message": world.BLOCK_MESSAGE}
+
+    goal = body.goal.strip()
+    for s in SCENARIOS.values():
+        if s["name"] == name and (not goal or goal == s["goal"]):
+            with db.connect() as c:
+                _create_avatar(c, s, s["type"])
+            return {"ok": True}
+
+    scenario = world.build_scenario(body.model_dump())
+    with db.connect() as c:
+        _create_avatar(c, scenario, scenario.get("type", "현실"))
+    return {"ok": True}
 
 
 def _create_avatar(c, scenario: dict, category: str):
@@ -120,30 +126,10 @@ def _create_avatar(c, scenario: dict, category: str):
     return avatar_id
 
 
-@app.post("/api/avatar/preset")
-def create_preset(body: PresetBody):
-    scenario = SCENARIOS.get(body.scenario_id)
-    if not scenario:
-        return {"ok": False, "error": "알 수 없는 시나리오"}
-    with db.connect() as c:
-        _create_avatar(c, scenario, scenario["type"])
-    return {"ok": True}
-
-
-@app.post("/api/avatar/custom")
-def create_custom(body: CustomBody):
-    if world.is_living_famous(body.name):
-        return {"ok": False, "blocked": True, "message": world.BLOCK_MESSAGE}
-    scenario = world.build_custom_scenario(body.model_dump())
-    with db.connect() as c:
-        _create_avatar(c, scenario, "현실")
-    return {"ok": True}
-
-
 @app.get("/api/state")
 def state():
     with db.connect() as c:
-        avatar, scenario, season = _loaded(c)
+        avatar, scenario, season, _ = _loaded(c)
         if not avatar:
             return {"avatar": None}
         g = intervention.gauge(c)
@@ -173,14 +159,14 @@ def state():
 def now_scene():
     """'지금' — 현재 진행형 라이브 장면 (스트리밍)."""
     with db.connect() as c:
-        avatar, scenario, season = _loaded(c)
+        avatar, scenario, season, by_id = _loaded(c)
         if not avatar:
             return {"error": "아바타가 없어요"}
         vnow = db.virtual_now(c)
         day, hhmm = vnow.date().isoformat(), vnow.strftime("%H:%M")
         slots = schedule.ensure_schedule(c, avatar["id"], scenario, day)
         slot = schedule.current_slot(slots, hhmm)
-        note = conflicts.active_conflict_note(c, avatar["id"], CARDS_BY_ID)
+        note = conflicts.active_conflict_note(c, avatar["id"], by_id)
         c.execute("UPDATE avatars SET last_seen_at=datetime('now') WHERE id=?", (avatar["id"],))
         c.commit()
         gen = list(  # 커넥션이 닫히기 전에 컨텍스트 준비를 끝낸다
@@ -200,7 +186,7 @@ def now_scene():
 def feed():
     """'그동안' — 마지막 방문 이후의 소식들 (읽음 처리)."""
     with db.connect() as c:
-        avatar, scenario, season = _loaded(c)
+        avatar, scenario, season, _ = _loaded(c)
         if not avatar:
             return {"events": []}
         rows = c.execute(
@@ -215,7 +201,7 @@ def feed():
 def story():
     """'이야기' — 마일스톤 진행, 대사건 아카이브, 완결 전기."""
     with db.connect() as c:
-        avatar, scenario, season = _loaded(c)
+        avatar, scenario, season, _ = _loaded(c)
         if not avatar:
             return {"episodes": []}
         rows = c.execute(
@@ -237,10 +223,10 @@ def story():
 @app.post("/api/intervene")
 def intervene(body: SizeBody):
     with db.connect() as c:
-        avatar, scenario, season = _loaded(c)
+        avatar, scenario, season, by_id = _loaded(c)
         if not avatar:
             return {"ok": False, "error": "아바타가 없어요"}
-        return intervention.intervene(c, avatar, scenario, season, CARDS_BY_ID, body.size)
+        return intervention.intervene(c, avatar, scenario, season, by_id, body.size)
 
 
 @app.post("/api/ad")
@@ -258,7 +244,7 @@ def buy():
 @app.post("/api/season/next")
 def season_next(body: ContinueBody):
     with db.connect() as c:
-        avatar, scenario, season = _loaded(c)
+        avatar, scenario, season, _ = _loaded(c)
         if not avatar or season["status"] != "done":
             return {"ok": False, "error": "아직 시즌이 진행 중이에요"}
         if body.mode == "new":
@@ -284,7 +270,7 @@ def timewarp(body: WarpBody):
     with db.connect() as c:
         cur = int(db.kv_get(c, "time_offset_days", "0"))
         db.kv_set(c, "time_offset_days", str(cur + max(0, body.days)))
-        avatar, scenario, season = _loaded(c)
+        avatar, scenario, season, _ = _loaded(c)
     return {"ok": True, "offset_days": cur + body.days}
 
 

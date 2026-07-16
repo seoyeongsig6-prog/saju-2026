@@ -28,50 +28,40 @@ async function showCreate() {
   list.innerHTML = "";
   data.presets.forEach((p) => {
     const b = document.createElement("button");
-    b.className = "preset";
-    b.innerHTML = `<span class="cat">${p.type}</span><b>${p.name}</b>
-      <small>${p.era}<br>목표 — ${p.goal}</small>`;
-    b.onclick = async () => {
-      b.disabled = true; b.querySelector("b").textContent = "세계를 만드는 중…";
-      await api("/api/avatar/preset", { method: "POST", body: JSON.stringify({ scenario_id: p.id }) });
-      boot();
+    b.className = "chip";
+    b.textContent = `${p.name} · ${p.goal.length > 14 ? p.goal.slice(0, 14) + "…" : p.goal}`;
+    b.onclick = () => {
+      $("#c-name").value = p.name;
+      $("#c-goal").value = p.goal;
+      $("#c-name").scrollIntoView({ behavior: "smooth", block: "center" });
     };
     list.appendChild(b);
   });
 }
 
-$("#btn-search").onclick = async () => {
-  const name = $("#person-search").value.trim();
-  if (!name) return;
-  const r = await api("/api/search_person", { method: "POST", body: JSON.stringify({ name }) });
-  const box = $("#search-result");
-  if (r.found) {
-    box.classList.add("hidden");
-    await api("/api/avatar/preset", { method: "POST", body: JSON.stringify({ scenario_id: r.scenario_id }) });
-    boot();
-    return;
-  }
-  box.classList.remove("hidden");
-  box.textContent = r.message;
-  if (r.blocked) box.style.borderColor = "var(--accent)";
+$("#btn-more").onclick = () => {
+  const f = $("#more-fields");
+  const open = f.classList.toggle("hidden");
+  $("#btn-more").textContent = open ? "자세히 정하기 ▾ (선택)" : "자세히 정하기 ▴";
 };
 
 $("#btn-custom").onclick = async () => {
   const form = {
     name: $("#c-name").value.trim(),
-    age: $("#c-age").value.trim() || "30",
-    occupation: $("#c-occupation").value.trim() || "자유인",
-    era: $("#c-era").value,
-    persona: $("#c-persona").value.trim() || "성실하고 다정하다",
+    age: $("#c-age").value.trim(),
+    occupation: $("#c-occupation").value.trim(),
+    era: $("#c-era").value.trim(),
+    persona: $("#c-persona").value.trim(),
     goal: $("#c-goal").value.trim(),
   };
-  if (!form.name || !form.goal) { notice("이름과 인생 목표를 알려주세요."); return; }
+  if (!form.name) { notice("이름을 알려주세요. 누구의 삶이든 좋아요."); return; }
   $("#btn-custom").disabled = true;
-  $("#btn-custom").textContent = "세계를 만드는 중…";
-  const r = await api("/api/avatar/custom", { method: "POST", body: JSON.stringify(form) });
+  $("#btn-custom").textContent = "그의 세계를 짓는 중… (10초쯤 걸려요)";
+  const r = await api("/api/avatar/create", { method: "POST", body: JSON.stringify(form) });
   $("#btn-custom").disabled = false;
   $("#btn-custom").textContent = "이 삶을 시작한다";
   if (r.blocked) { notice(r.message); return; }
+  if (!r.ok) { notice(r.error || "잠시 후 다시 시도해 주세요."); return; }
   boot();
 };
 

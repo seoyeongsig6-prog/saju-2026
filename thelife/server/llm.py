@@ -34,11 +34,11 @@ class LLM:
     def is_mock(self) -> bool:
         return self.client is None
 
-    def write(self, prompt: str, mock_text: str) -> str:
+    def write(self, prompt: str, mock_text: str, max_tokens: int = 1200) -> str:
         try:
             if self.provider == "anthropic":
                 msg = self.client.messages.create(
-                    model=CLAUDE_MODEL, max_tokens=1200,
+                    model=CLAUDE_MODEL, max_tokens=max_tokens,
                     messages=[{"role": "user", "content": prompt}],
                 )
                 text = "".join(b.text for b in msg.content if b.type == "text")

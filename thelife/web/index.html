@@ -16,35 +16,32 @@
   </div>
 
   <div class="create-section">
-    <h2>어떤 삶을 지켜볼까요?</h2>
-    <div class="search-row">
-      <input id="person-search" placeholder="실존 인물 이름 검색 (예: 이순신)">
-      <button id="btn-search">검색</button>
+    <h2>누구의 삶을 지켜볼까요?</h2>
+    <p class="hint">역사 속 실존 인물의 이름을 쓰면 그의 실제 생애가,<br>
+       상상의 이름을 쓰면 당신이 그리는 삶이 세계가 됩니다.</p>
+    <div class="form">
+      <input id="c-name" placeholder="이름 — 누구든 (예: 이순신, 김철수, 나…)">
+      <input id="c-goal" placeholder="인생 목표 — 자유롭게 쓰세요 (비우면 그다운 목표를 정해줘요)">
+      <button id="btn-more" class="ghost small">자세히 정하기 ▾ (선택)</button>
+      <div id="more-fields" class="hidden form">
+        <div class="row2">
+          <input id="c-age" placeholder="나이">
+          <input id="c-occupation" placeholder="직업 (예: 목수, 어부, 해적…)">
+        </div>
+        <input id="c-era" placeholder="시대·배경 — 자유롭게 (예: 1597년 조선, 대항해시대, 현대 서울)">
+        <input id="c-persona" placeholder="성격 (예: 신중하지만 정이 많다)">
+      </div>
+      <button id="btn-custom" class="primary">이 삶을 시작한다</button>
     </div>
     <div id="search-result" class="search-result hidden"></div>
-    <div id="preset-list" class="preset-list"></div>
   </div>
 
   <div class="create-section">
-    <h2>또는, 나의 아바타 만들기</h2>
-    <div class="form">
-      <input id="c-name" placeholder="이름">
-      <div class="row2">
-        <input id="c-age" placeholder="나이 (예: 30)">
-        <input id="c-occupation" placeholder="직업 (예: 목수)">
-      </div>
-      <select id="c-era">
-        <option value="현대 한국">현대 한국</option>
-        <option value="조선 시대">조선 시대</option>
-        <option value="1980년대 한국">1980년대 한국</option>
-        <option value="중세 유럽">중세 유럽</option>
-        <option value="대항해시대">대항해시대</option>
-      </select>
-      <input id="c-persona" placeholder="성격 (예: 신중하지만 정이 많다)">
-      <input id="c-goal" placeholder="인생 목표 (예: 내 공방을 연다)">
-      <button id="btn-custom" class="primary">이 삶을 시작한다</button>
-    </div>
+    <h2>막막하면, 예시로 시작해보기</h2>
+    <div id="preset-list" class="chip-row"></div>
+    <p class="hint">누르면 위 칸이 채워질 뿐이에요 — 마음대로 고쳐 쓰세요.</p>
   </div>
+
   <p class="fine">이 게임 속의 나에겐 단 한 발자국도 접근할 수 없습니다.<br>당신은 그저 지켜볼 뿐 — 시즌에 딱 세 번의 행운을 빼고는.</p>
 </div>
 
