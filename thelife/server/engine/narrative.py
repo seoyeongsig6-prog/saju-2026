@@ -60,6 +60,7 @@ def scene_stream(
 - 대화는 "이름: "대사"" 형식의 줄로. 지문은 그냥 문장으로.
 - 직업과 시대의 디테일(도구, 냄새, 소리, 물때, 돈 단위)을 살려라.
 - 진행 중인 갈등이 있으면 대화에 그 긴장이 배어나게 하되, 해결하지 마라.
+- 달력 날짜(년·월·일)는 절대 언급하지 마라. 시간 감각은 'N일차'와 시각뿐이다.
 - 마지막 줄은 다음이 살짝 궁금해지게 끝내라. 장면 밖 설명은 금지."""
     yield from llm.stream(prompt, mock_text=mock)
 
@@ -94,7 +95,7 @@ def beat_text(
 {"[결과] 아바타가 스스로의 힘으로 이겨냈다. 극복의 방식에 이 인물다움이 드러나게." if outcome == "good" else ""}
 {"[결과] 이번에는 졌다. 잃은 것을 구체적으로. 그러나 이야기가 끝나지 않았음을 암시하라." if outcome == "bad" else ""}
 
-3~5문장. 다음이 궁금하게 끝내라. 설명 없이 소식 본문만."""
+3~5문장. 다음이 궁금하게 끝내라. 달력 날짜(년·월·일)는 언급하지 마라. 설명 없이 소식 본문만."""
     return llm.write(prompt, mock_text=mock)
 
 
@@ -191,11 +192,20 @@ def generate_conflict(
 
 def biography_text(c: sqlite3.Connection, avatar: dict, scenario: dict, season: dict) -> str:
     """시즌 종료 — 완결된 전기."""
+    import datetime as _dt
+
+    def _rel(day: str) -> str:
+        try:
+            n = (_dt.date.fromisoformat(day) - _dt.date.fromisoformat(season["started_day"])).days + 1
+            return f"{max(1, n)}일차"
+        except Exception:
+            return "어느 날"
+
     rows = c.execute(
         "SELECT day, kind, title, body FROM events WHERE season_id=? ORDER BY id",
         (season["id"],),
     ).fetchall()
-    log = "\n".join(f"- [{r['day']}] {r['title']}" for r in rows if r["kind"] != "daily")[:4000]
+    log = "\n".join(f"- [{_rel(r['day'])}] {r['title']}" for r in rows if r["kind"] != "daily")[:4000]
 
     mock = (
         f"『{avatar['name']} — {season['goal']}』\n\n"

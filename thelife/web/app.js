@@ -9,6 +9,14 @@ const api = async (path, opts = {}) => {
 
 let STATE = null;
 
+/* 달력 날짜 대신 '삶의 N일차'. 한 달을 넘으면 개월로 접는다 */
+function dayLabel(n) {
+  n = Math.max(1, n || 1);
+  if (n <= 30) return `${n}일차`;
+  const m = Math.floor((n - 1) / 30), d = ((n - 1) % 30) + 1;
+  return `${m}개월 ${d}일차`;
+}
+
 /* ---------- 부팅 ---------- */
 async function boot() {
   STATE = await api("/api/state");
@@ -85,7 +93,7 @@ function renderHeader() {
   const s = STATE;
   $("#h-name").textContent = s.avatar.name;
   $("#h-goal").textContent = `시즌 ${s.season.no} 목표 — ${s.season.goal}`;
-  $("#h-day").textContent = `${s.season.day_count}일째의 삶 · ${s.vtime}`;
+  $("#h-day").textContent = `${dayLabel(s.season.day_count)}의 삶 · ${s.vtime}`;
   $("#h-luck").textContent = s.gauge.luck;
   const slots = $("#h-slots");
   slots.innerHTML = "";
@@ -203,7 +211,7 @@ async function loadNow() {
   streaming = true;
   const box = $("#now-scene");
   box.innerHTML = "";
-  $("#now-time").textContent = `${STATE.vday} ${STATE.vtime} — 지금 이 순간`;
+  $("#now-time").textContent = `${dayLabel(STATE.season.day_count)} ${STATE.vtime} — 지금 이 순간`;
   try {
     const r = await fetch("/api/now");
     const reader = r.body.getReader();
@@ -250,12 +258,12 @@ async function loadFeed() {
   box.innerHTML = "";
   let lastDay = null;
   data.events.forEach((e) => {
-    if (e.day !== lastDay) {
+    if (e.day_no !== lastDay) {
       const sep = document.createElement("div");
       sep.className = "day-sep";
-      sep.textContent = e.day;
+      sep.textContent = dayLabel(e.day_no);
       box.appendChild(sep);
-      lastDay = e.day;
+      lastDay = e.day_no;
     }
     const c = document.createElement("div");
     c.className = `card k-${e.kind}` + (e.read ? "" : " unread");
@@ -315,7 +323,7 @@ async function loadStory() {
     const c = document.createElement("div");
     c.className = `card k-${e.kind}`;
     c.style.marginBottom = "10px";
-    c.innerHTML = `<h4>${e.title} <small style="color:var(--dim)">${e.day}</small></h4><p>${e.body || ""}</p>`;
+    c.innerHTML = `<h4>${e.title} <small style="color:var(--dim)">${dayLabel(e.day_no)}</small></h4><p>${e.body || ""}</p>`;
     box.appendChild(c);
   });
 }

@@ -38,6 +38,15 @@ SCENARIOS = world.load_scenarios()
 CARDS_BY_ID = world.load_conflict_cards()
 
 
+def _day_no(start_day: str, day: str) -> int:
+    """달력 날짜 대신 '삶의 N일차' — 시즌 시작 기준."""
+    import datetime as _dt
+    try:
+        return max(1, (_dt.date.fromisoformat(day) - _dt.date.fromisoformat(start_day)).days + 1)
+    except Exception:
+        return 1
+
+
 def _loaded(c):
     """아바타 + 시나리오 + 시즌 로드 후 따라잡기 시뮬레이션까지.
     반환: (avatar, scenario, season, cards_by_id) — 즉석 생성 카드 포함 색인."""
@@ -187,6 +196,7 @@ def now_scene():
         slots = schedule.ensure_schedule(c, avatar["id"], scenario, day)
         slot = schedule.current_slot(slots, hhmm)
         note = conflicts.active_conflict_note(c, avatar["id"], by_id)
+        day = f"{_day_no(season['started_day'], day)}일차"  # 프롬프트에도 달력 날짜 대신
         c.execute("UPDATE avatars SET last_seen_at=datetime('now') WHERE id=?", (avatar["id"],))
         c.commit()
         gen = list(  # 커넥션이 닫히기 전에 컨텍스트 준비를 끝낸다
@@ -268,11 +278,18 @@ def feed():
         if not avatar:
             return {"events": []}
         rows = c.execute(
-            "SELECT id, day, kind, title, body, read FROM events WHERE avatar_id=? "
+            "SELECT id, day, season_id, kind, title, body, read FROM events WHERE avatar_id=? "
             "ORDER BY id DESC LIMIT 60", (avatar["id"],),
         ).fetchall()
         c.execute("UPDATE events SET read=1 WHERE avatar_id=?", (avatar["id"],))
-        return {"events": [dict(r) for r in rows]}
+        starts = {r["id"]: r["started_day"] for r in c.execute(
+            "SELECT id, started_day FROM seasons WHERE avatar_id=?", (avatar["id"],)).fetchall()}
+        events = []
+        for r in rows:
+            e = dict(r)
+            e["day_no"] = _day_no(starts.get(r["season_id"], r["day"]), r["day"])
+            events.append(e)
+        return {"events": events}
 
 
 @app.get("/api/story")
@@ -291,7 +308,8 @@ def story():
             "status": season["status"],
             "milestones": season["milestones"],
             "milestone_idx": season["milestone_idx"],
-            "episodes": [dict(r) for r in rows],
+            "episodes": [{**dict(r), "day_no": _day_no(season["started_day"], r["day"])}
+                         for r in rows],
             "biography": season.get("biography") or (
                 c.execute("SELECT biography FROM seasons WHERE id=?", (season["id"],)).fetchone()["biography"]
             ),
