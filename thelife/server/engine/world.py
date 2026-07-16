@@ -64,6 +64,19 @@ def is_living_famous(name: str) -> bool:
     return answer.strip().upper().startswith("YES")
 
 
+def parse_llm_json(raw: str):
+    """LLM 출력에서 JSON을 견고하게 뽑는다 (코드펜스·앞뒤 잡담·마지막 쉼표 복구)."""
+    raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    start, end = raw.find("{"), raw.rfind("}")
+    if start == -1 or end <= start:
+        return None
+    raw = re.sub(r",\s*([}\]])", r"\1", raw[start:end + 1])
+    try:
+        return json.loads(raw)
+    except Exception:
+        return None
+
+
 def scenario_card_index(scenario: dict, global_cards: dict) -> tuple:
     """이 시나리오에서 쓸 수 있는 갈등 카드 목록 + id 색인.
     아바타 생성 시 즉석 생성된 카드(scenario['cards'])도 은행에 합류한다."""
@@ -128,24 +141,6 @@ def build_scenario(form: dict) -> dict:
     if llm.is_mock:
         return mock
 
-    def parse_json(raw: str):
-        raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        start, end = raw.find("{"), raw.rfind("}")
-        if start == -1 or end <= start:
-            return None
-        raw = raw[start:end + 1]
-        raw = re.sub(r",\s*([}\]])", r"\1", raw)  # 흔한 오류: 마지막 쉼표
-        try:
-            return json.loads(raw)
-        except Exception:
-            return None
-
-    card_schema = {
-        "id": "gen_1", "type": "관계|재정|신체|자연|권력|내면", "scale": "소|중|대",
-        "min_act": 1, "title": "제목", "seed": "조짐", "rise": "고조", "climax": "절정",
-        "resolve_good": "스스로의 힘으로 이겨낸 결말", "resolve_bad": "잃은 것이 생기는 결말",
-        "luck_hook": "행운이 닿으면 벌어지는 일",
-    }
     known = []
     if age: known.append(f"나이 {age}")
     if occupation: known.append(f"직업 {occupation}")
@@ -172,22 +167,20 @@ def build_scenario(form: dict) -> dict:
 
 JSON 스키마 (다른 텍스트 없이 JSON만 출력):
 {json.dumps({k: v for k, v in mock.items() if k != 'cards'}, ensure_ascii=False, indent=1)}
-여기에 더해 "cards" 필드: 이 인물 전용 갈등 카드 5장의 배열. 각 카드 스키마:
-{json.dumps(card_schema, ensure_ascii=False)}
 
 요구사항:
+- 이것은 새 정보를 창작하는 일이 아니라, 당신이 이미 아는 이 인물·세계의 사실을
+  게임이 기억할 수 있는 형식으로 '고정'하는 일이다.
 - cast는 그 세계에 실재할 법한(역사 인물이면 실제 인물) 고정 인물 3~4명.
 - milestones는 목표까지의 단계 4개. 마지막은 목표 그 자체.
 - schedule은 그 인물의 현실적인 하루 6~8개 슬롯 (t는 "HH:MM").
 - luck_dict는 그 세계에서 행운이 나타나는 그럴듯한 형태 (소/중/대 각 2~3개).
-- cards의 scale 분포는 소2/중2/대1 정도. min_act: 대형 카드는 2~3.
-- 갈등은 실존 인물이면 실제 생애의 갈등을 우선 재료로 삼아라.
-- 출력은 오직 유효한 JSON 하나. 설명·주석·코드펜스 금지. 문자열 안에 따옴표를 쓰지 마라."""
+- 출력은 오직 유효한 JSON 하나. 설명·주석·코드펜스 금지."""
 
     pack = None
-    for attempt in range(2):  # 파싱 실패 시 1회 재시도
-        raw = llm.write(prompt, mock_text=json.dumps(mock, ensure_ascii=False), max_tokens=6000)
-        pack = parse_json(raw)
+    for _ in range(2):  # 파싱 실패 시 1회 재시도
+        raw = llm.write(prompt, mock_text=json.dumps(mock, ensure_ascii=False), max_tokens=4000)
+        pack = parse_llm_json(raw)
         if pack and pack.get("cast") and pack.get("schedule"):
             break
         pack = None
@@ -201,19 +194,7 @@ JSON 스키마 (다른 텍스트 없이 JSON만 출력):
         pack["goal"] = goal
     if pack.get("type") not in ("역사", "현실"):
         pack["type"] = "현실"
-    cards = []
-    for i, c in enumerate(pack.get("cards") or []):
-        if not isinstance(c, dict) or not c.get("title"):
-            continue
-        c["id"] = f"gen_{i+1}"
-        c["scenario"] = "custom"
-        c["scale"] = c.get("scale") if c.get("scale") in ("소", "중", "대") else "중"
-        try:
-            c["min_act"] = max(1, min(3, int(c.get("min_act", 1))))
-        except Exception:
-            c["min_act"] = 1
-        cards.append(c)
-    pack["cards"] = cards
+    pack["cards"] = []
     for key in ("era", "place", "persona", "style", "milestones", "schedule", "luck_dict", "cast", "goal"):
         if not pack.get(key):
             pack[key] = mock[key]

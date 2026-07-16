@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS active_conflicts (
     avatar_id INTEGER NOT NULL,
     season_id INTEGER NOT NULL,
     card_id TEXT NOT NULL,
+    card_json TEXT,                    -- 즉흥 발제된 갈등의 구조 (LLM 생성)
     stage TEXT DEFAULT 'seed',         -- seed | rise | climax | done
     boost REAL DEFAULT 0,
     day_started TEXT,
@@ -100,6 +101,10 @@ def init() -> None:
     with connect() as c:
         c.executescript(SCHEMA)
         c.execute("INSERT OR IGNORE INTO gauge (id, luck) VALUES (1, 30)")
+        try:  # 기존 DB 마이그레이션
+            c.execute("ALTER TABLE active_conflicts ADD COLUMN card_json TEXT")
+        except Exception:
+            pass
 
 
 def kv_get(c: sqlite3.Connection, k: str, default: str = "") -> str:

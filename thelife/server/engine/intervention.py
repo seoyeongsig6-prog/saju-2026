@@ -61,7 +61,8 @@ def intervene(c: sqlite3.Connection, avatar: dict, scenario: dict, season: dict,
     ).fetchone()
     conflict_title = ""
     if target:
-        card = cards_by_id.get(target["card_id"])
+        from . import conflicts as conflicts_mod
+        card = conflicts_mod.card_of(target, cards_by_id)
         conflict_title = card["title"] if card else ""
         c.execute(
             "UPDATE active_conflicts SET boost=boost+? WHERE id=?", (BOOST[size], target["id"])

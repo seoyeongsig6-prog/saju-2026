@@ -1,4 +1,5 @@
 """LLM 서사 레이어 — 결정된 사건·일과를 그 세계의 질감으로 집필한다."""
+import json
 import random
 import sqlite3
 from typing import Generator
@@ -134,6 +135,58 @@ def intervention_text(
 - 마지막에는 아바타가 이 행운을 자기 세계의 언어로 해석하는 한 마디
   ("하늘이 돕는구나" 같은)를 넣어라. 아바타는 유저의 존재를 절대 모른다."""
     return llm.write(prompt, mock_text=mock)
+
+
+def generate_conflict(
+    c: sqlite3.Connection, avatar: dict, scenario: dict, season: dict,
+    scale: str, avoid_titles: list,
+) -> dict | None:
+    """즉흥 갈등 발제 — 지금 이 삶의 상황에서 새 갈등을 만들어 구조로 반환.
+    LLM이 없거나 실패하면 None (갈등 은행으로 폴백)."""
+    from . import world  # 순환 참조 방지용 지연 임포트
+
+    if llm.is_mock:
+        return None
+
+    schema = {
+        "type": "관계|재정|신체|자연|권력|내면 중 하나",
+        "title": "짧은 제목",
+        "seed": "조짐 — 갈등이 처음 모습을 드러내는 사건",
+        "rise": "고조 — 긴장이 커지는 전개",
+        "climax": "절정 — 정면으로 부딪히는 순간",
+        "resolve_good": "아바타가 스스로의 힘으로 이겨낸 결말",
+        "resolve_bad": "이번에는 지고, 무언가를 잃는 결말",
+        "luck_hook": "행운(개입)이 닿으면 벌어지는 일",
+    }
+    prompt = f"""당신은 관전형 인생 게임의 갈등 설계자다. 아래 인물의 삶에 지금 새로 시작될 갈등 하나를 발제하라.
+
+[세계] {scenario.get('era','')} / {scenario.get('place','')}
+[아바타] {avatar['name']} — {scenario.get('persona','')}
+[인생 목표] {season['goal']}
+[고정 등장인물] {_cast_line(scenario)}
+[최근 있었던 일]
+{_recent_log(c, avatar['id'])}
+[이미 다룬 갈등 — 반복 금지] {', '.join(t for t in avoid_titles if t) or '없음'}
+
+규칙:
+- 규모는 '{scale}' (소=일상의 파문, 중=며칠짜리 시련, 대=목표를 위협하는 큰 산).
+- 실존 인물이면 실제 생애의 갈등을 재료로 삼아도 좋다.
+- 시대에 없는 물건·개념 금지. 고정 등장인물을 얽어라.
+- 극복의 주체는 아바타다. resolve_good은 그 인물다운 방식이어야 한다.
+- 출력은 아래 스키마의 JSON 하나만:
+{json.dumps(schema, ensure_ascii=False, indent=1)}"""
+    raw = llm.write(prompt, mock_text="", max_tokens=1200)
+    card = world.parse_llm_json(raw)
+    if not card:
+        return None
+    for key in ("title", "seed", "rise", "climax", "resolve_good", "resolve_bad"):
+        if not card.get(key):
+            return None
+    card["id"] = f"dyn_{avatar['id']}_{random.randrange(10**8)}"
+    card["scale"] = scale
+    card["min_act"] = 1
+    card["scenario"] = "dynamic"
+    return card
 
 
 def biography_text(c: sqlite3.Connection, avatar: dict, scenario: dict, season: dict) -> str:
