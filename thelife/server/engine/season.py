@@ -54,6 +54,12 @@ def catch_up(c: sqlite3.Connection, avatar: dict, scenario: dict, season: dict,
 
 
 def finish_season(c: sqlite3.Connection, avatar: dict, scenario: dict, season: dict, day: str) -> None:
+    # 정산되지 못한 예감은 행운으로 되돌려준다
+    for h in c.execute(
+        "SELECT * FROM hunches WHERE season_id=? AND status='open'", (season["id"],)
+    ).fetchall():
+        c.execute("UPDATE gauge SET luck=luck+? WHERE id=1", (h["luck_staked"],))
+        c.execute("UPDATE hunches SET status='refunded', resolved_day=? WHERE id=?", (day, h["id"]))
     bio = narrative.biography_text(c, avatar, scenario, season)
     c.execute(
         "UPDATE seasons SET status='done', biography=?, ended_day=? WHERE id=?",

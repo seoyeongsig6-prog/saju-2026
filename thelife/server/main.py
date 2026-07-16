@@ -316,6 +316,76 @@ def story():
         }
 
 
+class HunchBody(BaseModel):
+    conflict_id: int
+    direction: str  # good | bad
+    luck: int = 10
+
+
+@app.get("/api/hunches")
+def hunches():
+    """예감 — 절정으로 향하는 갈등 중 아직 예감을 맡기지 않은 것들."""
+    with db.connect() as c:
+        avatar, scenario, season, by_id = _loaded(c)
+        if not avatar:
+            return {"offerable": [], "open": []}
+        taken = {r["conflict_id"] for r in c.execute(
+            "SELECT conflict_id FROM hunches WHERE season_id=?", (season["id"],)).fetchall()}
+        offerable = []
+        for r in c.execute(
+            "SELECT * FROM active_conflicts WHERE avatar_id=? AND stage IN ('rise','climax')",
+            (avatar["id"],),
+        ).fetchall():
+            if r["id"] in taken:
+                continue
+            card = conflicts.card_of(r, by_id)
+            if card:
+                offerable.append({"conflict_id": r["id"], "title": card["title"],
+                                  "stage_label": conflicts.STAGE_LABEL[r["stage"]],
+                                  "hint": card.get(r["stage"], "")})
+        open_h = []
+        for h in c.execute(
+            "SELECT h.*, ac.card_id, ac.card_json FROM hunches h "
+            "JOIN active_conflicts ac ON ac.id = h.conflict_id "
+            "WHERE h.season_id=? AND h.status='open'", (season["id"],),
+        ).fetchall():
+            card = conflicts.card_of(h, by_id)
+            open_h.append({"title": card["title"] if card else "",
+                           "direction": h["direction"], "luck": h["luck_staked"]})
+        g = intervention.gauge(c)
+        return {"offerable": offerable, "open": open_h, "luck": g["luck"]}
+
+
+@app.post("/api/hunch")
+def place_hunch(body: HunchBody):
+    with db.connect() as c:
+        avatar, scenario, season, by_id = _loaded(c)
+        if not avatar:
+            return {"ok": False, "error": "아바타가 없어요"}
+        if body.direction not in ("good", "bad"):
+            return {"ok": False, "error": "예감은 '이겨낸다'거나 '어렵겠다' 둘 중 하나예요."}
+        luck = max(5, min(100, int(body.luck)))
+        g = intervention.gauge(c)
+        if g["luck"] < luck:
+            return {"ok": False, "error": f"행운이 부족해요. (보유 {g['luck']})"}
+        cf = c.execute(
+            "SELECT * FROM active_conflicts WHERE id=? AND avatar_id=? AND stage IN ('rise','climax')",
+            (body.conflict_id, avatar["id"]),
+        ).fetchone()
+        if not cf:
+            return {"ok": False, "error": "이미 지나갔거나 아직 오지 않은 일이에요."}
+        dup = c.execute("SELECT 1 FROM hunches WHERE conflict_id=? ", (cf["id"],)).fetchone()
+        if dup:
+            return {"ok": False, "error": "이 일에는 이미 예감을 맡겨뒀어요."}
+        c.execute("UPDATE gauge SET luck=luck-? WHERE id=1", (luck,))
+        c.execute(
+            "INSERT INTO hunches (avatar_id, season_id, conflict_id, direction, luck_staked, created_day) "
+            "VALUES (?,?,?,?,?,?)",
+            (avatar["id"], season["id"], cf["id"], body.direction, luck, db.vtoday(c)),
+        )
+        return {"ok": True, "luck_left": g["luck"] - luck}
+
+
 @app.post("/api/intervene")
 def intervene(body: SizeBody):
     with db.connect() as c:

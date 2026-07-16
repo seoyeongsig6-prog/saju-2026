@@ -87,6 +87,18 @@ CREATE TABLE IF NOT EXISTS gauge (
     ads_today INTEGER DEFAULT 0,
     ads_date TEXT
 );
+CREATE TABLE IF NOT EXISTS hunches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    avatar_id INTEGER NOT NULL,
+    season_id INTEGER NOT NULL,
+    conflict_id INTEGER NOT NULL,      -- active_conflicts.id
+    direction TEXT NOT NULL,           -- good | bad
+    luck_staked INTEGER NOT NULL,
+    status TEXT DEFAULT 'open',        -- open | won | lost | refunded
+    payout INTEGER DEFAULT 0,
+    created_day TEXT,
+    resolved_day TEXT
+);
 CREATE TABLE IF NOT EXISTS state_history (
     avatar_id INTEGER NOT NULL,
     day TEXT NOT NULL,

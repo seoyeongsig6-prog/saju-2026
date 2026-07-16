@@ -123,7 +123,7 @@ function openPane(name) {
   if (name === "feed") loadFeed();
   if (name === "dash") loadDash();
   if (name === "story") loadStory();
-  if (name === "now") loadNow();
+  if (name === "now") { loadNow(); loadHunches(); }
 }
 
 /* ---------- 상태 (대시보드) ---------- */
@@ -250,6 +250,49 @@ function addSceneLine(box, line) {
   el.scrollIntoView({ behavior: "smooth", block: "end" });
 }
 $("#btn-peek").onclick = loadNow;
+
+/* ---------- 예감 ---------- */
+async function loadHunches() {
+  const d = await api("/api/hunches");
+  const area = $("#hunch-area");
+  area.innerHTML = "";
+  (d.open || []).forEach((h) => {
+    const el = document.createElement("div");
+    el.className = "hunch-open";
+    el.innerHTML = `⏳ <b>${h.title}</b> — ${h.direction === "good" ? "이겨낼 것이다" : "쉽지 않을 것이다"}에 행운 ${h.luck}을 맡겨둠`;
+    area.appendChild(el);
+  });
+  (d.offerable || []).forEach((o) => {
+    const el = document.createElement("div");
+    el.className = "hunch-card";
+    el.innerHTML = `
+      <div class="hunch-head">예감이 스칩니다</div>
+      <div class="hunch-title">${o.title} <small>· ${o.stage_label}</small></div>
+      <div class="hunch-hint">${o.hint || ""}</div>
+      <div class="hunch-luck">행운
+        <label><input type="radio" name="hl-${o.conflict_id}" value="10" checked>10</label>
+        <label><input type="radio" name="hl-${o.conflict_id}" value="30">30</label>
+        <label><input type="radio" name="hl-${o.conflict_id}" value="50">50</label>
+        <span class="dim">— 맞으면 두 배로</span>
+      </div>
+      <div class="hunch-btns">
+        <button data-dir="good">이겨낼 것이다</button>
+        <button data-dir="bad">이번엔 어렵겠다</button>
+      </div>`;
+    el.querySelectorAll(".hunch-btns button").forEach((b) => {
+      b.onclick = async () => {
+        const luck = el.querySelector(`input[name="hl-${o.conflict_id}"]:checked`).value;
+        const r = await api("/api/hunch", { method: "POST",
+          body: JSON.stringify({ conflict_id: o.conflict_id, direction: b.dataset.dir, luck: Number(luck) }) });
+        if (!r.ok) { notice(r.error); return; }
+        STATE = await api("/api/state");
+        renderHeader();
+        loadHunches();
+      };
+    });
+    area.appendChild(el);
+  });
+}
 
 /* ---------- 그동안 ---------- */
 async function loadFeed() {

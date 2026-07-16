@@ -131,6 +131,30 @@ def _touch_cast(c, avatar_id: int, day: str, rng: random.Random, delta: int) -> 
               (day, max(0, min(100, m["affinity"] + delta)), m["id"]))
 
 
+def _resolve_hunch(c, avatar: dict, season: dict, conflict_id: int, card: dict,
+                   outcome: str, day: str) -> None:
+    """예감의 정산 — 지켜봐온 눈이 맞았다면 맡긴 행운이 두 배로 깊어진다."""
+    h = c.execute(
+        "SELECT * FROM hunches WHERE conflict_id=? AND status='open'", (conflict_id,)
+    ).fetchone()
+    if not h:
+        return
+    won = (h["direction"] == "good") == (outcome == "good")
+    payout = h["luck_staked"] * 2 if won else 0
+    c.execute("UPDATE hunches SET status=?, payout=?, resolved_day=? WHERE id=?",
+              ("won" if won else "lost", payout, day, h["id"]))
+    if won:
+        c.execute("UPDATE gauge SET luck=luck+? WHERE id=1", (payout,))
+        guess = "이겨낼 것이라던" if h["direction"] == "good" else "쉽지 않으리라던"
+        _emit(c, avatar, season, day, "hunch", "예감이 맞았다",
+              f"'{card['title']}' — {guess} 당신의 예감대로였다. "
+              f"맡겨둔 행운 {h['luck_staked']}이 {payout}(으)로 깊어져 돌아온다.")
+    else:
+        _emit(c, avatar, season, day, "hunch", "예감이 빗나갔다",
+              f"'{card['title']}' — 삶은 당신의 예감대로 흐르지 않았다. "
+              f"맡겨둔 행운 {h['luck_staked']}은 바람에 흩어졌다. 그래도 당신은 그를 조금 더 알게 됐다.")
+
+
 def daily_tick(
     c: sqlite3.Connection, avatar: dict, season: dict, day: str,
     scenario: dict, cards: list, cards_by_id: dict, slots: list,
@@ -171,6 +195,7 @@ def daily_tick(
             mark = "극복" if success else "패배"
             _emit(c, avatar, season, day, "beat", f"{card['title']} — {mark}", body)
             result["had_event"] = True
+            _resolve_hunch(c, avatar, season, cf["id"], card, outcome, day)
             if success:
                 state["money"] = int(state["money"] * (1 + MONEY_DELTA[scale]))
                 state["health"] = min(100, state["health"] + 5)
