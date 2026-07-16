@@ -1,5 +1,6 @@
 """세계 텍스처 — 시나리오 팩 로딩, 커스텀 아바타의 세계 생성, 생존 유명인 차단."""
 import json
+import re
 from pathlib import Path
 
 import yaml
@@ -127,6 +128,18 @@ def build_scenario(form: dict) -> dict:
     if llm.is_mock:
         return mock
 
+    def parse_json(raw: str):
+        raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        start, end = raw.find("{"), raw.rfind("}")
+        if start == -1 or end <= start:
+            return None
+        raw = raw[start:end + 1]
+        raw = re.sub(r",\s*([}\]])", r"\1", raw)  # 흔한 오류: 마지막 쉼표
+        try:
+            return json.loads(raw)
+        except Exception:
+            return None
+
     card_schema = {
         "id": "gen_1", "type": "관계|재정|신체|자연|권력|내면", "scale": "소|중|대",
         "min_act": 1, "title": "제목", "seed": "조짐", "rise": "고조", "climax": "절정",
@@ -146,10 +159,16 @@ def build_scenario(form: dict) -> dict:
 인생 목표: {('"' + goal + '"') if goal else '유저가 정하지 않았다 — 이 인물에게 가장 어울리는 목표를 하나 정하라'}
 
 중요한 판단:
-- 이 이름이 실존했던 역사적 인물(예: 이순신, 세종, 나폴레옹, 스티브 잡스 등 고인)이라면
+- 이 이름이 실존했던 역사적 인물(예: 이순신, 세종, 선조, 나폴레옹, 스티브 잡스 등 고인)이라면
   type을 "역사"로 하고, 실제 생애 — 그 시대, 실제 주변 인물, 실제 겪은 갈등 — 를
   바탕으로 세계를 지어라. 목표가 비어 있으면 그 인물 생애의 실제 목표를 쓰라.
-- 그렇지 않으면 type을 "현실"로 하고, 주어진 정보로 실감나는 세계를 지어라.
+- 동명이인이 있으면 가장 유명한 역사 인물로 해석하라 (예: "선조" = 조선 14대 임금).
+- 그 인물의 신분·지위를 반드시 지켜라. 왕이면 궁궐과 조정, 어전 회의와 신하들
+  (실명으로: 류성룡, 이항복 등)의 세계다. 장군이면 진영과 부하 장수들의 세계다.
+  왕을 평민의 일상에 놓는 것은 중대한 오류다.
+- 시대 고증을 지켜라: 그 시대에 없는 물건(리어카, 아스팔트, 휴대폰 등)은
+  등장시키지 마라. schedule과 luck_dict도 그 시대의 것으로.
+- 실존 인물이 아니면 type을 "현실"로 하고, 주어진 정보로 실감나는 세계를 지어라.
 
 JSON 스키마 (다른 텍스트 없이 JSON만 출력):
 {json.dumps({k: v for k, v in mock.items() if k != 'cards'}, ensure_ascii=False, indent=1)}
@@ -162,33 +181,40 @@ JSON 스키마 (다른 텍스트 없이 JSON만 출력):
 - schedule은 그 인물의 현실적인 하루 6~8개 슬롯 (t는 "HH:MM").
 - luck_dict는 그 세계에서 행운이 나타나는 그럴듯한 형태 (소/중/대 각 2~3개).
 - cards의 scale 분포는 소2/중2/대1 정도. min_act: 대형 카드는 2~3.
-- 갈등은 실존 인물이면 실제 생애의 갈등을 우선 재료로 삼아라."""
-    raw = llm.write(prompt, mock_text=json.dumps(mock, ensure_ascii=False), max_tokens=3500)
-    raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-    try:
-        pack = json.loads(raw)
-        pack["id"] = "custom"
-        pack["name"] = name
-        if goal:
-            pack["goal"] = goal
-        if pack.get("type") not in ("역사", "현실"):
-            pack["type"] = "현실"
-        cards = []
-        for i, c in enumerate(pack.get("cards") or []):
-            if not isinstance(c, dict) or not c.get("title"):
-                continue
-            c["id"] = f"gen_{i+1}"
-            c["scenario"] = "custom"
-            c["scale"] = c.get("scale") if c.get("scale") in ("소", "중", "대") else "중"
-            try:
-                c["min_act"] = max(1, min(3, int(c.get("min_act", 1))))
-            except Exception:
-                c["min_act"] = 1
-            cards.append(c)
-        pack["cards"] = cards
-        for key in ("era", "place", "persona", "style", "milestones", "schedule", "luck_dict", "cast", "goal"):
-            if not pack.get(key):
-                pack[key] = mock[key]
-        return pack
-    except Exception:
-        return mock
+- 갈등은 실존 인물이면 실제 생애의 갈등을 우선 재료로 삼아라.
+- 출력은 오직 유효한 JSON 하나. 설명·주석·코드펜스 금지. 문자열 안에 따옴표를 쓰지 마라."""
+
+    pack = None
+    for attempt in range(2):  # 파싱 실패 시 1회 재시도
+        raw = llm.write(prompt, mock_text=json.dumps(mock, ensure_ascii=False), max_tokens=6000)
+        pack = parse_json(raw)
+        if pack and pack.get("cast") and pack.get("schedule"):
+            break
+        pack = None
+    if pack is None:
+        # 엉뚱한 기본 세계를 만드느니 정직하게 실패를 알린다
+        return None
+
+    pack["id"] = "custom"
+    pack["name"] = name
+    if goal:
+        pack["goal"] = goal
+    if pack.get("type") not in ("역사", "현실"):
+        pack["type"] = "현실"
+    cards = []
+    for i, c in enumerate(pack.get("cards") or []):
+        if not isinstance(c, dict) or not c.get("title"):
+            continue
+        c["id"] = f"gen_{i+1}"
+        c["scenario"] = "custom"
+        c["scale"] = c.get("scale") if c.get("scale") in ("소", "중", "대") else "중"
+        try:
+            c["min_act"] = max(1, min(3, int(c.get("min_act", 1))))
+        except Exception:
+            c["min_act"] = 1
+        cards.append(c)
+    pack["cards"] = cards
+    for key in ("era", "place", "persona", "style", "milestones", "schedule", "luck_dict", "cast", "goal"):
+        if not pack.get(key):
+            pack[key] = mock[key]
+    return pack

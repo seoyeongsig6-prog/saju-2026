@@ -92,6 +92,9 @@ def create_avatar(body: CreateBody):
             return {"ok": True}
 
     scenario = world.build_scenario(body.model_dump())
+    if scenario is None:
+        return {"ok": False,
+                "error": "세계를 짓는 데 실패했어요. 잠시 후 한 번 더 시도해 주세요."}
     with db.connect() as c:
         _create_avatar(c, scenario, scenario.get("type", "현실"))
     return {"ok": True}
