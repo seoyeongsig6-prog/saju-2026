@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS events (
     kind TEXT NOT NULL,
     title TEXT,
     body TEXT,
+    detail TEXT,                      -- 본편 — 탭하면 열리는 온전한 장면
     read INTEGER DEFAULT 0,
     created_at TEXT
 );
@@ -187,6 +188,7 @@ def init() -> None:
         for ddl in (  # 구버전 DB 마이그레이션 (이미 있으면 조용히 통과)
             "ALTER TABLE active_conflicts ADD COLUMN card_json TEXT",
             "ALTER TABLE cast_members ADD COLUMN last_met TEXT",
+            "ALTER TABLE events ADD COLUMN detail TEXT",
         ):
             try:
                 c.execute(ddl)

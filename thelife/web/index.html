@@ -46,12 +46,25 @@
   <p class="fine">이 게임 속의 나에겐 단 한 발자국도 접근할 수 없습니다.<br>당신은 그저 지켜볼 뿐 — 시즌에 딱 세 번의 행운을 빼고는.</p>
 </div>
 
-<!-- ===== 메인 화면 ===== -->
+<!-- ===== 홈 (대시보드 — 스토리 없음) ===== -->
+<div id="view-home" class="view hidden">
+  <div class="home-head">
+    <div>
+      <h1 class="home-title">The Life</h1>
+      <p class="home-sub">지켜보는 삶들</p>
+    </div>
+    <div class="luck-box" id="home-luck-box"><span class="luck-icon">✦</span> <span id="home-luck">0</span></div>
+  </div>
+  <div id="story-cards" class="story-cards"></div>
+  <p class="fine" style="margin-top:auto">당신은 그저 지켜볼 뿐 — 시즌에 딱 세 번의 행운을 빼고는.</p>
+</div>
+
+<!-- ===== 스토리 화면 ===== -->
 <div id="view-main" class="view hidden">
   <header>
     <div class="head-top">
-      <div id="btn-avatars" style="cursor:pointer">
-        <div id="h-name" class="h-name"></div>
+      <div id="btn-home" style="cursor:pointer">
+        <div id="h-name" class="h-name">‹ <span id="h-name-text"></span></div>
         <div id="h-goal" class="h-goal"></div>
       </div>
       <div class="h-right">
@@ -81,12 +94,8 @@
     <section id="pane-feed" class="pane hidden">
       <div id="feed-list" class="feed"></div>
     </section>
-    <!-- 홈 (살아있는 대시보드) -->
+    <!-- 상태 (아바타 대시보드) -->
     <section id="pane-dash" class="pane hidden">
-      <div class="ticker-box" id="ticker-box">
-        <span class="ticker-dot"></span>
-        <div id="ticker" class="ticker-line"></div>
-      </div>
       <div id="dash-body"></div>
     </section>
     <!-- 이야기 -->
@@ -96,9 +105,9 @@
   </main>
 
   <nav>
-    <button data-pane="dash" class="tab active">홈</button>
-    <button data-pane="now" class="tab">지금</button>
+    <button data-pane="now" class="tab active">지금</button>
     <button data-pane="feed" class="tab">그동안 <span id="unread" class="badge hidden"></span></button>
+    <button data-pane="dash" class="tab">상태</button>
     <button data-pane="story" class="tab">이야기</button>
   </nav>
 </div>
@@ -119,16 +128,6 @@
       <button id="btn-buy">충전 +100 (결제 목업)</button>
     </div>
     <button id="btn-close" class="ghost">닫기</button>
-  </div>
-</div>
-
-<!-- ===== 삶 목록 모달 ===== -->
-<div id="avmodal" class="modal hidden">
-  <div class="modal-card">
-    <h3>지켜보는 삶들</h3>
-    <div id="av-list" class="av-list"></div>
-    <button id="btn-new-life" class="primary">＋ 새로운 삶 시작</button>
-    <button id="av-close" class="ghost">닫기</button>
   </div>
 </div>
 

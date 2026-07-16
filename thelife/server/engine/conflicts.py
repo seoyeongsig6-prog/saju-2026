@@ -76,11 +76,12 @@ def _pick_new_card(c, avatar, season, cards: list, rng: random.Random):
     return rng.choices(pool, weights=w, k=1)[0]
 
 
-def _emit(c, avatar, season, day: str, kind: str, title: str, body: str, slot: str = ""):
+def _emit(c, avatar, season, day: str, kind: str, title: str, body: str,
+          slot: str = "", detail: str = None):
     c.execute(
-        "INSERT INTO events (avatar_id, season_id, day, slot, kind, title, body, created_at) "
-        "VALUES (?,?,?,?,?,?,?,datetime('now'))",
-        (avatar["id"], season["id"], day, slot, kind, title, body),
+        "INSERT INTO events (avatar_id, season_id, day, slot, kind, title, body, detail, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,datetime('now'))",
+        (avatar["id"], season["id"], day, slot, kind, title, body, detail),
     )
 
 
@@ -179,8 +180,10 @@ def daily_tick(
         if cf["stage"] in ("seed", "rise"):
             nxt = STAGES[STAGES.index(cf["stage"]) + 1]
             c.execute("UPDATE active_conflicts SET stage=? WHERE id=?", (nxt, cf["id"]))
+            title = f"{card['title']} — {STAGE_LABEL[nxt]}"
             body = narrative.beat_text(c, avatar, scenario, nxt, card)
-            _emit(c, avatar, season, day, "beat", f"{card['title']} — {STAGE_LABEL[nxt]}", body)
+            detail = narrative.episode_text(c, avatar, scenario, card, nxt, "", title)
+            _emit(c, avatar, season, day, "beat", title, body, detail=detail)
             result["had_event"] = True
             state["mood"] = "긴장" if nxt == "climax" else "불안"
             _touch_cast(c, avatar["id"], day, rng, -1)
@@ -194,9 +197,11 @@ def daily_tick(
             c.execute(
                 "UPDATE active_conflicts SET stage='done', outcome=? WHERE id=?", (outcome, cf["id"])
             )
-            body = narrative.beat_text(c, avatar, scenario, "done", card, outcome=outcome)
             mark = "극복" if success else "패배"
-            _emit(c, avatar, season, day, "beat", f"{card['title']} — {mark}", body)
+            title = f"{card['title']} — {mark}"
+            body = narrative.beat_text(c, avatar, scenario, "done", card, outcome=outcome)
+            detail = narrative.episode_text(c, avatar, scenario, card, "done", outcome, title)
+            _emit(c, avatar, season, day, "beat", title, body, detail=detail)
             result["had_event"] = True
             _resolve_hunch(c, avatar, season, cf["id"], card, outcome, day)
             if success:
@@ -257,6 +262,16 @@ def daily_tick(
         if state["mood"] in ("상심", "불안", "긴장"):
             state["mood"] = "차분함"
         _touch_cast(c, avatar["id"], day, rng, +1)
+
+    # 4) 하루의 끝 — 일기. 감정은 여기서만 말해진다 (난중일기 모델)
+    import datetime as _dt
+    try:
+        day_no = (_dt.date.fromisoformat(day)
+                  - _dt.date.fromisoformat(season["started_day"])).days + 1
+    except Exception:
+        day_no = 1
+    diary = narrative.diary_text(c, avatar, scenario, day, max(1, day_no))
+    _emit(c, avatar, season, day, "diary", f"{max(1, day_no)}일차의 일기", diary)
 
     _save_state(c, avatar, state, day)
     return result

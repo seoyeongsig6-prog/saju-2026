@@ -19,21 +19,73 @@ function dayLabel(n) {
 
 /* ---------- 부팅 ---------- */
 async function boot() {
-  STATE = await api("/api/state");
-  if (STATE && STATE.detail) {  // 서버 오류 — 원인을 그대로 보여준다 (디버그)
-    notice(`${STATE.error}\n\n${STATE.detail}\n${(STATE.trace || []).join("\n")}`);
+  const d = await api("/api/avatars");
+  if (d && d.detail) {  // 서버 오류 — 원인을 그대로 보여준다 (디버그)
+    notice(`${d.error}\n\n${d.detail}\n${(d.trace || []).join("\n")}`);
     return;
   }
-  if (!STATE.avatar) {
+  if (!d.avatars || d.avatars.length === 0) {
     showCreate();
   } else {
-    showMain();
+    showHome(d);
   }
+}
+
+/* ---------- 홈 — 스토리 없는 순수 대시보드 ---------- */
+let homeRefresh = null;
+async function showHome(pre = null) {
+  $("#view-create").classList.add("hidden");
+  $("#view-main").classList.add("hidden");
+  $("#view-home").classList.remove("hidden");
+  const d = pre || await api("/api/avatars");
+  const g = await api("/api/gauge");
+  $("#home-luck").textContent = g.luck;
+  const box = $("#story-cards");
+  box.innerHTML = "";
+  d.avatars.forEach((a) => {
+    const el = document.createElement("button");
+    el.className = "story-card";
+    const pct = Math.min(100, (a.milestone_idx / a.milestone_total) * 100);
+    el.innerHTML = `
+      <div class="sc-top">
+        <b>${a.name}</b><span class="cat">${a.category}</span>
+        ${a.unread ? `<span class="badge">${a.unread}</span>` : ""}
+        <span class="sc-day">${a.status === "done" ? "완결" : `시즌 ${a.season_no} · ${dayLabel(a.day_count)}`}</span>
+      </div>
+      <div class="sc-goal">${a.goal}</div>
+      <div class="progress sc-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+      <div class="sc-last">${a.last_kind === "shadow" ? "👁 " : ""}${a.last_line}</div>
+      <div class="sc-meta">${Number(a.money).toLocaleString("ko-KR")}${a.money_unit} · ${a.mood}</div>`;
+    el.onclick = async () => {
+      await api("/api/avatar/select", { method: "POST", body: JSON.stringify({ id: a.id }) });
+      enterStory();
+    };
+    box.appendChild(el);
+  });
+  if (d.avatars.length < d.max) {
+    const add = document.createElement("button");
+    add.className = "story-card add";
+    add.innerHTML = `＋ 새로운 삶 시작<br><small>어떤 삶이든, 누구의 삶이든</small>`;
+    add.onclick = () => { showCreate(); $("#btn-back-main").classList.remove("hidden"); };
+    box.appendChild(add);
+  }
+  clearInterval(homeRefresh);
+  homeRefresh = setInterval(() => {  // 홈은 계속 살아 움직인다
+    if (!$("#view-home").classList.contains("hidden")) showHome();
+    else clearInterval(homeRefresh);
+  }, 60000);
+}
+
+async function enterStory() {
+  STATE = await api("/api/state");
+  if (!STATE.avatar) { boot(); return; }
+  showMain();
 }
 
 /* ---------- 생성 화면 ---------- */
 async function showCreate() {
   $("#view-main").classList.add("hidden");
+  $("#view-home").classList.add("hidden");
   $("#view-create").classList.remove("hidden");
   const data = await api("/api/presets");
   const list = $("#preset-list");
@@ -83,14 +135,16 @@ $("#btn-custom").onclick = async () => {
 /* ---------- 메인 화면 ---------- */
 function showMain() {
   $("#view-create").classList.add("hidden");
+  $("#view-home").classList.add("hidden");
   $("#view-main").classList.remove("hidden");
   renderHeader();
-  openPane("dash"); // 홈 = 살아있는 대시보드
+  openPane("now");
 }
+$("#btn-home").onclick = () => showHome();
 
 function renderHeader() {
   const s = STATE;
-  $("#h-name").textContent = s.avatar.name;
+  $("#h-name-text").textContent = s.avatar.name;
   $("#h-goal").textContent = `시즌 ${s.season.no} 목표 — ${s.season.goal}`;
   $("#h-day").textContent = `${dayLabel(s.season.day_count)}의 삶 · ${s.vtime}`;
   $("#h-luck").textContent = s.gauge.luck;
@@ -139,36 +193,10 @@ function sparkline(hist, key, w = 150, h = 36) {
   return `<svg viewBox="0 0 ${w} ${h}" class="spark"><polyline points="${pts}"
     fill="none" stroke="${up ? "var(--accent)" : "var(--bad)"}" stroke-width="2"/></svg>`;
 }
-/* 살아있는 티커 — 글 한 줄이라도 계속 움직인다 */
-let tickerTimer = null, tickerIdx = 0, tickerItems = [];
-function startTicker(items) {
-  tickerItems = items || [];
-  clearInterval(tickerTimer);
-  const el = $("#ticker");
-  if (!tickerItems.length) { el.textContent = "세계가 숨을 고르고 있다…"; return; }
-  const show = () => {
-    const it = tickerItems[tickerIdx % tickerItems.length];
-    el.classList.remove("tick-in");
-    void el.offsetWidth; // 애니메이션 재시작
-    el.classList.add("tick-in");
-    el.innerHTML = `<small>${dayLabel(it.day_no)}</small> ${it.kind === "shadow" ? "👁 " : ""}${it.text}`;
-    tickerIdx++;
-  };
-  show();
-  tickerTimer = setInterval(show, 5000);
-}
-
-let dashRefresh = null;
 async function loadDash() {
   const d = await api("/api/dashboard");
   const box = $("#dash-body");
   if (!d || !d.name) { box.innerHTML = ""; return; }
-  startTicker(d.ticker);
-  clearInterval(dashRefresh);
-  dashRefresh = setInterval(() => {  // 홈이 열려 있는 동안 세계는 계속 갱신된다
-    if (!$("#pane-dash").classList.contains("hidden")) loadDash();
-    else clearInterval(dashRefresh);
-  }, 90000);
   const hist = d.history || [];
   const prev = hist.length > 1 ? hist[hist.length - 2] : null;
   const moneyDiff = prev ? d.money - prev.money : 0;
@@ -368,6 +396,34 @@ async function loadFeed() {
     const c = document.createElement("div");
     c.className = `card k-${e.kind}` + (e.read ? "" : " unread");
     c.innerHTML = `<h4>${e.title || ""}</h4><p>${e.body || ""}</p>`;
+    if (e.detail) {
+      // 본편 — 탭하면 그 사건의 온전한 장면이 펼쳐진다
+      const btn = document.createElement("button");
+      btn.className = "expand-btn";
+      btn.textContent = "▸ 그 장면 펼쳐 보기";
+      const d = document.createElement("div");
+      d.className = "detail hidden";
+      e.detail.split("\n").forEach((ln) => {
+        ln = ln.trim();
+        if (!ln) return;
+        const m = ln.match(/^(\p{L}[\p{L}\d ]{0,11}):\s*["“]?(.+?)["”]?$/u);
+        const row = document.createElement("div");
+        if (m) {
+          row.className = "d-line d-say";
+          row.innerHTML = `<b>${m[1].trim()}</b> ${m[2]}`;
+        } else {
+          row.className = "d-line";
+          row.textContent = ln;
+        }
+        d.appendChild(row);
+      });
+      btn.onclick = () => {
+        const open = d.classList.toggle("hidden");
+        btn.textContent = open ? "▸ 그 장면 펼쳐 보기" : "▾ 접기";
+      };
+      c.appendChild(btn);
+      c.appendChild(d);
+    }
     box.appendChild(c);
   });
   STATE = await api("/api/state");
@@ -461,35 +517,6 @@ $("#btn-buy").onclick = async () => {
   renderHeader(); openModal();
 };
 
-/* ---------- 삶 목록 (여러 스토리 동시 관전) ---------- */
-async function openAvatars() {
-  const d = await api("/api/avatars");
-  const list = $("#av-list");
-  list.innerHTML = "";
-  d.avatars.forEach((a) => {
-    const el = document.createElement("button");
-    el.className = "av-row" + (a.active ? " active" : "");
-    el.innerHTML = `
-      <b>${a.name}</b> <span class="cat">${a.category}</span>
-      ${a.unread ? `<span class="badge">${a.unread}</span>` : ""}
-      <small>${a.status === "done" ? "완결된 이야기" : `시즌 ${a.season_no} · ${dayLabel(a.day_count)}`} — ${a.goal}</small>`;
-    el.onclick = async () => {
-      await api("/api/avatar/select", { method: "POST", body: JSON.stringify({ id: a.id }) });
-      $("#avmodal").classList.add("hidden");
-      boot();
-    };
-    list.appendChild(el);
-  });
-  $("#btn-new-life").style.display = d.avatars.length >= d.max ? "none" : "block";
-  $("#avmodal").classList.remove("hidden");
-}
-$("#btn-avatars").onclick = openAvatars;
-$("#av-close").onclick = () => $("#avmodal").classList.add("hidden");
-$("#btn-new-life").onclick = () => {
-  $("#avmodal").classList.add("hidden");
-  showCreate();
-  $("#btn-back-main").classList.remove("hidden");
-};
 $("#btn-back-main").onclick = boot;
 
 /* ---------- 알림 ---------- */

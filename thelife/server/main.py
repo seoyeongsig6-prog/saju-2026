@@ -12,7 +12,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from . import db
-from .engine import conflicts, intervention, schedule, season as season_mod, world
+from .engine import conflicts, intervention, narrative, schedule, season as season_mod, world
 from .llm import llm
 
 app = FastAPI(title="The Life")
@@ -113,11 +113,34 @@ def list_avatars():
             if s:
                 day_count = max(1, (_dt.date.fromisoformat(db.vtoday(c))
                                     - _dt.date.fromisoformat(s["started_day"])).days + 1)
+            last = c.execute(
+                "SELECT title, body, kind FROM events WHERE avatar_id=? "
+                "AND kind IN ('beat','shadow','diary','intervention','season','briefing') "
+                "ORDER BY id DESC LIMIT 1", (a["id"],),
+            ).fetchone()
+            av = c.execute("SELECT state_json, scenario_json FROM avatars WHERE id=?", (a["id"],)).fetchone()
+            st = json.loads(av["state_json"] or "{}")
+            sc = json.loads(av["scenario_json"])
+            milestones = json.loads(s["milestones_json"]) if s else []
             out.append({"id": a["id"], "name": a["name"], "category": a["category"],
                         "goal": s["goal"] if s else "", "status": s["status"] if s else "",
                         "season_no": s["no"] if s else 1, "day_count": day_count,
-                        "unread": unread, "active": str(a["id"]) == active_id})
+                        "unread": unread, "active": str(a["id"]) == active_id,
+                        "mood": st.get("mood", ""), "money": st.get("money", 0),
+                        "money_unit": sc.get("money_unit", ""),
+                        "milestone_idx": s["milestone_idx"] if s else 0,
+                        "milestone_total": max(len(milestones), 1),
+                        "last_kind": last["kind"] if last else "",
+                        "last_line": ((last["title"] + " — " if last and last["kind"] != "diary" else "")
+                                      + (last["body"] or "")[:70]) if last else "아직 조용하다"})
         return {"avatars": out, "max": MAX_AVATARS}
+
+
+@app.get("/api/gauge")
+def get_gauge():
+    with db.connect() as c:
+        g = intervention.gauge(c)
+        return {"luck": g["luck"], "ads_left": g["ads_left"]}
 
 
 class SelectBody(BaseModel):
@@ -188,12 +211,13 @@ def _create_avatar(c, scenario: dict, category: str):
             (avatar_id, m["name"], m.get("role", ""), m.get("note", ""), m.get("affinity", 50)),
         )
     sid = season_mod.start_season(c, avatar_id, 1, scenario["goal"], scenario["milestones"], day)
+    # 오프닝 브리핑 — 세계의 날짜·시각·날씨·분위기로 카메라가 내려온다
+    hhmm = db.virtual_now(c).strftime("%H:%M")
+    briefing = narrative.briefing_text(scenario, hhmm)
     c.execute(
         "INSERT INTO events (avatar_id, season_id, day, kind, title, body, created_at) "
         "VALUES (?,?,?,?,?,?,datetime('now'))",
-        (avatar_id, sid, day, "season", "삶이 시작되다",
-         f"{scenario['name']}의 이야기가 시작됐다. 목표 — \"{scenario['goal']}\". "
-         f"그는 이 삶을 지켜보는 존재가 있다는 것을 모른다."),
+        (avatar_id, sid, day, "briefing", "이야기가 시작되는 곳", briefing),
     )
     return avatar_id
 
@@ -336,7 +360,7 @@ def dashboard():
         # 살아 움직이는 티커 + 그가 모르는 움직임 (읽음 처리 없이 살짝 엿본다)
         ticker_rows = c.execute(
             "SELECT day, kind, title, body FROM events WHERE avatar_id=? "
-            "AND kind IN ('beat','shadow','daily','intervention','hunch','season') "
+            "AND kind IN ('beat','shadow','daily','intervention','hunch','season','diary') "
             "ORDER BY id DESC LIMIT 14", (avatar["id"],),
         ).fetchall()
         ticker = [{"kind": r["kind"],
@@ -374,7 +398,7 @@ def feed():
         if not avatar:
             return {"events": []}
         rows = c.execute(
-            "SELECT id, day, season_id, kind, title, body, read FROM events WHERE avatar_id=? "
+            "SELECT id, day, season_id, kind, title, body, detail, read FROM events WHERE avatar_id=? "
             "ORDER BY id DESC LIMIT 60", (avatar["id"],),
         ).fetchall()
         c.execute("UPDATE events SET read=1 WHERE avatar_id=?", (avatar["id"],))
