@@ -184,6 +184,12 @@ nav {
 .charge-row button { flex: 1; font-size: 12.5px; }
 .ghost { background: none; border: none; color: var(--dim); }
 .notice-text { white-space: pre-line; text-align: center; font-size: 14.5px; line-height: 1.9; }
+.av-list { display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow-y: auto; }
+.av-row { text-align: left; padding: 12px 14px; border-radius: 12px; }
+.av-row.active { border-color: var(--accent); }
+.av-row b { font-size: 15px; }
+.av-row .cat { font-size: 10.5px; color: var(--accent); border: 1px solid var(--accent); border-radius: 20px; padding: 1px 7px; margin-left: 6px; }
+.av-row small { display: block; color: var(--dim); margin-top: 3px; }
 
 /* ===== 디버그 바 ===== */
 .debugbar { position: fixed; bottom: 64px; right: calc(50% - 272px); display: flex; gap: 6px; opacity: .5; z-index: 4; }

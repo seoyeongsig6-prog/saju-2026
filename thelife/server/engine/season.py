@@ -8,7 +8,13 @@ from . import conflicts, narrative, schedule
 
 
 def load_avatar(c: sqlite3.Connection):
-    row = c.execute("SELECT * FROM avatars ORDER BY id DESC LIMIT 1").fetchone()
+    """활성 아바타 — 유저가 마지막으로 고른 삶. 없으면 가장 최근 삶."""
+    row = None
+    active_id = db.kv_get(c, "active_avatar", "")
+    if active_id:
+        row = c.execute("SELECT * FROM avatars WHERE id=?", (int(active_id),)).fetchone()
+    if not row:
+        row = c.execute("SELECT * FROM avatars ORDER BY id DESC LIMIT 1").fetchone()
     if not row:
         return None, None, None
     avatar = dict(row)
@@ -75,10 +81,9 @@ def finish_season(c: sqlite3.Connection, avatar: dict, scenario: dict, season: d
     )
 
 
-def start_season(c: sqlite3.Connection, avatar_id: int, no: int, goal: str,
+def start_season(c, avatar_id: int, no: int, goal: str,
                  milestones: list, day: str) -> int:
-    cur = c.execute(
+    return c.insert_id(
         "INSERT INTO seasons (avatar_id, no, goal, milestones_json, started_day) VALUES (?,?,?,?,?)",
         (avatar_id, no, goal, json.dumps(milestones, ensure_ascii=False), day),
     )
-    return cur.lastrowid

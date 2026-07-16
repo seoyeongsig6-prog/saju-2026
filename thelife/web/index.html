@@ -13,6 +13,7 @@
   <div class="create-hero">
     <h1>The Life</h1>
     <p class="tagline">가장 너답게, 가장 특별한 삶을 경험하라</p>
+    <button id="btn-back-main" class="ghost small hidden">← 지켜보던 삶으로 돌아가기</button>
   </div>
 
   <div class="create-section">
@@ -49,7 +50,7 @@
 <div id="view-main" class="view hidden">
   <header>
     <div class="head-top">
-      <div>
+      <div id="btn-avatars" style="cursor:pointer">
         <div id="h-name" class="h-name"></div>
         <div id="h-goal" class="h-goal"></div>
       </div>
@@ -120,6 +121,16 @@
       <button id="btn-buy">충전 +100 (결제 목업)</button>
     </div>
     <button id="btn-close" class="ghost">닫기</button>
+  </div>
+</div>
+
+<!-- ===== 삶 목록 모달 ===== -->
+<div id="avmodal" class="modal hidden">
+  <div class="modal-card">
+    <h3>지켜보는 삶들</h3>
+    <div id="av-list" class="av-list"></div>
+    <button id="btn-new-life" class="primary">＋ 새로운 삶 시작</button>
+    <button id="av-close" class="ghost">닫기</button>
   </div>
 </div>
 

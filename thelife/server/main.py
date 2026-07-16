@@ -97,6 +97,43 @@ def presets():
     }
 
 
+@app.get("/api/avatars")
+def list_avatars():
+    """지켜보는 중인 삶들 — 동시에 여러 스토리를 살 수 있다."""
+    with db.connect() as c:
+        active_id = db.kv_get(c, "active_avatar", "")
+        out = []
+        for a in c.execute("SELECT id, name, category FROM avatars ORDER BY id").fetchall():
+            s = c.execute("SELECT * FROM seasons WHERE avatar_id=? ORDER BY no DESC LIMIT 1",
+                          (a["id"],)).fetchone()
+            unread = c.execute("SELECT COUNT(*) AS n FROM events WHERE avatar_id=? AND read=0",
+                               (a["id"],)).fetchone()["n"]
+            import datetime as _dt
+            day_count = 1
+            if s:
+                day_count = max(1, (_dt.date.fromisoformat(db.vtoday(c))
+                                    - _dt.date.fromisoformat(s["started_day"])).days + 1)
+            out.append({"id": a["id"], "name": a["name"], "category": a["category"],
+                        "goal": s["goal"] if s else "", "status": s["status"] if s else "",
+                        "season_no": s["no"] if s else 1, "day_count": day_count,
+                        "unread": unread, "active": str(a["id"]) == active_id})
+        return {"avatars": out, "max": MAX_AVATARS}
+
+
+class SelectBody(BaseModel):
+    id: int
+
+
+@app.post("/api/avatar/select")
+def select_avatar(body: SelectBody):
+    with db.connect() as c:
+        row = c.execute("SELECT id FROM avatars WHERE id=?", (body.id,)).fetchone()
+        if not row:
+            return {"ok": False, "error": "그 삶을 찾을 수 없어요."}
+        db.kv_set(c, "active_avatar", str(body.id))
+    return {"ok": True}
+
+
 @app.post("/api/avatar/create")
 def create_avatar(body: CreateBody):
     """자유 입력 아바타 생성 — 누구든, 어떤 목표든.
@@ -105,6 +142,11 @@ def create_avatar(body: CreateBody):
     name = body.name.strip()
     if not name:
         return {"ok": False, "error": "이름을 알려주세요."}
+    with db.connect() as c:
+        n = c.execute("SELECT COUNT(*) AS n FROM avatars").fetchone()["n"]
+        if n >= MAX_AVATARS:
+            return {"ok": False,
+                    "error": f"동시에 지켜볼 수 있는 삶은 {MAX_AVATARS}개까지예요. 먼저 한 삶을 떠나보내 주세요."}
     if world.is_living_famous(name):
         return {"ok": False, "blocked": True, "message": world.BLOCK_MESSAGE}
 
@@ -124,20 +166,21 @@ def create_avatar(body: CreateBody):
     return {"ok": True}
 
 
+MAX_AVATARS = 3  # 동시에 지켜볼 수 있는 삶 (기획: 최소 2)
+
+
 def _create_avatar(c, scenario: dict, category: str):
-    c.execute("DELETE FROM avatars")  # 프로토타입: 아바타 1명
-    for t in ("seasons", "events", "schedules", "active_conflicts", "interventions", "cast_members"):
-        c.execute(f"DELETE FROM {t}")
     day = db.vtoday(c)
     state = {"money": scenario.get("money_start", 100), "health": 80, "mood": "담담함"}
-    cur = c.execute(
+    avatar_id = c.insert_id(
         "INSERT INTO avatars (name, scenario_id, category, scenario_json, state_json, "
         "last_sim_day, created_at) VALUES (?,?,?,?,?,?,datetime('now'))",
         (scenario["name"], scenario["id"], category,
          json.dumps(scenario, ensure_ascii=False), json.dumps(state, ensure_ascii=False), day),
     )
-    avatar_id = cur.lastrowid
-    c.execute("INSERT OR REPLACE INTO state_history (avatar_id, day, money, health) VALUES (?,?,?,?)",
+    db.kv_set(c, "active_avatar", str(avatar_id))
+    c.execute("INSERT INTO state_history (avatar_id, day, money, health) VALUES (?,?,?,?) "
+              "ON CONFLICT(avatar_id, day) DO UPDATE SET money=excluded.money, health=excluded.health",
               (avatar_id, day, state["money"], state["health"]))
     for m in scenario.get("cast", []):
         c.execute(
@@ -193,11 +236,23 @@ def now_last():
             return {"scene": None}
         today = db.vtoday(c)
         row = c.execute(
-            "SELECT title, body FROM events WHERE avatar_id=? AND kind='scene' AND day=? "
-            "AND created_at > datetime('now','-30 minutes') ORDER BY id DESC LIMIT 1",
+            "SELECT title, body, created_at FROM events WHERE avatar_id=? AND kind='scene' AND day=? "
+            "ORDER BY id DESC LIMIT 1",
             (avatar["id"], today),
         ).fetchone()
-        return {"scene": dict(row) if row else None}
+        if not row:
+            return {"scene": None}
+        # 신선도 판정은 파이썬에서 — SQLite/Postgres의 시간 표현 차이를 흡수
+        import datetime as _dt
+        try:
+            raw = str(row["created_at"])
+            ts = _dt.datetime.fromisoformat(raw.replace(" ", "T"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=_dt.timezone.utc)
+            fresh = (_dt.datetime.now(_dt.timezone.utc) - ts) < _dt.timedelta(minutes=30)
+        except Exception:
+            fresh = True
+        return {"scene": {"title": row["title"], "body": row["body"]} if fresh else None}
 
 
 @app.get("/api/now")
@@ -440,8 +495,8 @@ def season_next(body: ContinueBody):
         if not avatar or season["status"] != "done":
             return {"ok": False, "error": "아직 시즌이 진행 중이에요"}
         if body.mode == "new":
-            c.execute("DELETE FROM avatars")
-            return {"ok": True, "reset": True}
+            # 완결된 삶은 전기와 함께 슬롯에 남는다 — 새 삶은 새 슬롯에서
+            return {"ok": True, "go_create": True}
         goal = body.goal.strip() or f"{scenario['goal']} — 그 다음 이야기"
         milestones = [f"{goal}을(를) 향한 걸음 {i+1}" for i in range(3)] + [goal]
         day = db.vtoday(c)
@@ -467,12 +522,18 @@ def timewarp(body: WarpBody):
 
 
 @app.delete("/api/avatar")
-def reset():
+def leave_avatar():
+    """활성 아바타의 삶을 떠나보낸다 — 다른 삶들은 그대로 이어진다."""
     with db.connect() as c:
-        for t in ("avatars", "seasons", "events", "schedules",
-                  "active_conflicts", "interventions", "cast_members"):
-            c.execute(f"DELETE FROM {t}")
-        db.kv_set(c, "time_offset_days", "0")
+        avatar, _, _, _ = _loaded(c)
+        if not avatar:
+            return {"ok": True}
+        for t in ("seasons", "events", "schedules", "active_conflicts",
+                  "interventions", "cast_members", "hunches", "state_history"):
+            c.execute(f"DELETE FROM {t} WHERE avatar_id=?", (avatar["id"],))
+        c.execute("DELETE FROM avatars WHERE id=?", (avatar["id"],))
+        nxt = c.execute("SELECT id FROM avatars ORDER BY id DESC LIMIT 1").fetchone()
+        db.kv_set(c, "active_avatar", str(nxt["id"]) if nxt else "")
     return {"ok": True}
 
 

@@ -361,9 +361,9 @@ async function loadStory() {
         body: JSON.stringify({ mode: "continue", goal: $("#next-goal").value }) });
       boot();
     };
-    $("#btn-new").onclick = async () => {
-      await api("/api/season/next", { method: "POST", body: JSON.stringify({ mode: "new" }) });
-      boot();
+    $("#btn-new").onclick = () => {
+      showCreate();
+      $("#btn-back-main").classList.remove("hidden");
     };
     return;
   }
@@ -412,6 +412,37 @@ $("#btn-buy").onclick = async () => {
   STATE = await api("/api/state");
   renderHeader(); openModal();
 };
+
+/* ---------- 삶 목록 (여러 스토리 동시 관전) ---------- */
+async function openAvatars() {
+  const d = await api("/api/avatars");
+  const list = $("#av-list");
+  list.innerHTML = "";
+  d.avatars.forEach((a) => {
+    const el = document.createElement("button");
+    el.className = "av-row" + (a.active ? " active" : "");
+    el.innerHTML = `
+      <b>${a.name}</b> <span class="cat">${a.category}</span>
+      ${a.unread ? `<span class="badge">${a.unread}</span>` : ""}
+      <small>${a.status === "done" ? "완결된 이야기" : `시즌 ${a.season_no} · ${dayLabel(a.day_count)}`} — ${a.goal}</small>`;
+    el.onclick = async () => {
+      await api("/api/avatar/select", { method: "POST", body: JSON.stringify({ id: a.id }) });
+      $("#avmodal").classList.add("hidden");
+      boot();
+    };
+    list.appendChild(el);
+  });
+  $("#btn-new-life").style.display = d.avatars.length >= d.max ? "none" : "block";
+  $("#avmodal").classList.remove("hidden");
+}
+$("#btn-avatars").onclick = openAvatars;
+$("#av-close").onclick = () => $("#avmodal").classList.add("hidden");
+$("#btn-new-life").onclick = () => {
+  $("#avmodal").classList.add("hidden");
+  showCreate();
+  $("#btn-back-main").classList.remove("hidden");
+};
+$("#btn-back-main").onclick = boot;
 
 /* ---------- 알림 ---------- */
 function notice(text) {

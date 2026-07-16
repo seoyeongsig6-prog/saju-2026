@@ -1,12 +1,19 @@
-"""SQLite 저장소 — 아바타 상태, 시즌, 사건 로그, 행운 게이지."""
+"""저장소 — DATABASE_URL(Postgres, 영구 저장)이 있으면 그쪽으로, 없으면 SQLite.
+
+Render 무료 서버는 잠들 때 디스크가 초기화되므로, 실서비스/지속 테스트에는
+Neon 등 외부 Postgres를 DATABASE_URL로 연결한다. 삶은 사라지면 안 되니까.
+"""
 import datetime
 import json
+import os
 import sqlite3
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 TZ = ZoneInfo("Asia/Seoul")
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "thelife.db"
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+IS_PG = DATABASE_URL.startswith(("postgres://", "postgresql://"))
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS kv (
@@ -16,9 +23,9 @@ CREATE TABLE IF NOT EXISTS avatars (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     scenario_id TEXT NOT NULL,
-    category TEXT NOT NULL,            -- 역사 | 현실
-    scenario_json TEXT NOT NULL,       -- 세계 텍스처 팩 (커스텀은 생성본)
-    state_json TEXT NOT NULL,          -- 위치/재산/건강/감정/흉터
+    category TEXT NOT NULL,
+    scenario_json TEXT NOT NULL,
+    state_json TEXT NOT NULL,
     last_sim_day TEXT,
     last_seen_at TEXT,
     created_at TEXT
@@ -31,7 +38,7 @@ CREATE TABLE IF NOT EXISTS seasons (
     milestones_json TEXT NOT NULL,
     milestone_idx INTEGER DEFAULT 0,
     interventions_left INTEGER DEFAULT 3,
-    status TEXT DEFAULT 'active',      -- active | done
+    status TEXT DEFAULT 'active',
     biography TEXT,
     started_day TEXT,
     ended_day TEXT
@@ -40,7 +47,8 @@ CREATE TABLE IF NOT EXISTS cast_members (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     avatar_id INTEGER NOT NULL,
     name TEXT, role TEXT, note TEXT,
-    affinity INTEGER DEFAULT 50
+    affinity INTEGER DEFAULT 50,
+    last_met TEXT
 );
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,7 +56,7 @@ CREATE TABLE IF NOT EXISTS events (
     season_id INTEGER NOT NULL,
     day TEXT NOT NULL,
     slot TEXT,
-    kind TEXT NOT NULL,                -- beat | daily | intervention | season | scar
+    kind TEXT NOT NULL,
     title TEXT,
     body TEXT,
     read INTEGER DEFAULT 0,
@@ -65,18 +73,18 @@ CREATE TABLE IF NOT EXISTS active_conflicts (
     avatar_id INTEGER NOT NULL,
     season_id INTEGER NOT NULL,
     card_id TEXT NOT NULL,
-    card_json TEXT,                    -- 즉흥 발제된 갈등의 구조 (LLM 생성)
-    stage TEXT DEFAULT 'seed',         -- seed | rise | climax | done
+    card_json TEXT,
+    stage TEXT DEFAULT 'seed',
     boost REAL DEFAULT 0,
     day_started TEXT,
-    outcome TEXT                       -- good | bad | NULL
+    outcome TEXT
 );
 CREATE TABLE IF NOT EXISTS interventions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     avatar_id INTEGER NOT NULL,
     season_id INTEGER NOT NULL,
     slot_no INTEGER,
-    size TEXT,                         -- 소 | 중 | 대
+    size TEXT,
     luck_spent INTEGER,
     title TEXT, body TEXT,
     day TEXT
@@ -91,10 +99,10 @@ CREATE TABLE IF NOT EXISTS hunches (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     avatar_id INTEGER NOT NULL,
     season_id INTEGER NOT NULL,
-    conflict_id INTEGER NOT NULL,      -- active_conflicts.id
-    direction TEXT NOT NULL,           -- good | bad
+    conflict_id INTEGER NOT NULL,
+    direction TEXT NOT NULL,
     luck_staked INTEGER NOT NULL,
-    status TEXT DEFAULT 'open',        -- open | won | lost | refunded
+    status TEXT DEFAULT 'open',
     payout INTEGER DEFAULT 0,
     created_day TEXT,
     resolved_day TEXT
@@ -105,22 +113,78 @@ CREATE TABLE IF NOT EXISTS state_history (
     money INTEGER,
     health INTEGER,
     PRIMARY KEY (avatar_id, day)
-);
+)
 """
 
 
-def connect() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    c = sqlite3.connect(DB_PATH)
-    c.row_factory = sqlite3.Row
-    return c
+class Conn:
+    """sqlite3/psycopg 겸용 커넥션 — 코드는 sqlite 문법으로 쓰고 여기서 번역한다."""
+
+    def __init__(self):
+        if IS_PG:
+            import psycopg
+            from psycopg.rows import dict_row
+            self.raw = psycopg.connect(DATABASE_URL, autocommit=True, row_factory=dict_row)
+        else:
+            DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+            self.raw = sqlite3.connect(DB_PATH)
+            self.raw.row_factory = sqlite3.Row
+
+    @staticmethod
+    def _tx(sql: str) -> str:
+        if not IS_PG:
+            return sql
+        sql = sql.replace("?", "%s")
+        sql = sql.replace("datetime('now','-30 minutes')", "(now() - interval '30 minutes')")
+        sql = sql.replace("datetime('now')", "now()")
+        return sql
+
+    def execute(self, sql: str, params=()):
+        return self.raw.execute(self._tx(sql), params)
+
+    def insert_id(self, sql: str, params=()) -> int:
+        """INSERT 후 생성된 id — 백엔드별 방식 차이를 흡수한다."""
+        if IS_PG:
+            cur = self.raw.execute(self._tx(sql) + " RETURNING id", params)
+            return cur.fetchone()["id"]
+        return self.raw.execute(sql, params).lastrowid
+
+    def commit(self):
+        if not IS_PG:
+            self.raw.commit()
+
+    def close(self):
+        try:
+            self.raw.close()
+        except Exception:
+            pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        if exc_type is None:
+            self.commit()
+        self.close()
+        return False
+
+
+def connect() -> Conn:
+    return Conn()
 
 
 def init() -> None:
     with connect() as c:
-        c.executescript(SCHEMA)
-        c.execute("INSERT OR IGNORE INTO gauge (id, luck) VALUES (1, 30)")
-        for ddl in (  # 기존 DB 마이그레이션
+        for stmt in SCHEMA.split(";"):
+            stmt = stmt.strip()
+            if not stmt:
+                continue
+            if IS_PG:
+                stmt = stmt.replace("INTEGER PRIMARY KEY AUTOINCREMENT",
+                                    "BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY")
+            c.execute(stmt)
+        c.execute("INSERT INTO gauge (id, luck) VALUES (1, 30) ON CONFLICT (id) DO NOTHING")
+        for ddl in (  # 구버전 DB 마이그레이션 (이미 있으면 조용히 통과)
             "ALTER TABLE active_conflicts ADD COLUMN card_json TEXT",
             "ALTER TABLE cast_members ADD COLUMN last_met TEXT",
         ):
@@ -130,12 +194,12 @@ def init() -> None:
                 pass
 
 
-def kv_get(c: sqlite3.Connection, k: str, default: str = "") -> str:
+def kv_get(c: Conn, k: str, default: str = "") -> str:
     row = c.execute("SELECT v FROM kv WHERE k=?", (k,)).fetchone()
     return row["v"] if row else default
 
 
-def kv_set(c: sqlite3.Connection, k: str, v: str) -> None:
+def kv_set(c: Conn, k: str, v: str) -> None:
     c.execute("INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", (k, v))
 
 
@@ -143,13 +207,13 @@ def real_now() -> datetime.datetime:
     return datetime.datetime.now(TZ)
 
 
-def virtual_now(c: sqlite3.Connection) -> datetime.datetime:
+def virtual_now(c: Conn) -> datetime.datetime:
     """시간 빨리감기(테스트) 오프셋을 더한 현재 시각."""
     offset = int(kv_get(c, "time_offset_days", "0"))
     return real_now() + datetime.timedelta(days=offset)
 
 
-def vtoday(c: sqlite3.Connection) -> str:
+def vtoday(c: Conn) -> str:
     return virtual_now(c).date().isoformat()
 
 
