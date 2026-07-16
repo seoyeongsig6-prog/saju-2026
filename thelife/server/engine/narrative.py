@@ -28,12 +28,17 @@ def scene_stream(
     cast = scenario.get("cast", [])
     friend = random.choice(cast)["name"] if cast else "동료"
 
+    shadow_mock = (
+        f"그 시각, 그가 모르는 곳.\n"
+        f"{conflict_note.split(':')[0] if conflict_note else '마을 어귀'}의 그림자가 조용히 움직인다.\n"
+        f"아직 {name}의 귀에는 닿지 않은 이야기다.\n"
+    )
     if slot.get("sleeping"):
         mock = (
             f"{hhmm}. {scenario.get('place','')}의 밤은 고요하다.\n"
             f"{name}은(는) 깊이 잠들어 있다. 숨소리가 낮고 고르다.\n"
             f"낮에 있었던 일이 꿈의 언저리를 스치는지, 잠결에 몸을 뒤척인다.\n"
-            f"창밖으로 달빛이 길게 들어와 있다.\n"
+            f"───\n{shadow_mock}"
         )
     else:
         mock = (
@@ -41,7 +46,7 @@ def scene_stream(
             f"{name}은(는) {slot['what']} 중이다.\n"
             f"{friend}: \"오늘은 일이 손에 붙는구먼.\"\n"
             f"{name}: \"그러게 말입니다. 이런 날만 같으면 좋겠습니다.\"\n"
-            f"{conflict_note or '별일 없는 하루가 천천히 흘러간다.'}\n"
+            f"───\n{shadow_mock}"
         )
 
     prompt = f"""당신은 관전형 인생 게임의 서사 작가다. 유저는 아바타의 삶을 몰래 지켜본다.
@@ -56,12 +61,24 @@ def scene_stream(
 [지금] {day} {hhmm}, 일과: {slot['what']}
 [진행 중인 갈등] {conflict_note or '없음'}
 
-지금 이 순간의 장면을 현재형으로 8~12줄 써라.
+두 개의 장면을 병렬로 써라 — 서스펜스는 관객만 아는 데서 나온다.
+
+[1부 — 주인공] 지금 이 순간의 장면을 현재형으로 6~9줄.
 - 대화는 "이름: "대사"" 형식의 줄로. 지문은 그냥 문장으로.
 - 직업과 시대의 디테일(도구, 냄새, 소리, 물때, 돈 단위)을 살려라.
-- 진행 중인 갈등이 있으면 대화에 그 긴장이 배어나게 하되, 해결하지 마라.
-- 달력 날짜(년·월·일)는 절대 언급하지 마라. 시간 감각은 'N일차'와 시각뿐이다.
-- 마지막 줄은 다음이 살짝 궁금해지게 끝내라. 장면 밖 설명은 금지."""
+- 진행 중인 갈등의 긴장이 배어나되, 주인공은 아직 전모를 모른다.
+
+그 다음 줄에 정확히 "───" 만 쓴 뒤,
+
+[2부 — 같은 시각, 그가 모르는 곳] 2~4줄.
+- 진행 중인 갈등이 있으면: 그를 위협하는 쪽의 움직임을 보여줘라
+  (음모가 한 걸음 진행되고, 문서가 준비되고, 배가 떠나고). 관객은 보지만
+  주인공은 모른다.
+- 갈등이 없으면: 주변 세계의 미묘한 조짐이나 인물들의 수군거림.
+- 최근 사건 및 1부와 인물의 위치·동선이 모순되면 안 된다.
+
+공통 규칙: 달력 날짜(년·월·일) 언급 금지. 시간 감각은 'N일차'와 시각뿐.
+마지막 줄은 불길하거나 궁금하게. 장면 밖 설명 금지."""
     yield from llm.stream(prompt, mock_text=mock)
 
 
@@ -91,11 +108,35 @@ def beat_text(
 [아바타] {avatar['name']} — {scenario.get('persona','')}
 [고정 등장인물] {_cast_line(scenario)}
 [문체] {scenario.get('style','')}
+[최근 있었던 일 — 인물의 위치·동선·상황과 모순되면 안 된다]
+{_recent_log(c, avatar['id'])}
 [사건] {stage_desc}
 {"[결과] 아바타가 스스로의 힘으로 이겨냈다. 극복의 방식에 이 인물다움이 드러나게." if outcome == "good" else ""}
 {"[결과] 이번에는 졌다. 잃은 것을 구체적으로. 그러나 이야기가 끝나지 않았음을 암시하라." if outcome == "bad" else ""}
 
 3~5문장. 다음이 궁금하게 끝내라. 달력 날짜(년·월·일)는 언급하지 마라. 설명 없이 소식 본문만."""
+    return llm.write(prompt, mock_text=mock)
+
+
+def shadow_text(c: sqlite3.Connection, avatar: dict, scenario: dict, card: dict, stage: str) -> str:
+    """주변의 움직임 — 주인공은 모르고, 지켜보는 이만 아는 위협의 진행."""
+    stage_desc = card.get(stage, "")
+    mock = (
+        f"{avatar['name']}이(가) 모르는 곳에서 일이 움직인다. {stage_desc}. "
+        f"바람이 먼저 알고 방향을 바꾼다."
+    )
+    prompt = f"""관전형 인생 게임. 유저에게만 보이는 '그가 모르는 움직임' 한 토막을 써라.
+주인공을 위협하는 쪽의 시점이다 — 음모가 진행되고, 서류가 넘어가고, 배가 은밀히 뜬다.
+
+[세계] {scenario.get('era','')} / {scenario.get('place','')}
+[주인공] {avatar['name']} — 그는 이 일을 아직 모른다
+[고정 등장인물] {_cast_line(scenario)}
+[최근 있었던 일 — 위치·동선과 모순 금지]
+{_recent_log(c, avatar['id'])}
+[진행 중인 갈등의 현재 국면] {card.get('title','')}: {stage_desc}
+
+2~4문장. 주인공은 등장시키지 말고, 위협이 한 걸음 다가오는 것만 보여줘라.
+불길한 여운으로 끝내라. 달력 날짜 언급 금지. 본문만."""
     return llm.write(prompt, mock_text=mock)
 
 
@@ -113,9 +154,11 @@ def daily_text(avatar: dict, scenario: dict, slots: list, rng: random.Random) ->
 
 
 def intervention_text(
-    avatar: dict, scenario: dict, size: str, luck_line: str, conflict_title: str,
+    c: sqlite3.Connection, avatar: dict, scenario: dict, size: str,
+    luck_line: str, conflict_title: str, hhmm: str,
 ) -> str:
-    """개입 번역 — 행운이 세계의 인과로 배달되는 장면 + 아바타의 해석."""
+    """개입 번역 — 행운이 세계의 인과로 배달되는 장면 + 아바타의 해석.
+    반드시 '지금 이 순간'의 상황·인물 위치와 아귀가 맞아야 한다."""
     mock = (
         f"{luck_line}. 사람들은 우연이라 했다.\n"
         f"{avatar['name']}은(는) 한참 말이 없다가 낮게 중얼거렸다. "
@@ -127,12 +170,20 @@ def intervention_text(
 [세계] {scenario.get('era','')} / {scenario.get('place','')}
 [아바타] {avatar['name']} — {scenario.get('persona','')}
 [고정 등장인물] {_cast_line(scenario)}
-[번역된 행운] {luck_line}
+[지금 시각] {hhmm}
+[최근 있었던 일 — 지금 누가 어디에 있는지의 근거]
+{_recent_log(c, avatar['id'], 10)}
+[행운의 형태 (영감일 뿐 — 상황에 맞게 각색하라)] {luck_line}
 [얽힌 갈등] {conflict_title or '없음'}
 [크기] {size}
 
-이 행운이 도착하는 장면을 4~6문장으로 써라.
-- 가능하면 고정 등장인물이 행운의 운반자가 되게 하라.
+이 행운이 '지금' 도착하는 장면을 4~6문장으로 써라.
+- **일관성 절대 규칙**: 최근 사건과 모순되면 안 된다. 방금 곁에 있던 인물이
+  '멀리서 서찰을 보내는' 식의 모순은 중대한 오류다. 인물의 현재 위치·동선,
+  지금 시각(새벽/한낮/밤)에 자연스러운 사건이어야 한다.
+- 행운의 형태가 지금 상황과 어긋나면, 같은 크기의 다른 우연으로 바꿔라.
+- 가능하면 고정 등장인물이 행운의 운반자가 되게 하라 — 지금 그가 있을 법한
+  자리에서.
 - 마지막에는 아바타가 이 행운을 자기 세계의 언어로 해석하는 한 마디
   ("하늘이 돕는구나" 같은)를 넣어라. 아바타는 유저의 존재를 절대 모른다."""
     return llm.write(prompt, mock_text=mock)

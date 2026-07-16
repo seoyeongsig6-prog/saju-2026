@@ -333,8 +333,23 @@ def dashboard():
             "SELECT COUNT(*) AS n FROM active_conflicts WHERE season_id=? AND outcome='good'",
             (season["id"],),
         ).fetchone()["n"]
+        # 살아 움직이는 티커 + 그가 모르는 움직임 (읽음 처리 없이 살짝 엿본다)
+        ticker_rows = c.execute(
+            "SELECT day, kind, title, body FROM events WHERE avatar_id=? "
+            "AND kind IN ('beat','shadow','daily','intervention','hunch','season') "
+            "ORDER BY id DESC LIMIT 14", (avatar["id"],),
+        ).fetchall()
+        ticker = [{"kind": r["kind"],
+                   "text": (r["title"] + " — " if r["kind"] != "daily" else "") + (r["body"] or "")[:90],
+                   "day_no": _day_no(season["started_day"], r["day"])} for r in ticker_rows]
+        shadow_row = c.execute(
+            "SELECT body FROM events WHERE avatar_id=? AND kind='shadow' ORDER BY id DESC LIMIT 1",
+            (avatar["id"],),
+        ).fetchone()
         return {
             "name": avatar["name"],
+            "ticker": ticker,
+            "shadow_last": shadow_row["body"] if shadow_row else None,
             "money": state.get("money", 0),
             "money_unit": scenario.get("money_unit", ""),
             "health": state.get("health", 80),

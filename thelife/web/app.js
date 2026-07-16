@@ -85,8 +85,7 @@ function showMain() {
   $("#view-create").classList.add("hidden");
   $("#view-main").classList.remove("hidden");
   renderHeader();
-  openPane("now");
-  loadNow();
+  openPane("dash"); // 홈 = 살아있는 대시보드
 }
 
 function renderHeader() {
@@ -107,7 +106,6 @@ function renderHeader() {
   const u = $("#unread");
   if (s.unread > 0) { u.textContent = s.unread; u.classList.remove("hidden"); }
   else u.classList.add("hidden");
-  $("#mockmark").textContent = s.mock_mode ? "목업 모드" : "";
   if (s.season.status === "done") openPane("story");
 }
 
@@ -141,10 +139,36 @@ function sparkline(hist, key, w = 150, h = 36) {
   return `<svg viewBox="0 0 ${w} ${h}" class="spark"><polyline points="${pts}"
     fill="none" stroke="${up ? "var(--accent)" : "var(--bad)"}" stroke-width="2"/></svg>`;
 }
+/* 살아있는 티커 — 글 한 줄이라도 계속 움직인다 */
+let tickerTimer = null, tickerIdx = 0, tickerItems = [];
+function startTicker(items) {
+  tickerItems = items || [];
+  clearInterval(tickerTimer);
+  const el = $("#ticker");
+  if (!tickerItems.length) { el.textContent = "세계가 숨을 고르고 있다…"; return; }
+  const show = () => {
+    const it = tickerItems[tickerIdx % tickerItems.length];
+    el.classList.remove("tick-in");
+    void el.offsetWidth; // 애니메이션 재시작
+    el.classList.add("tick-in");
+    el.innerHTML = `<small>${dayLabel(it.day_no)}</small> ${it.kind === "shadow" ? "👁 " : ""}${it.text}`;
+    tickerIdx++;
+  };
+  show();
+  tickerTimer = setInterval(show, 5000);
+}
+
+let dashRefresh = null;
 async function loadDash() {
   const d = await api("/api/dashboard");
   const box = $("#dash-body");
   if (!d || !d.name) { box.innerHTML = ""; return; }
+  startTicker(d.ticker);
+  clearInterval(dashRefresh);
+  dashRefresh = setInterval(() => {  // 홈이 열려 있는 동안 세계는 계속 갱신된다
+    if (!$("#pane-dash").classList.contains("hidden")) loadDash();
+    else clearInterval(dashRefresh);
+  }, 90000);
   const hist = d.history || [];
   const prev = hist.length > 1 ? hist[hist.length - 2] : null;
   const moneyDiff = prev ? d.money - prev.money : 0;
@@ -201,6 +225,15 @@ async function loadDash() {
           <small>${cf.stage_label}</small>
         </span>
       </div>`).join("")}
+
+    ${d.shadow_last ? `
+    <div class="story-h shadow-h">👁 그가 모르는 곳에서</div>
+    <div class="shadow-card">${d.shadow_last}</div>` : ""}
+
+    <div class="dash-nav">
+      <button onclick="openPane('now')">지금 들여다보기 →</button>
+      <button onclick="openPane('feed')">그동안의 소식 →</button>
+    </div>
   `;
 }
 
@@ -215,12 +248,14 @@ async function loadNow(force = false) {
     const last = await api("/api/now/last");
     if (last.scene && last.scene.body) {
       box.innerHTML = "";
+      shadowMode = false;
       last.scene.body.split("\n").forEach((ln) => addSceneLine(box, ln));
       return;
     }
   }
   streaming = true;
   box.innerHTML = "";
+  shadowMode = false;
   try {
     const r = await fetch("/api/now");
     const reader = r.body.getReader();
@@ -242,18 +277,31 @@ async function loadNow(force = false) {
   }
 }
 
+let shadowMode = false;
 function addSceneLine(box, line) {
   line = line.trim();
   if (!line) return;
+  if (line.startsWith("───") || line === "---") {
+    // 병렬 시점 전환 — 같은 시각, 그가 모르는 곳
+    shadowMode = true;
+    const sep = document.createElement("div");
+    sep.className = "shadow-sep";
+    sep.textContent = `— 같은 시각, ${STATE ? STATE.avatar.name : "그"}이(가) 모르는 곳 —`;
+    box.appendChild(sep);
+    return;
+  }
   const m = line.match(/^(\p{L}[\p{L}\d ]{0,11}):\s*["“]?(.+?)["”]?$/u);
   const el = document.createElement("div");
-  if (m) {
+  if (shadowMode) {
+    el.className = "narr shadow-line";
+    el.textContent = line.replace(/^\[.*?\]\s*/, "");
+  } else if (m) {
     const isMe = STATE && m[1].trim() === STATE.avatar.name;
     el.className = "bubble" + (isMe ? " me" : "");
     el.innerHTML = `<span class="who">${m[1].trim()}</span>${m[2]}`;
   } else {
     el.className = "narr";
-    el.textContent = line;
+    el.textContent = line.replace(/^\[.*?\]\s*/, "");
   }
   box.appendChild(el);
   el.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -451,9 +499,7 @@ function notice(text) {
 }
 $("#notice-close").onclick = () => $("#notice").classList.add("hidden");
 
-/* ---------- 디버그 ---------- */
-$("#btn-warp1").onclick = async () => { await api("/api/debug/timewarp", { method: "POST", body: JSON.stringify({ days: 1 }) }); boot(); };
-$("#btn-warp7").onclick = async () => { await api("/api/debug/timewarp", { method: "POST", body: JSON.stringify({ days: 7 }) }); boot(); };
+/* ---------- 기타 ---------- */
 $("#btn-reset").onclick = async () => {
   if (!confirm("정말 이 삶을 떠나 새로 시작할까요?")) return;
   await fetch("/api/avatar", { method: "DELETE" });

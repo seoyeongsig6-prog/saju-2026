@@ -68,7 +68,8 @@ def intervene(c: sqlite3.Connection, avatar: dict, scenario: dict, season: dict,
             "UPDATE active_conflicts SET boost=boost+? WHERE id=?", (BOOST[size], target["id"])
         )
 
-    body = narrative.intervention_text(avatar, scenario, size, luck_line, conflict_title)
+    hhmm = db.virtual_now(c).strftime("%H:%M")
+    body = narrative.intervention_text(c, avatar, scenario, size, luck_line, conflict_title, hhmm)
     day = db.vtoday(c)
     slot_no = 4 - season["interventions_left"]
     title = f"행운이 닿다 ({size})"

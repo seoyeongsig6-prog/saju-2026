@@ -81,8 +81,12 @@
     <section id="pane-feed" class="pane hidden">
       <div id="feed-list" class="feed"></div>
     </section>
-    <!-- 상태 (대시보드) -->
+    <!-- 홈 (살아있는 대시보드) -->
     <section id="pane-dash" class="pane hidden">
+      <div class="ticker-box" id="ticker-box">
+        <span class="ticker-dot"></span>
+        <div id="ticker" class="ticker-line"></div>
+      </div>
       <div id="dash-body"></div>
     </section>
     <!-- 이야기 -->
@@ -92,17 +96,11 @@
   </main>
 
   <nav>
-    <button data-pane="now" class="tab active">지금</button>
+    <button data-pane="dash" class="tab active">홈</button>
+    <button data-pane="now" class="tab">지금</button>
     <button data-pane="feed" class="tab">그동안 <span id="unread" class="badge hidden"></span></button>
-    <button data-pane="dash" class="tab">상태</button>
     <button data-pane="story" class="tab">이야기</button>
   </nav>
-
-  <div class="debugbar">
-    <span id="mockmark"></span>
-    <button id="btn-warp1">+1일 ▸</button>
-    <button id="btn-warp7">+7일 ▸▸</button>
-  </div>
 </div>
 
 <!-- ===== 행운 모달 ===== -->

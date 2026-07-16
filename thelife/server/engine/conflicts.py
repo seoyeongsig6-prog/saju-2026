@@ -184,6 +184,9 @@ def daily_tick(
             result["had_event"] = True
             state["mood"] = "긴장" if nxt == "climax" else "불안"
             _touch_cast(c, avatar["id"], day, rng, -1)
+            # 병렬 시점 — 주인공은 모르는 위협의 움직임 (관객만 본다)
+            shadow = narrative.shadow_text(c, avatar, scenario, card, nxt)
+            _emit(c, avatar, season, day, "shadow", "그가 모르는 움직임", shadow)
         elif cf["stage"] == "climax":
             # 해소 판정 — 아바타의 힘 + (있다면) 행운의 보정
             success = rng.random() < min(0.55 + cf["boost"], 0.97)
