@@ -121,6 +121,32 @@ CREATE TABLE IF NOT EXISTS state_history (
     money INTEGER,
     health INTEGER,
     PRIMARY KEY (avatar_id, day)
+);
+CREATE TABLE IF NOT EXISTS works (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT,
+    title TEXT NOT NULL,
+    genre TEXT,
+    premise TEXT,                     -- 로그라인
+    ending TEXT,                      -- 작가가 고정한 결말 — 이야기는 이곳으로 흐른다
+    style TEXT,
+    total_chapters INTEGER DEFAULT 25,
+    characters_json TEXT,             -- 원형(아키타입) 기반 인물들
+    relations_json TEXT,              -- 관계도
+    beats_json TEXT,                  -- Save the Cat 15비트
+    created_at TEXT
+);
+CREATE TABLE IF NOT EXISTS chapters (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    work_id INTEGER NOT NULL,
+    no INTEGER NOT NULL,
+    title TEXT,
+    body TEXT,
+    summary TEXT,                     -- 다음 회차 생성용 기억
+    directive TEXT,                   -- 작가의 지시
+    beat_idx INTEGER,
+    created_at TEXT,
+    updated_at TEXT
 )
 """
 

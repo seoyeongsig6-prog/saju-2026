@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Novelist</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/writer.css">
+</head>
+<body class="writer">
+
+<!-- 작품 목록 -->
+<div id="w-home" class="wview">
+  <div class="w-hero">
+    <h1>The Novelist</h1>
+    <p class="tagline">결말을 정하라. 이야기는 그곳으로 흐른다.</p>
+  </div>
+  <div id="w-list" class="w-list"></div>
+  <button id="w-new" class="primary big">＋ 새 작품 설계</button>
+</div>
+
+<!-- 새 작품 -->
+<div id="w-create" class="wview hidden">
+  <button class="ghost small" onclick="showHome()">← 작품 목록</button>
+  <h2>새 작품 설계</h2>
+  <p class="hint">로그라인과 결말만 정하면, 인물(원형)·관계도·15비트 플롯 지도를 설계해 드립니다.<br>
+     이야기는 당신이 정한 결말로 흘러갑니다.</p>
+  <div class="form">
+    <input id="c-genre" placeholder="장르 (예: 현대 판타지, 회귀물, 로맨스, 무협)">
+    <textarea id="c-premise" rows="3" placeholder="로그라인 — 한두 문장 (예: 재벌가 막내로 회귀한 만년 과장, 이번 생은 다르게 산다)"></textarea>
+    <textarea id="c-ending" rows="3" placeholder="결말 — 이야기가 반드시 도달할 곳 (예: 그룹을 차지하되, 전생의 은인을 지켜낸다)"></textarea>
+    <div class="row2">
+      <input id="c-title" placeholder="제목 (비우면 지어드려요)">
+      <input id="c-total" type="number" value="25" min="5" max="200" placeholder="총 회차">
+    </div>
+    <input id="c-style" placeholder="문체 (선택 — 예: 건조하고 빠르게)">
+    <button id="c-go" class="primary">설계도 만들기</button>
+  </div>
+</div>
+
+<!-- 작품 화면 -->
+<div id="w-work" class="wview hidden">
+  <div class="w-top">
+    <button class="ghost small" onclick="showHome()">← 목록</button>
+    <b id="wk-title"></b>
+    <span id="wk-progress" class="dim"></span>
+  </div>
+  <div class="w-tabs">
+    <button data-wtab="chapters" class="wtab active">회차</button>
+    <button data-wtab="bible" class="wtab">설정집</button>
+  </div>
+
+  <!-- 회차 탭 -->
+  <div id="wt-chapters" class="wtabpane">
+    <div id="ch-list" class="ch-list"></div>
+    <div class="write-box">
+      <input id="directive" placeholder="작가의 지시 (선택 — 예: 이번 화에서 멘토의 비밀이 드러난다)">
+      <button id="btn-write" class="primary">다음 회차 쓰기 ✍</button>
+    </div>
+  </div>
+
+  <!-- 설정집 탭 -->
+  <div id="wt-bible" class="wtabpane hidden">
+    <div class="story-h">인물 (보글러 원형)</div>
+    <div id="bible-chars"></div>
+    <div class="story-h">관계도</div>
+    <div id="bible-rels"></div>
+    <div class="story-h">플롯 지도 — Save the Cat 15비트</div>
+    <div id="bible-beats"></div>
+  </div>
+</div>
+
+<!-- 회차 편집기 -->
+<div id="w-editor" class="wview hidden">
+  <div class="w-top">
+    <button class="ghost small" id="ed-back">← 회차 목록</button>
+    <span id="ed-beat" class="dim"></span>
+    <span id="ed-count" class="dim"></span>
+  </div>
+  <input id="ed-title" class="ed-title">
+  <textarea id="ed-body" class="ed-body" spellcheck="false"></textarea>
+  <div class="ed-actions">
+    <button id="ed-save" class="primary">저장</button>
+    <button id="ed-copy">본문 복사</button>
+    <button id="ed-download">.txt 받기</button>
+    <button id="ed-regen">다시 쓰기</button>
+    <button id="ed-del" class="danger">삭제</button>
+  </div>
+</div>
+
+<div id="notice" class="modal hidden">
+  <div class="modal-card">
+    <p id="notice-text" class="notice-text"></p>
+    <button id="notice-close" class="ghost">알겠어요</button>
+  </div>
+</div>
+
+<div id="busy" class="modal hidden">
+  <div class="modal-card" style="text-align:center">
+    <p id="busy-text">쓰는 중…</p>
+  </div>
+</div>
+
+<script src="/static/writer.js"></script>
+</body>
+</html>

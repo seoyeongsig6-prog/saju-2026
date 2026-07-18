@@ -11,11 +11,12 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from pydantic import BaseModel
 
-from . import db
+from . import db, writer
 from .engine import conflicts, intervention, narrative, schedule, season as season_mod, world
 from .llm import llm
 
 app = FastAPI(title="The Life")
+app.include_router(writer.router)
 WEB = Path(__file__).resolve().parent.parent / "web"
 
 
@@ -83,6 +84,12 @@ class ContinueBody(BaseModel):
 @app.get("/")
 def index():
     return FileResponse(WEB / "index.html")
+
+
+@app.get("/writer")
+def writer_page():
+    """형제 앱 — The Novelist (작가용 웹소설 집필 도구)."""
+    return FileResponse(WEB / "writer.html")
 
 
 @app.get("/api/presets")
