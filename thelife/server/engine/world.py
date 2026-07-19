@@ -64,17 +64,76 @@ def is_living_famous(name: str) -> bool:
     return answer.strip().upper().startswith("YES")
 
 
+def _brace_state(s: str):
+    """문자열 상태를 존중하며 열린 괄호 스택을 계산한다."""
+    stack, in_str, esc = [], False, False
+    for ch in s:
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "{[":
+            stack.append(ch)
+        elif ch == "}" and stack and stack[-1] == "{":
+            stack.pop()
+        elif ch == "]" and stack and stack[-1] == "[":
+            stack.pop()
+    return stack, in_str
+
+
+def _repair_truncated(raw: str):
+    """출력 한도에 잘린 JSON 복구 — 마지막 완전한 값까지 자르고 괄호를 닫는다."""
+    # 값이 하나 닫힌 지점들(}, ], 문자열 끝)을 후보로 수집
+    positions, in_str, esc = [], False, False
+    for i, ch in enumerate(raw):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+                positions.append(i + 1)
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "}]":
+            positions.append(i + 1)
+    closers = {"{": "}", "[": "]"}
+    for pos in reversed(positions[-400:]):
+        cand = raw[:pos].rstrip().rstrip(",")
+        stack, still_in_str = _brace_state(cand)
+        if still_in_str or not stack:
+            continue
+        cand += "".join(closers[c] for c in reversed(stack))
+        try:
+            return json.loads(re.sub(r",\s*([}\]])", r"\1", cand))
+        except Exception:
+            continue
+    return None
+
+
 def parse_llm_json(raw: str):
-    """LLM 출력에서 JSON을 견고하게 뽑는다 (코드펜스·앞뒤 잡담·마지막 쉼표 복구)."""
+    """LLM 출력에서 JSON을 견고하게 뽑는다
+    (코드펜스·앞뒤 잡담·마지막 쉼표·출력 한도 잘림까지 복구)."""
     raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-    start, end = raw.find("{"), raw.rfind("}")
-    if start == -1 or end <= start:
+    start = raw.find("{")
+    if start == -1:
         return None
-    raw = re.sub(r",\s*([}\]])", r"\1", raw[start:end + 1])
-    try:
-        return json.loads(raw)
-    except Exception:
-        return None
+    raw = raw[start:]
+    end = raw.rfind("}")
+    if end > 0:
+        try:
+            return json.loads(re.sub(r",\s*([}\]])", r"\1", raw[:end + 1]))
+        except Exception:
+            pass
+    return _repair_truncated(raw)
 
 
 def scenario_card_index(scenario: dict, global_cards: dict) -> tuple:

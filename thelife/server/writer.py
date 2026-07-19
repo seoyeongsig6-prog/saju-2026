@@ -86,6 +86,7 @@ JSON 스키마 (다른 텍스트 없이 JSON만):
   인물 관계를 실제 역사대로 정확히 써라. 서로 다른 인물의 이름을 혼동하는 것은
   중대한 오류다 (예: 단종의 휘는 '이홍위'이고, '이유'는 그의 숙부 세조의 휘다).
   휘가 불확실하면 지어내지 말고 잘 알려진 호칭(단종, 노산군 등)을 써라.
+- 출력은 들여쓰기 없는 압축 JSON으로.
 - relations: 주요 인물 쌍 4~6개. 긴장 없는 관계는 넣지 마라.
 - beats: Save the Cat 15비트 전부. name은 이 순서 그대로: {', '.join(BEATS)}.
   각 비트의 summary는 로그라인과 결말에 정확히 정렬되어야 한다 —
@@ -121,7 +122,7 @@ def create_work(body: WorkBody, user: str = Header(default="solo", alias="X-User
     plan, last_raw = None, ""
     if not llm.is_mock:
         for _ in range(2):
-            last_raw = llm.write(_setup_prompt(body), mock_text="", max_tokens=8000)
+            last_raw = llm.write(_setup_prompt(body), mock_text="", max_tokens=16000)
             plan = parse_llm_json(last_raw)
             if plan and plan.get("characters") and plan.get("beats"):
                 break
@@ -260,7 +261,7 @@ def revise_bible(work_id: int, body: ReviseBody,
     prompt = f"""웹소설 설정집을 작가의 명령대로 수정하라.
 
 [현재 설정집]
-{json.dumps(current, ensure_ascii=False, indent=1)}
+{json.dumps(current, ensure_ascii=False, separators=(",", ":"))}
 
 [작가의 명령] {directive}
 
@@ -269,10 +270,11 @@ def revise_bible(work_id: int, body: ReviseBody,
 - 인물 이름을 바꾸면 관계도(relations)와 비트 요약(beats) 속의 그 이름도 전부 갱신하라.
 - 실존 인물·역사 배경이면 인명(휘)·호칭·관계를 실제 역사대로 정확히 고증하라.
 - beats는 15개, name은 그대로 유지하고 summary만 수정 가능하다.
-- 출력은 같은 구조의 JSON 하나만. 반드시 '{{'로 시작해 '}}'로 끝나라. 설명·코드펜스 금지."""
+- 출력은 같은 구조의 JSON 하나만. **들여쓰기·불필요한 공백 없는 압축 JSON**으로,
+  반드시 '{{'로 시작해 '}}'로 끝나라. 설명·코드펜스 금지."""
     plan, last_raw = None, ""
     for _ in range(2):
-        last_raw = llm.write(prompt, mock_text="", max_tokens=8000)
+        last_raw = llm.write(prompt, mock_text="", max_tokens=16000)
         plan = parse_llm_json(last_raw)
         if plan and plan.get("characters"):
             break
