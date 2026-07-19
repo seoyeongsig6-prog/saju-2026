@@ -113,10 +113,20 @@ function renderChapters() {
 }
 
 function renderBible() {
-  $("#bible-chars").innerHTML = WORK.characters.map((c) => `
-    <div class="b-char"><b>${c.name}</b><span class="arch">${c.archetype || ""}</span>
-      <p>${c.role || ""}<br>욕망 — ${c.want || ""} · 결핍 — ${c.need || ""}<br>비밀 — ${c.secret || ""}</p>
-    </div>`).join("");
+  $("#bible-title").value = WORK.title || "";
+  $("#bible-ending").value = WORK.ending || "";
+  const box = $("#bible-chars");
+  box.innerHTML = "";
+  WORK.characters.forEach((c, idx) => {
+    const el = document.createElement("div");
+    el.className = "b-char";
+    el.innerHTML = `
+      <button class="edit-ch" title="편집">✎</button>
+      <b>${c.name}</b><span class="arch">${c.archetype || ""}</span>
+      <p>${c.role || ""}<br>욕망 — ${c.want || ""} · 결핍 — ${c.need || ""}<br>비밀 — ${c.secret || ""}</p>`;
+    el.querySelector(".edit-ch").onclick = () => editChar(el, idx);
+    box.appendChild(el);
+  });
   $("#bible-rels").innerHTML = WORK.relations.map((r) => `
     <div class="b-rel"><b>${r.a} ↔ ${r.b}</b> · ${r.type || ""} — ${r.tension || ""}</div>`).join("");
   const written = WORK.chapters.length;
@@ -126,6 +136,79 @@ function renderBible() {
       <span class="no">${i + 1}</span><b>${b.name}</b><span>${b.summary || ""}</span></div>`;
   }).join("");
 }
+
+/* ---------- 설정집 편집 ---------- */
+function editChar(el, idx) {
+  const c = WORK.characters[idx];
+  el.innerHTML = `
+    <div class="form">
+      <div class="row2">
+        <input id="ec-name" value="${c.name || ""}" placeholder="이름">
+        <input id="ec-arch" value="${c.archetype || ""}" placeholder="원형">
+      </div>
+      <input id="ec-role" value="${c.role || ""}" placeholder="소개">
+      <div class="row2">
+        <input id="ec-want" value="${c.want || ""}" placeholder="외적 욕망">
+        <input id="ec-need" value="${c.need || ""}" placeholder="내적 결핍">
+      </div>
+      <input id="ec-secret" value="${c.secret || ""}" placeholder="비밀">
+      <div class="row2">
+        <button class="primary" id="ec-save">저장</button>
+        <button id="ec-cancel">취소</button>
+      </div>
+    </div>`;
+  el.querySelector("#ec-cancel").onclick = () => renderBible();
+  el.querySelector("#ec-save").onclick = async () => {
+    const oldName = c.name;
+    Object.assign(c, {
+      name: el.querySelector("#ec-name").value.trim(),
+      archetype: el.querySelector("#ec-arch").value.trim(),
+      role: el.querySelector("#ec-role").value.trim(),
+      want: el.querySelector("#ec-want").value.trim(),
+      need: el.querySelector("#ec-need").value.trim(),
+      secret: el.querySelector("#ec-secret").value.trim(),
+    });
+    if (oldName && c.name && oldName !== c.name) {
+      // 이름이 바뀌면 관계도 속 이름도 따라간다
+      WORK.relations.forEach((r) => {
+        if (r.a === oldName) r.a = c.name;
+        if (r.b === oldName) r.b = c.name;
+      });
+    }
+    await saveBible();
+    renderBible();
+  };
+}
+
+async function saveBible() {
+  const r = await api(`/api/writer/works/${WORK.id}/bible`, {
+    method: "PUT",
+    body: JSON.stringify({
+      title: $("#bible-title").value.trim(),
+      ending: $("#bible-ending").value.trim(),
+      characters: WORK.characters, relations: WORK.relations, beats: WORK.beats,
+    }),
+  });
+  if (!r.ok) notice(r.error || "저장 실패");
+  else { WORK.title = $("#bible-title").value.trim(); $("#wk-title").textContent = WORK.title; }
+}
+$("#bible-save-core").onclick = async () => { await saveBible(); notice("저장했어요. 이후 회차부터 반영됩니다."); };
+
+$("#bible-revise").onclick = async () => {
+  const directive = $("#bible-cmd").value.trim();
+  if (!directive) { notice("무엇을 고칠지 알려주세요."); return; }
+  busy("설정집을 고치는 중…");
+  const r = await api(`/api/writer/works/${WORK.id}/bible/revise`, {
+    method: "POST", body: JSON.stringify({ directive }),
+  });
+  unbusy();
+  if (!r.ok) { notice((r.error || "실패") + (r.detail ? `\n\n[원인] ${r.detail}` : "")); return; }
+  $("#bible-cmd").value = "";
+  const d = await api(`/api/writer/works/${WORK.id}`);
+  WORK = d.work; WORK.chapters = d.chapters;
+  renderBible();
+  notice("설정집을 고쳤어요. 이후 회차부터 반영됩니다.\n(이미 쓴 회차는 편집기에서 직접 고치거나 '다시 쓰기' 하세요)");
+};
 
 /* ---------- 회차 쓰기 ---------- */
 $("#btn-write").onclick = async () => {

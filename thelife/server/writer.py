@@ -197,6 +197,102 @@ def get_work(work_id: int, user: str = Header(default="solo", alias="X-User-Id")
                 "chapters": chapters}
 
 
+class BibleBody(BaseModel):
+    title: str = ""
+    ending: str = ""
+    characters: list = []
+    relations: list = []
+    beats: list = []
+
+
+def _normalize_beats(beats: list) -> list:
+    """비트 이름과 순서는 시스템이 보증한다 — 요약만 작가/LLM의 것."""
+    by_idx = {}
+    for i, x in enumerate(beats or []):
+        if isinstance(x, dict):
+            by_idx[int(x.get("idx", i))] = x
+    return [{"idx": i, "name": n, "summary": (by_idx.get(i) or {}).get("summary", "")}
+            for i, n in enumerate(BEATS)]
+
+
+@router.put("/works/{work_id}/bible")
+def edit_bible(work_id: int, body: BibleBody,
+               user: str = Header(default="solo", alias="X-User-Id")):
+    """설정집 직접 편집 — 여기 고친 것이 이후 모든 회차의 진실이 된다."""
+    with db.connect() as c:
+        w = _load_work(c, work_id, user)
+        if not w:
+            return {"ok": False, "error": "작품을 찾을 수 없어요."}
+        c.execute(
+            "UPDATE works SET title=?, ending=?, characters_json=?, relations_json=?, "
+            "beats_json=? WHERE id=?",
+            (body.title.strip() or w["title"],
+             body.ending.strip() or w["ending"],
+             json.dumps(body.characters or w["characters"], ensure_ascii=False),
+             json.dumps(body.relations or w["relations"], ensure_ascii=False),
+             json.dumps(_normalize_beats(body.beats or w["beats"]), ensure_ascii=False),
+             work_id),
+        )
+    return {"ok": True}
+
+
+class ReviseBody(BaseModel):
+    directive: str
+
+
+@router.post("/works/{work_id}/bible/revise")
+def revise_bible(work_id: int, body: ReviseBody,
+                 user: str = Header(default="solo", alias="X-User-Id")):
+    """명령으로 설정집 수정 — '주인공 이름을 이홍위로 바꿔' 한 줄이면 된다."""
+    directive = body.directive.strip()
+    if not directive:
+        return {"ok": False, "error": "무엇을 고칠지 알려주세요."}
+    with db.connect() as c:
+        w = _load_work(c, work_id, user)
+        if not w:
+            return {"ok": False, "error": "작품을 찾을 수 없어요."}
+    if llm.is_mock:
+        return {"ok": False, "error": "명령 수정에는 AI 연결이 필요해요. (API 키 설정 확인)"}
+
+    current = {"title": w["title"], "ending": w["ending"],
+               "characters": w["characters"], "relations": w["relations"],
+               "beats": w["beats"]}
+    prompt = f"""웹소설 설정집을 작가의 명령대로 수정하라.
+
+[현재 설정집]
+{json.dumps(current, ensure_ascii=False, indent=1)}
+
+[작가의 명령] {directive}
+
+규칙:
+- 명령이 요구한 것만 바꾸고 나머지는 그대로 보존하라.
+- 인물 이름을 바꾸면 관계도(relations)와 비트 요약(beats) 속의 그 이름도 전부 갱신하라.
+- 실존 인물·역사 배경이면 인명(휘)·호칭·관계를 실제 역사대로 정확히 고증하라.
+- beats는 15개, name은 그대로 유지하고 summary만 수정 가능하다.
+- 출력은 같은 구조의 JSON 하나만. 설명·코드펜스 금지."""
+    plan = None
+    for _ in range(2):
+        raw = llm.write(prompt, mock_text="", max_tokens=8000)
+        plan = parse_llm_json(raw)
+        if plan and plan.get("characters"):
+            break
+        plan = None
+    if plan is None:
+        return {"ok": False, "error": "수정에 실패했어요. 명령을 조금 다르게 써서 다시 시도해 주세요."}
+
+    with db.connect() as c:
+        c.execute(
+            "UPDATE works SET title=?, ending=?, characters_json=?, relations_json=?, "
+            "beats_json=? WHERE id=?",
+            (plan.get("title") or w["title"], plan.get("ending") or w["ending"],
+             json.dumps(plan.get("characters"), ensure_ascii=False),
+             json.dumps(plan.get("relations") or w["relations"], ensure_ascii=False),
+             json.dumps(_normalize_beats(plan.get("beats") or w["beats"]), ensure_ascii=False),
+             work_id),
+        )
+    return {"ok": True}
+
+
 @router.get("/chapters/{chapter_id}")
 def get_chapter(chapter_id: int, user: str = Header(default="solo", alias="X-User-Id")):
     with db.connect() as c:

@@ -61,10 +61,21 @@
 
   <!-- 설정집 탭 -->
   <div id="wt-bible" class="wtabpane hidden">
-    <div class="story-h">인물 (보글러 원형)</div>
+    <div class="write-box" style="margin:0 0 16px">
+      <input id="bible-cmd" placeholder="설정 수정 명령 (예: 주인공 이름을 이홍위로 바꿔 / 여주인공을 추가해)">
+      <button id="bible-revise" class="primary">명령대로 설정 고치기</button>
+    </div>
+    <div class="story-h">작품의 심장</div>
+    <div class="form" style="margin-bottom:8px">
+      <input id="bible-title">
+      <textarea id="bible-ending" rows="2"></textarea>
+      <button id="bible-save-core" class="ghost small">제목·결말 저장</button>
+    </div>
+    <div class="story-h">인물 (보글러 원형) — ✎로 직접 편집</div>
     <div id="bible-chars"></div>
     <div class="story-h">관계도</div>
     <div id="bible-rels"></div>
+    <p class="hint">관계와 플롯은 위의 '명령'으로 고치는 게 빨라요.</p>
     <div class="story-h">플롯 지도 — Save the Cat 15비트</div>
     <div id="bible-beats"></div>
   </div>
