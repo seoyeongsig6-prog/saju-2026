@@ -269,16 +269,21 @@ def revise_bible(work_id: int, body: ReviseBody,
 - 인물 이름을 바꾸면 관계도(relations)와 비트 요약(beats) 속의 그 이름도 전부 갱신하라.
 - 실존 인물·역사 배경이면 인명(휘)·호칭·관계를 실제 역사대로 정확히 고증하라.
 - beats는 15개, name은 그대로 유지하고 summary만 수정 가능하다.
-- 출력은 같은 구조의 JSON 하나만. 설명·코드펜스 금지."""
-    plan = None
+- 출력은 같은 구조의 JSON 하나만. 반드시 '{{'로 시작해 '}}'로 끝나라. 설명·코드펜스 금지."""
+    plan, last_raw = None, ""
     for _ in range(2):
-        raw = llm.write(prompt, mock_text="", max_tokens=8000)
-        plan = parse_llm_json(raw)
+        last_raw = llm.write(prompt, mock_text="", max_tokens=8000)
+        plan = parse_llm_json(last_raw)
         if plan and plan.get("characters"):
             break
         plan = None
     if plan is None:
-        return {"ok": False, "error": "수정에 실패했어요. 명령을 조금 다르게 써서 다시 시도해 주세요."}
+        print(f"[writer] 설정 수정 실패. 응답 앞부분: {last_raw[:300]}", flush=True)
+        hint = (f"AI 호출 오류 — {llm.last_error}" if llm.last_error
+                else ("응답이 비어 있음 — API 키/사용량 한도 확인" if not last_raw.strip()
+                      else f"형식 오류 (응답 앞부분: {last_raw[:120]})"))
+        return {"ok": False, "error": "수정에 실패했어요. 명령을 조금 다르게 써서 다시 시도해 주세요.",
+                "detail": hint}
 
     with db.connect() as c:
         c.execute(

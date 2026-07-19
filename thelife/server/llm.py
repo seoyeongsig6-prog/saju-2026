@@ -15,6 +15,7 @@ class LLM:
     def __init__(self) -> None:
         self.provider: Optional[str] = None
         self.client = None
+        self.last_error: str = ""
 
         if PREFER != "gemini" and os.environ.get("ANTHROPIC_API_KEY"):
             try:
@@ -38,6 +39,7 @@ class LLM:
         return self.client is None
 
     def write(self, prompt: str, mock_text: str, max_tokens: int = 1200) -> str:
+        self.last_error = ""
         try:
             if self.provider == "anthropic":
                 msg = self.client.messages.create(
@@ -47,12 +49,17 @@ class LLM:
                 text = "".join(b.text for b in msg.content if b.type == "text")
                 if text.strip():
                     return text.strip()
+                self.last_error = "빈 응답"
             elif self.provider == "gemini":
-                text = self.client.generate_content(prompt).text
+                text = self.client.generate_content(
+                    prompt, generation_config={"max_output_tokens": min(max_tokens, 8192)},
+                ).text
                 if text and text.strip():
                     return text.strip()
-        except Exception:
-            pass
+                self.last_error = "빈 응답"
+        except Exception as e:
+            self.last_error = f"{type(e).__name__}: {str(e)[:200]}"
+            print(f"[llm] 호출 실패: {self.last_error}", flush=True)
         return mock_text
 
     def stream(self, prompt: str, mock_text: str) -> Generator[str, None, None]:
