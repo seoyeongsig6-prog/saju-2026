@@ -114,11 +114,11 @@ def _mock_setup(b: WorkBody) -> dict:
 def create_work(body: WorkBody, user: str = Header(default="solo", alias="X-User-Id")):
     if not body.premise.strip() or not body.ending.strip():
         return {"ok": False, "error": "로그라인과 결말은 작가만 정할 수 있어요. 두 칸을 채워주세요."}
-    plan = None
+    plan, last_raw = None, ""
     if not llm.is_mock:
         for _ in range(2):
-            raw = llm.write(_setup_prompt(body), mock_text="", max_tokens=5000)
-            plan = parse_llm_json(raw)
+            last_raw = llm.write(_setup_prompt(body), mock_text="", max_tokens=8000)
+            plan = parse_llm_json(last_raw)
             if plan and plan.get("characters") and plan.get("beats"):
                 break
             plan = None
@@ -126,7 +126,10 @@ def create_work(body: WorkBody, user: str = Header(default="solo", alias="X-User
         if llm.is_mock:
             plan = _mock_setup(body)
         else:
-            return {"ok": False, "error": "설계도 생성에 실패했어요. 한 번 더 시도해 주세요."}
+            hint = ("응답이 비어 있음 — API 키/모델 설정 확인 필요"
+                    if not last_raw.strip() else f"형식 오류 (응답 앞부분: {last_raw[:120]})")
+            return {"ok": False, "error": "설계도 생성에 실패했어요. 한 번 더 시도해 주세요.",
+                    "detail": hint}
 
     beats = plan.get("beats") or []
     if len(beats) != len(BEATS):  # 비트 이름은 시스템이 보증한다

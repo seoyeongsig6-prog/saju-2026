@@ -64,7 +64,11 @@ $("#c-go").onclick = async () => {
   busy("설계도를 만드는 중… 인물, 관계도, 15비트 플롯 (20초쯤)");
   const r = await api("/api/writer/works", { method: "POST", body: JSON.stringify(body) });
   unbusy();
-  if (!r.ok) { notice(r.error || "실패했어요"); return; }
+  if (!r.ok) {
+    notice((r.error || "실패했어요") + (r.detail ? `\n\n[원인] ${r.detail}` : "") +
+      (r.trace ? `\n${r.trace.join("\n")}` : ""));
+    return;
+  }
   openWork(r.id);
 };
 
@@ -130,7 +134,11 @@ $("#btn-write").onclick = async () => {
     method: "POST", body: JSON.stringify({ directive: $("#directive").value.trim() }),
   });
   unbusy();
-  if (!r.ok) { notice(r.error); return; }
+  if (!r.ok) {
+    notice((r.error || "실패했어요") + (r.detail ? `\n\n[원인] ${r.detail}` : "") +
+      (r.trace ? `\n${r.trace.join("\n")}` : ""));
+    return;
+  }
   $("#directive").value = "";
   await openWork(WORK.id);
   openChapter(r.id);
