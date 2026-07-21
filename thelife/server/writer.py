@@ -381,6 +381,25 @@ DESCRIPTION_RULES = """- **묘사는 집요하게 디테일하라 (필수)**:
   · 단, 묘사가 속도를 죽이면 안 된다 — 긴 묘사 덩어리 대신 행동 사이사이에 짧고 선명하게 박아라"""
 
 
+def _prev_state(prev: list) -> dict:
+    """직전 화의 상태 원장 — 인물 심경·이야기 내 시간·최근 사용 표현."""
+    state = {}
+    if prev and prev[-1].get("state_json"):
+        try:
+            state = json.loads(prev[-1]["state_json"]) or {}
+        except Exception:
+            state = {}
+    phrases = []
+    for p in prev[-3:]:
+        try:
+            st = json.loads(p.get("state_json") or "{}") or {}
+            phrases += [x for x in (st.get("phrases") or []) if isinstance(x, str)]
+        except Exception:
+            pass
+    state["banned_phrases"] = phrases[-15:]
+    return state
+
+
 def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str) -> str:
     chars = "\n".join(
         f"- {ch['name']} ({ch.get('archetype','')}): {ch.get('role','')} / "
@@ -392,6 +411,13 @@ def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str) ->
                           for i, b in enumerate(w["beats"]))
     prev_txt = "\n".join(f"[{p['no']}화 {p['title']}] {p['summary']}" for p in prev[-8:]) or "없음(1화)"
     last_tail = prev[-1]["body"][-600:] if prev else ""
+
+    st = _prev_state(prev)
+    time_line = st.get("time_end", "")
+    char_states = "\n".join(
+        f"- {c.get('name','')}: 심경 {c.get('mood','')} / 위치 {c.get('loc','')} / {c.get('change','')}"
+        for c in (st.get("chars") or []) if isinstance(c, dict)) or "1화 — 설정집의 초기 상태에서 시작"
+    banned = " / ".join(st.get("banned_phrases") or [])
 
     return f"""당신은 정상급 웹소설 작가다. 아래 작품의 {no}화를 써라.
 
@@ -411,23 +437,35 @@ def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str) ->
 [이번 화의 위치] {no}화 = 비트 "{beat['name']}" — {beat.get('summary','')}
 [지금까지의 전개 (요약)]
 {prev_txt}
+[인물의 현재 상태 — 이 심경과 위치에서 '이어서' 출발하라]
+{char_states}
+{f'[이야기 속 시간] 직전 화는 「{time_line}」에 끝났다. 이번 화는 반드시 그 이후이며, 경과 시간이 사건과 아귀가 맞아야 한다.' if time_line else '[이야기 속 시간] 1화 — 이야기의 시간 기점을 이번 화에서 명확히 세워라.'}
 {f'[직전 화의 마지막 대목] …{last_tail}' if last_tail else ''}
+{f'[금지 표현 — 최근 화에서 이미 사용했다. 같은 표현·비유·대사 반복 금지] {banned}' if banned else ''}
 {f'[작가의 지시 — 최우선으로 따르라] {directive}' if directive else ''}
 
 집필 규칙:
-- 분량: 공백 포함 4,500~5,500자. 웹소설 연재 1회분이다. 반드시 채워라.
+- **분량: 공백 포함 5,000자 이상 (5,000~6,000자). 웹소설 연재 1회분의 국룰이다.
+  장면 3~4개로 구성하면 자연히 채워진다 — 장면마다 장소·시간·긴장이 달라야 한다.**
 {DESCRIPTION_RULES}
+- **인물 일관성 절대 규칙**: 인물의 말투·가치관·습관은 설정집과 [인물의 현재 상태]를
+  따르라. 심경이 변한다면 반드시 이번 화의 사건이 그 원인이어야 하고, 변화의 과정을
+  몸짓과 대사로 단계적으로 보여줘라. 원인 없는 급변은 중대한 오류다.
+- **시간 일관성 절대 규칙**: 낮과 밤, 이동에 걸리는 시간, 계절이 앞뒤가 맞아야 한다.
+  한나절 거리를 순간이동하거나, 밤에 시작한 장면이 설명 없이 낮이 되면 안 된다.
 - 역사물이라면 인명·연호·관직·물건의 고증을 지켜라. 그 시대에 없는 것은 등장 금지.
 - 이번 화는 현재 비트의 역할을 수행하되, 전체 결말을 향해 한 걸음 전진해야 한다.
 - 대화 비중 높게, 문단은 짧게, 속도감 있게. 고구마는 짧게, 사이다는 확실하게.
+- 같은 단어·문형을 한 화 안에서도 반복하지 마라. 특히 상투적 감탄·추임새 반복 금지.
 - 마지막 문장은 절단신공 — 다음 화를 누를 수밖에 없는 순간에서 끊어라.
-- 이전 화 요약과 모순 금지 (인물의 위치·상태·알고 있는 정보).
 
 출력 형식 (정확히 지켜라):
 제목: (이번 화 제목)
 (본문)
 ///요약///
-(이번 화에서 벌어진 일과 인물 상태 변화를 4~6문장으로 — 다음 화 집필용 기억)"""
+(이번 화에서 벌어진 일과 인물 상태 변화를 4~6문장으로 — 다음 화 집필용 기억)
+///상태///
+{{"time_start":"이번 화가 시작된 이야기 속 시점","time_end":"끝난 시점","chars":[{{"name":"인물명","mood":"현재 심경","loc":"현재 위치","change":"이번 화에서 달라진 것"}}],"phrases":["이번 화에서 쓴 인상적 표현·비유 5개 — 다음 화 반복 방지용"]}}"""
 
 
 def _mock_chapter(w: dict, no: int, beat: dict) -> str:
@@ -436,7 +474,36 @@ def _mock_chapter(w: dict, no: int, beat: dict) -> str:
             "서진은 주먹을 쥐었다.\n\"여기서 물러서면, 전부 끝이야.\"\n"
             "그 순간, 문이 열렸다. 들어선 사람의 얼굴을 본 서진의 눈이 크게 흔들렸다.\n"
             "///요약///\n"
-            f"{no}화: {beat['name']} 단계가 진행됐고, 마지막에 뜻밖의 인물이 등장했다.")
+            f"{no}화: {beat['name']} 단계가 진행됐고, 마지막에 뜻밖의 인물이 등장했다.\n"
+            "///상태///\n"
+            + json.dumps({"time_start": f"{no}일째 아침", "time_end": f"{no}일째 밤",
+                          "chars": [{"name": "서진", "mood": "결연함", "loc": "본가",
+                                     "change": "물러서지 않기로 결심"}],
+                          "phrases": ["주먹을 쥐었다", "눈이 크게 흔들렸다"]},
+                         ensure_ascii=False))
+
+
+def _generate_full_chapter(w: dict, no: int, beat: dict, prev: list, directive: str):
+    """회차 생성 + 분량 보증 루프 — 5,000자에 못 미치면 프로그램이 이어쓰기를 시킨다."""
+    raw = llm.write(_chapter_prompt(w, no, beat, prev, directive),
+                    mock_text=_mock_chapter(w, no, beat), max_tokens=16000)
+    title, text, summary, state = _parse_chapter(raw, no)
+    tries = 0
+    while not llm.is_mock and len(text) < MIN_CHAPTER_CHARS and tries < 2:
+        cont = llm.write(_continue_prompt(w, no, beat, text, directive),
+                         mock_text="", max_tokens=16000)
+        if not cont.strip():
+            break
+        _, more, s2, st2 = _parse_chapter(cont, no)
+        if not more.strip():
+            break
+        text = text.rstrip() + "\n\n" + more.strip()
+        if s2:
+            summary = s2
+        if st2:
+            state = st2
+        tries += 1
+    return title, text, summary, state
 
 
 @router.post("/works/{work_id}/chapters")
@@ -447,28 +514,32 @@ def write_chapter(work_id: int, body: ChapterBody,
         if not w:
             return {"ok": False, "error": "작품을 찾을 수 없어요."}
         prev = [dict(r) for r in c.execute(
-            "SELECT no, title, summary, body FROM chapters WHERE work_id=? ORDER BY no",
+            "SELECT no, title, summary, body, state_json FROM chapters WHERE work_id=? ORDER BY no",
             (work_id,)).fetchall()]
         no = (prev[-1]["no"] + 1) if prev else 1
         if no > w["total_chapters"]:
             return {"ok": False, "error": "예정된 회차를 모두 썼어요. 총 회차 수를 늘리거나 완결하세요."}
         beat = w["beats"][beat_for(no, w["total_chapters"])]
 
-        raw = llm.write(_chapter_prompt(w, no, beat, prev, body.directive.strip()),
-                        mock_text=_mock_chapter(w, no, beat), max_tokens=8000)
-        title, text, summary = _parse_chapter(raw, no)
+        title, text, summary, state = _generate_full_chapter(
+            w, no, beat, prev, body.directive.strip())
         ch_id = c.insert_id(
-            "INSERT INTO chapters (work_id, no, title, body, summary, directive, beat_idx, "
-            "created_at, updated_at) VALUES (?,?,?,?,?,?,?,datetime('now'),datetime('now'))",
-            (work_id, no, title, text, summary, body.directive.strip(),
+            "INSERT INTO chapters (work_id, no, title, body, summary, state_json, directive, "
+            "beat_idx, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,datetime('now'),datetime('now'))",
+            (work_id, no, title, text, summary, state, body.directive.strip(),
              beat_for(no, w["total_chapters"])),
         )
-        return {"ok": True, "id": ch_id, "no": no}
+        return {"ok": True, "id": ch_id, "no": no, "chars": len(text)}
 
 
 def _parse_chapter(raw: str, no: int):
-    title, summary = f"{no}화", ""
+    """제목 / 본문 / 요약 / 상태(JSON 문자열)로 분해한다."""
+    title, summary, state = f"{no}화", "", ""
     text = raw.strip()
+    if "///상태///" in text:
+        text, state_raw = text.rsplit("///상태///", 1)
+        st = parse_llm_json(state_raw.strip())
+        state = json.dumps(st, ensure_ascii=False) if st else ""
     if "///요약///" in text:
         text, summary = text.rsplit("///요약///", 1)
         summary = summary.strip()
@@ -476,7 +547,34 @@ def _parse_chapter(raw: str, no: int):
     if lines and lines[0].strip().startswith("제목:"):
         title = lines[0].split(":", 1)[1].strip() or title
         lines = lines[1:]
-    return title, "\n".join(lines).strip(), summary
+    return title, "\n".join(lines).strip(), summary, state
+
+
+MIN_CHAPTER_CHARS = 4300  # 이 밑이면 프로그램이 이어쓰기를 시킨다 (목표 5,000+)
+
+
+def _continue_prompt(w: dict, no: int, beat: dict, body_so_far: str, directive: str) -> str:
+    return f"""당신은 정상급 웹소설 작가다. 아래는 {w['title']} {no}화의 앞부분이다.
+현재 {len(body_so_far)}자인데 연재 1회분(공백 포함 5,000자 이상)이 되려면 부족하다.
+같은 화의 연속으로, 끊긴 지점에서 자연스럽게 이어서 써라.
+
+{_style_block(w)}
+[이번 화의 비트] {beat['name']} — {beat.get('summary','')}
+{f'[작가의 지시] {directive}' if directive else ''}
+[지금까지의 본문 마지막 대목]
+…{body_so_far[-1200:]}
+
+규칙:
+- 이어지는 본문만 써라. 제목·앞부분 반복 금지. 이미 쓴 표현·대사 반복 금지.
+{DESCRIPTION_RULES}
+- 새 장면 1~2개를 더해 긴장을 키우고, 마지막 문장은 절단신공으로 끝내라.
+
+출력 형식:
+(이어지는 본문)
+///요약///
+(화 '전체' 기준 요약 4~6문장)
+///상태///
+{{"time_start":"...","time_end":"...","chars":[{{"name":"...","mood":"...","loc":"...","change":"..."}}],"phrases":["..."]}}"""
 
 
 @router.post("/chapters/{chapter_id}/regenerate")
@@ -490,15 +588,14 @@ def regen_chapter(chapter_id: int, body: ChapterBody,
             return {"ok": False, "error": "회차를 찾을 수 없어요."}
         w = _load_work(c, r["work_id"], user)
         prev = [dict(x) for x in c.execute(
-            "SELECT no, title, summary, body FROM chapters WHERE work_id=? AND no<? ORDER BY no",
+            "SELECT no, title, summary, body, state_json FROM chapters WHERE work_id=? AND no<? ORDER BY no",
             (r["work_id"], r["no"])).fetchall()]
         beat = w["beats"][beat_for(r["no"], w["total_chapters"])]
-        raw = llm.write(_chapter_prompt(w, r["no"], beat, prev, body.directive.strip()),
-                        mock_text=_mock_chapter(w, r["no"], beat), max_tokens=8000)
-        title, text, summary = _parse_chapter(raw, r["no"])
-        c.execute("UPDATE chapters SET title=?, body=?, summary=?, directive=?, "
+        title, text, summary, state = _generate_full_chapter(
+            w, r["no"], beat, prev, body.directive.strip())
+        c.execute("UPDATE chapters SET title=?, body=?, summary=?, state_json=?, directive=?, "
                   "updated_at=datetime('now') WHERE id=?",
-                  (title, text, summary, body.directive.strip(), chapter_id))
+                  (title, text, summary, state, body.directive.strip(), chapter_id))
     return {"ok": True}
 
 

@@ -145,6 +145,7 @@ CREATE TABLE IF NOT EXISTS chapters (
     title TEXT,
     body TEXT,
     summary TEXT,                     -- 다음 회차 생성용 기억
+    state_json TEXT,                  -- 회차 종료 시점의 인물 상태·이야기 내 시간·사용 표현
     directive TEXT,                   -- 작가의 지시
     beat_idx INTEGER,
     created_at TEXT,
@@ -239,6 +240,7 @@ def _apply_schema(c: "Conn") -> None:
         "ALTER TABLE avatars ADD COLUMN user_id TEXT",
         "ALTER TABLE works ADD COLUMN style_sample TEXT",
         "ALTER TABLE works ADD COLUMN style_profile TEXT",
+        "ALTER TABLE chapters ADD COLUMN state_json TEXT",
     ):
         try:
             c.execute(ddl)
