@@ -127,6 +127,7 @@ CREATE TABLE IF NOT EXISTS works (
     user_id TEXT,
     title TEXT NOT NULL,
     genre TEXT,
+    brief TEXT,                       -- 작품설명서 원문 — 완결까지의 절대 기준
     premise TEXT,                     -- 로그라인
     ending TEXT,                      -- 작가가 고정한 결말 — 이야기는 이곳으로 흐른다
     style TEXT,
@@ -241,6 +242,7 @@ def _apply_schema(c: "Conn") -> None:
         "ALTER TABLE works ADD COLUMN style_sample TEXT",
         "ALTER TABLE works ADD COLUMN style_profile TEXT",
         "ALTER TABLE chapters ADD COLUMN state_json TEXT",
+        "ALTER TABLE works ADD COLUMN brief TEXT",
     ):
         try:
             c.execute(ddl)

@@ -23,8 +23,21 @@
 <div id="w-create" class="wview hidden">
   <button class="ghost small" onclick="showHome()">← 작품 목록</button>
   <h2>새 작품 설계</h2>
-  <p class="hint">로그라인과 결말만 정하면, 인물(원형)·관계도·15비트 플롯 지도를 설계해 드립니다.<br>
-     이야기는 당신이 정한 결말로 흘러갑니다.</p>
+
+  <div class="brief-upload">
+    <b>작품설명서로 시작 (추천)</b>
+    <p class="hint">기획해 둔 작품설명서 파일을 올리면, <b>그 설명서만으로</b> 인물·관계도·플롯 지도를
+       설계합니다. 아래 칸들은 채우지 않아도 돼요. 설명서는 완결까지 모든 회차의 절대 기준으로
+       유지됩니다 — 결코 잊히지 않습니다.</p>
+    <input type="file" id="c-brief-file" accept=".txt,.md,.docx,.pdf">
+    <div class="row2">
+      <input id="cb-genre" placeholder="장르 (선택)">
+      <input id="cb-total" type="number" value="25" min="5" max="200" placeholder="총 회차">
+    </div>
+    <button id="cb-go" class="primary">설명서로 설계도 만들기</button>
+  </div>
+
+  <p class="hint" style="text-align:center">— 또는 직접 입력 —</p>
   <div class="form">
     <input id="c-genre" placeholder="장르 (예: 현대 판타지, 회귀물, 로맨스, 무협)">
     <textarea id="c-premise" rows="3" placeholder="로그라인 — 한두 문장 (예: 재벌가 막내로 회귀한 만년 과장, 이번 생은 다르게 산다)"></textarea>
@@ -65,6 +78,13 @@
     <div class="write-box" style="margin:0 0 16px">
       <input id="bible-cmd" placeholder="설정 수정 명령 (예: 주인공 이름을 이홍위로 바꿔 / 여주인공을 추가해)">
       <button id="bible-revise" class="primary">명령대로 설정 고치기</button>
+    </div>
+    <div id="brief-section" class="hidden">
+      <div class="story-h">작품설명서 — 절대 기준</div>
+      <details class="brief-view">
+        <summary>설명서 전문 보기 (모든 회차가 이 문서를 다시 읽으며 쓰입니다)</summary>
+        <div id="brief-body"></div>
+      </details>
     </div>
     <div class="story-h">작품의 심장</div>
     <div class="form" style="margin-bottom:8px">

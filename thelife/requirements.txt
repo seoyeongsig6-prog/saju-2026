@@ -5,3 +5,6 @@ pydantic
 anthropic
 google-generativeai
 psycopg[binary]
+python-multipart
+python-docx
+pypdf

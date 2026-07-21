@@ -6,9 +6,10 @@
 - 관계도: 인물 쌍마다 관계 유형과 긴장도
 작가가 지시하고, 고치고, 다시 쓴다 — 여기서는 조작이 전부다.
 """
+import io
 import json
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, File, Form, Header, UploadFile
 from pydantic import BaseModel
 
 from . import db
@@ -102,6 +103,48 @@ class EditBody(BaseModel):
     body: str = ""
 
 
+BRIEF_MAX = 20000  # 작품설명서 보관 상한
+BRIEF_PROMPT_MAX = 7000  # 매 회차 프롬프트에 재주입하는 분량
+
+
+def extract_brief_text(filename: str, data: bytes) -> str:
+    """작품설명서 파일에서 텍스트를 뽑는다 (.txt .md .docx .pdf)."""
+    name = (filename or "").lower()
+    try:
+        if name.endswith((".txt", ".md")):
+            for enc in ("utf-8", "cp949", "euc-kr"):
+                try:
+                    return data.decode(enc)[:BRIEF_MAX]
+                except UnicodeDecodeError:
+                    continue
+            return data.decode("utf-8", errors="ignore")[:BRIEF_MAX]
+        if name.endswith(".docx"):
+            from docx import Document
+            doc = Document(io.BytesIO(data))
+            parts = [p.text for p in doc.paragraphs]
+            for t in doc.tables:
+                for row in t.rows:
+                    parts.append(" | ".join(cell.text for cell in row.cells))
+            return "\n".join(x for x in parts if x.strip())[:BRIEF_MAX]
+        if name.endswith(".pdf"):
+            from pypdf import PdfReader
+            reader = PdfReader(io.BytesIO(data))
+            return "\n".join((page.extract_text() or "") for page in reader.pages)[:BRIEF_MAX]
+    except Exception as e:
+        print(f"[writer] 설명서 추출 실패 ({filename}): {e}", flush=True)
+        return ""
+    return ""
+
+
+def _brief_block(w: dict, limit: int = BRIEF_PROMPT_MAX) -> str:
+    """작품설명서 — 매 호출마다 다시 읽는 절대 기준. 잊는 것은 허용되지 않는다."""
+    brief = (w.get("brief") or "").strip()
+    if not brief:
+        return ""
+    return (f"[작품설명서 — 작가가 쓴 이 작품의 절대 기준. 설정집·요약과 어긋나면 설명서가 항상 우선한다. "
+            f"여기 명시된 인물·설정·전개·금기를 절대 위반하지 마라]\n{brief[:limit]}\n")
+
+
 def _setup_prompt(b: WorkBody) -> str:
     schema = {
         "title": "작품 제목 (미정이면 창작)",
@@ -159,6 +202,101 @@ def _mock_setup(b: WorkBody) -> dict:
         "beats": [{"idx": i, "name": n, "summary": f"{n} 단계의 사건이 전개된다."}
                   for i, n in enumerate(BEATS)],
     }
+
+
+def _brief_setup_prompt(brief: str, genre: str, total: int) -> str:
+    schema = {
+        "title": "작품 제목 (설명서에 있으면 그대로, 없으면 설명서에 맞게 창작)",
+        "genre": "장르", "premise": "로그라인 한두 문장 (설명서에서 추출)",
+        "ending": "결말 (설명서에 명시된 결말. 없으면 설명서의 방향에서 도출)",
+        "style": "문체 지침 한 줄 (설명서의 요구 반영)",
+        "characters": [{"name": "이름", "archetype": "원형", "role": "한 줄 소개",
+                        "want": "외적 욕망", "need": "내적 결핍", "secret": "비밀"}],
+        "relations": [{"a": "인물", "b": "인물", "type": "관계", "tension": "긴장 한 줄"}],
+        "beats": [{"idx": 0, "name": BEATS[0], "summary": "이 비트에서 벌어질 일 2~3문장"}],
+    }
+    return f"""당신은 웹소설 스토리 설계자다. 아래 '작품설명서'가 이 작품의 유일한 원천이다.
+설명서를 정밀하게 읽고, 거기 적힌 모든 것을 정확히 반영한 설계도를 JSON으로 만들어라.
+
+[작품설명서 — 절대 기준]
+{brief}
+
+{f'[장르 힌트] {genre}' if genre else ''}
+[총 회차] {total}화
+
+JSON 스키마 (다른 텍스트 없이 압축 JSON만):
+{json.dumps(schema, ensure_ascii=False, separators=(",", ":"))}
+
+절대 규칙:
+- **설명서에 명시된 것은 단 하나도 바꾸거나 빼지 마라** — 인물 이름·성격·설정·전개·결말·금기.
+  설명서에 없는 부분만 설명서의 정신에 맞게 보완하라.
+- characters: 설명서의 인물 전원 + 필요시 보글러 원형({ARCHETYPES})으로 보강 (5~7명).
+  각 인물의 want/need는 설명서에서 추출하되 없으면 설정에 맞게 부여.
+- relations: 주요 인물 쌍 4~6개, 설명서의 관계를 우선.
+- beats: Save the Cat 15비트 전부, name은 이 순서 그대로: {', '.join(BEATS)}.
+  '피날레'·'파이널 이미지'는 설명서의 결말을 실현해야 한다.
+- 역사 고증 절대 규칙: 실존 인물의 인명(휘)·호칭·관계는 실제 역사대로.
+- 출력은 들여쓰기 없는 압축 JSON."""
+
+
+@router.post("/works/from-brief")
+async def create_from_brief(
+    file: UploadFile = File(None),
+    brief_text: str = Form(""),
+    genre: str = Form(""),
+    total_chapters: int = Form(25),
+    style_sample: str = Form(""),
+    user: str = Header(default="solo", alias="X-User-Id"),
+):
+    """작품설명서로 시작 — 파일(또는 붙여넣기)이 설계도의 유일한 원천이 된다."""
+    brief = brief_text.strip()
+    if file is not None and file.filename:
+        data = await file.read()
+        brief = extract_brief_text(file.filename, data).strip() or brief
+    if len(brief) < 200:
+        return {"ok": False,
+                "error": "설명서에서 읽어낸 내용이 너무 짧아요 (200자 미만). "
+                         "텍스트가 있는 .txt/.md/.docx/.pdf 파일인지 확인해 주세요."}
+
+    plan, last_raw = None, ""
+    if llm.is_mock:
+        plan = _mock_setup(WorkBody(premise=brief[:100], ending="설명서의 결말"))
+        plan["premise"], plan["ending"], plan["genre"] = brief[:120], "설명서의 결말", genre or "웹소설"
+    else:
+        for _ in range(2):
+            last_raw = llm.write(_brief_setup_prompt(brief, genre, max(5, total_chapters)),
+                                 mock_text="", max_tokens=16000)
+            plan = parse_llm_json(last_raw)
+            if plan and plan.get("characters") and plan.get("beats"):
+                break
+            plan = None
+        if plan is None:
+            hint = (f"AI 호출 오류 — {llm.last_error}" if llm.last_error
+                    else f"형식 오류 (응답 앞부분: {last_raw[:120]})")
+            return {"ok": False, "error": "설계도 생성에 실패했어요. 한 번 더 시도해 주세요.",
+                    "detail": hint}
+
+    beats = plan.get("beats") or []
+    by_idx = {int(x.get("idx", i)): x for i, x in enumerate(beats) if isinstance(x, dict)}
+    beats = [{"idx": i, "name": n, "summary": (by_idx.get(i) or {}).get("summary", "")}
+             for i, n in enumerate(BEATS)]
+
+    sample = style_sample.strip()
+    profile = analyze_style(sample) if len(sample) >= 300 else ""
+
+    with db.connect() as c:
+        work_id = c.insert_id(
+            "INSERT INTO works (user_id, title, genre, brief, premise, ending, style, "
+            "total_chapters, style_sample, style_profile, characters_json, relations_json, "
+            "beats_json, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))",
+            (user, plan.get("title") or "무제", plan.get("genre") or genre or "웹소설",
+             brief[:BRIEF_MAX], plan.get("premise") or "", plan.get("ending") or "",
+             plan.get("style") or "", max(5, total_chapters), sample[:6000], profile,
+             json.dumps(plan.get("characters", []), ensure_ascii=False),
+             json.dumps(plan.get("relations", []), ensure_ascii=False),
+             json.dumps(beats, ensure_ascii=False)),
+        )
+    return {"ok": True, "id": work_id}
 
 
 @router.post("/works")
@@ -245,7 +383,7 @@ def get_work(work_id: int, user: str = Header(default="solo", alias="X-User-Id")
         return {"ok": True,
                 "work": {k: w.get(k) for k in ("id", "title", "genre", "premise", "ending",
                                                "style", "total_chapters", "characters",
-                                               "relations", "beats",
+                                               "relations", "beats", "brief",
                                                "style_profile", "style_sample")},
                 "chapters": chapters}
 
@@ -312,6 +450,7 @@ def revise_bible(work_id: int, body: ReviseBody,
                "beats": w["beats"]}
     prompt = f"""웹소설 설정집을 작가의 명령대로 수정하라.
 
+{_brief_block(w, 4000)}
 [현재 설정집]
 {json.dumps(current, ensure_ascii=False, separators=(",", ":"))}
 
@@ -421,6 +560,7 @@ def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str) ->
 
     return f"""당신은 정상급 웹소설 작가다. 아래 작품의 {no}화를 써라.
 
+{_brief_block(w)}
 [작품] {w['title']} ({w['genre']}) — 총 {w['total_chapters']}화 예정
 [로그라인] {w['premise']}
 [고정된 결말 — 전체 이야기는 반드시 여기 도달한다] {w['ending']}
@@ -558,6 +698,7 @@ def _continue_prompt(w: dict, no: int, beat: dict, body_so_far: str, directive: 
 현재 {len(body_so_far)}자인데 연재 1회분(공백 포함 5,000자 이상)이 되려면 부족하다.
 같은 화의 연속으로, 끊긴 지점에서 자연스럽게 이어서 써라.
 
+{_brief_block(w, 3000)}
 {_style_block(w)}
 [이번 화의 비트] {beat['name']} — {beat.get('summary','')}
 {f'[작가의 지시] {directive}' if directive else ''}

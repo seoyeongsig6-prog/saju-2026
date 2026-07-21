@@ -50,7 +50,27 @@ async function delWork(id, title) {
 }
 $("#w-new").onclick = () => view("w-create");
 
-/* ---------- 새 작품 ---------- */
+/* ---------- 새 작품 — 작품설명서 파일로 ---------- */
+$("#cb-go").onclick = async () => {
+  const f = $("#c-brief-file").files[0];
+  if (!f) { notice("작품설명서 파일을 먼저 선택해 주세요. (.txt .md .docx .pdf)"); return; }
+  const fd = new FormData();
+  fd.append("file", f);
+  fd.append("genre", $("#cb-genre").value.trim());
+  fd.append("total_chapters", Number($("#cb-total").value) || 25);
+  busy("설명서를 정독하고 설계도를 만드는 중… (30초쯤)");
+  const r = await fetch("/api/writer/works/from-brief", {
+    method: "POST", body: fd, headers: { "X-User-Id": UID },
+  }).then((x) => x.json()).catch((e) => ({ ok: false, error: String(e) }));
+  unbusy();
+  if (!r.ok) {
+    notice((r.error || "실패했어요") + (r.detail ? `\n\n[원인] ${r.detail}` : ""));
+    return;
+  }
+  openWork(r.id);
+};
+
+/* ---------- 새 작품 — 직접 입력 ---------- */
 $("#c-go").onclick = async () => {
   const body = {
     genre: $("#c-genre").value.trim() || "현대 판타지",
@@ -116,6 +136,13 @@ function renderChapters() {
 function renderBible() {
   $("#bible-title").value = WORK.title || "";
   $("#bible-ending").value = WORK.ending || "";
+  const bs = $("#brief-section");
+  if (WORK.brief) {
+    bs.classList.remove("hidden");
+    $("#brief-body").textContent = WORK.brief;
+  } else {
+    bs.classList.add("hidden");
+  }
   const spb = $("#style-profile-box");
   if (WORK.style_profile) {
     spb.classList.remove("hidden");
