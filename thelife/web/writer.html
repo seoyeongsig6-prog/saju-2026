@@ -34,6 +34,7 @@
       <input id="c-total" type="number" value="25" min="5" max="200" placeholder="총 회차">
     </div>
     <input id="c-style" placeholder="문체 (선택 — 예: 건조하고 빠르게)">
+    <textarea id="c-sample" rows="5" placeholder="문체 표본 (선택) — 원하는 문체의 글을 300자 이상 붙여넣으면 그 결을 학습해서 씁니다. 본인 글이나 지향하는 문체의 글."></textarea>
     <button id="c-go" class="primary">설계도 만들기</button>
   </div>
 </div>
@@ -70,6 +71,12 @@
       <input id="bible-title">
       <textarea id="bible-ending" rows="2"></textarea>
       <button id="bible-save-core" class="ghost small">제목·결말 저장</button>
+    </div>
+    <div class="story-h">문체</div>
+    <div id="style-profile-box" class="style-box hidden"></div>
+    <div class="form" style="margin-bottom:8px">
+      <textarea id="bible-sample" rows="5" placeholder="문체 표본 붙여넣기 (300자 이상) — 이 작품의 모든 회차가 이 결로 쓰입니다"></textarea>
+      <button id="bible-learn" class="primary">이 문체 학습하기</button>
     </div>
     <div class="story-h">인물 (보글러 원형) — ✎로 직접 편집</div>
     <div id="bible-chars"></div>

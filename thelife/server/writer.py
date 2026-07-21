@@ -44,11 +44,57 @@ class WorkBody(BaseModel):
     ending: str                        # 고정된 결말
     title: str = ""
     style: str = ""
+    style_sample: str = ""             # 문체 표본 — 넣으면 그 결을 학습한다
     total_chapters: int = 25
 
 
 class ChapterBody(BaseModel):
     directive: str = ""
+
+
+class StyleBody(BaseModel):
+    sample: str
+
+
+def analyze_style(sample: str) -> str:
+    """문체 표본에서 문체 프로파일을 학습한다 — 결을 배우되 문장은 배우지 않는다."""
+    sample = sample.strip()[:6000]
+    mock = ("- 시점: 3인칭 제한 시점\n- 문장: 짧고 리듬감 있게, 한 문단 3문장 이내\n"
+            "- 묘사: 감각 중심, 감정은 행동으로\n- 대화: 짧은 주고받기, 군더더기 없는 어미")
+    prompt = f"""아래 글의 문체를 분석해 '문체 프로파일'을 작성하라. 다른 작가가 이 프로파일만 보고
+같은 결의 글을 쓸 수 있어야 한다.
+
+[표본]
+{sample}
+
+다음 항목을 불릿으로, 각 1~2줄씩 구체적으로:
+- 시점과 서술 거리
+- 문장 길이와 리듬 (짧은 문장/긴 문장의 비율, 문단의 호흡)
+- 어휘의 결 (한자어/고유어, 격식, 시대감)
+- 묘사 방식 (감각의 사용, 밀도, 은유의 빈도)
+- 대화 처리 (어미, 말줄임, 대화와 지문의 비율)
+- 이 작가만의 특징적 기법 2~3가지 (예: 단문 연타로 긴장 조성, 문단 끝 명사 종결)
+- 피해야 할 것 (이 문체와 어긋나는 습관)
+
+주의: 표본의 문장이나 표현을 인용·복제하지 마라. 결(스타일)만 추출하라. 프로파일만 출력."""
+    return llm.write(prompt, mock_text=mock, max_tokens=1500)
+
+
+@router.post("/works/{work_id}/style")
+def learn_style(work_id: int, body: StyleBody,
+                user: str = Header(default="solo", alias="X-User-Id")):
+    """문체 학습 — 표본을 넣으면 이 작품의 모든 회차가 그 결로 쓰인다."""
+    sample = body.sample.strip()
+    if len(sample) < 300:
+        return {"ok": False, "error": "문체를 배우려면 표본이 300자는 넘어야 해요. 더 길게 붙여넣어 주세요."}
+    with db.connect() as c:
+        w = _load_work(c, work_id, user)
+        if not w:
+            return {"ok": False, "error": "작품을 찾을 수 없어요."}
+        profile = analyze_style(sample)
+        c.execute("UPDATE works SET style_sample=?, style_profile=? WHERE id=?",
+                  (sample[:6000], profile, work_id))
+    return {"ok": True, "profile": profile}
 
 
 class EditBody(BaseModel):
@@ -145,13 +191,18 @@ def create_work(body: WorkBody, user: str = Header(default="solo", alias="X-User
         for i, x in enumerate(beats):
             x["idx"], x["name"] = i, BEATS[i]
 
+    # 문체 표본이 함께 오면 생성 시점에 학습한다
+    sample = body.style_sample.strip()
+    profile = analyze_style(sample) if len(sample) >= 300 else ""
+
     with db.connect() as c:
         work_id = c.insert_id(
             "INSERT INTO works (user_id, title, genre, premise, ending, style, total_chapters, "
-            "characters_json, relations_json, beats_json, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'))",
+            "style_sample, style_profile, characters_json, relations_json, beats_json, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))",
             (user, plan.get("title") or body.title or "무제", body.genre, body.premise,
              body.ending, plan.get("style") or body.style, max(5, body.total_chapters),
+             sample[:6000], profile,
              json.dumps(plan.get("characters", []), ensure_ascii=False),
              json.dumps(plan.get("relations", []), ensure_ascii=False),
              json.dumps(beats, ensure_ascii=False)),
@@ -192,9 +243,10 @@ def get_work(work_id: int, user: str = Header(default="solo", alias="X-User-Id")
             "SELECT id, no, title, beat_idx, directive FROM chapters WHERE work_id=? ORDER BY no",
             (work_id,)).fetchall()]
         return {"ok": True,
-                "work": {k: w[k] for k in ("id", "title", "genre", "premise", "ending",
-                                           "style", "total_chapters", "characters",
-                                           "relations", "beats")},
+                "work": {k: w.get(k) for k in ("id", "title", "genre", "premise", "ending",
+                                               "style", "total_chapters", "characters",
+                                               "relations", "beats",
+                                               "style_profile", "style_sample")},
                 "chapters": chapters}
 
 
@@ -309,6 +361,26 @@ def get_chapter(chapter_id: int, user: str = Header(default="solo", alias="X-Use
         return {"ok": bool(r), "chapter": dict(r) if r else None}
 
 
+def _style_block(w: dict) -> str:
+    """작품의 문체 지침 — 학습된 프로파일과 표본 발췌가 있으면 최우선."""
+    parts = []
+    if w.get("style_profile"):
+        parts.append(f"[학습된 문체 프로파일 — 이 결로 써라]\n{w['style_profile']}")
+    if w.get("style_sample"):
+        excerpt = w["style_sample"][:700]
+        parts.append(f"[문체 표본 발췌 — 이 호흡과 결을 모사하되, 문장·표현을 그대로 베끼는 것은 절대 금지]\n{excerpt}")
+    if w.get("style"):
+        parts.append(f"[문체 메모] {w['style']}")
+    return "\n".join(parts) if parts else "[문체] 속도감 있는 웹소설 문체"
+
+
+DESCRIPTION_RULES = """- **묘사는 집요하게 디테일하라 (필수)**:
+  · 장면마다 오감 중 최소 세 가지를 구체적으로 (빛의 각도, 소리의 질감, 냄새, 온도, 살갗의 감각)
+  · 뭉뚱그리지 마라 — '방'이 아니라 '창호지가 반쯤 뜯긴 북쪽 들창', '칼'이 아니라 '날이 한 뼘쯤 이가 나간 환도'
+  · 감정은 명사로 말하지 말고 몸으로 보여줘라 — '두려웠다' 대신 떨리는 손끝, 마른침, 좁아지는 시야
+  · 단, 묘사가 속도를 죽이면 안 된다 — 긴 묘사 덩어리 대신 행동 사이사이에 짧고 선명하게 박아라"""
+
+
 def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str) -> str:
     chars = "\n".join(
         f"- {ch['name']} ({ch.get('archetype','')}): {ch.get('role','')} / "
@@ -326,7 +398,7 @@ def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str) ->
 [작품] {w['title']} ({w['genre']}) — 총 {w['total_chapters']}화 예정
 [로그라인] {w['premise']}
 [고정된 결말 — 전체 이야기는 반드시 여기 도달한다] {w['ending']}
-[문체] {w.get('style','')}
+{_style_block(w)}
 
 [인물 설정 — 이름·성격·설정을 절대 어기지 마라]
 {chars}
@@ -344,6 +416,7 @@ def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str) ->
 
 집필 규칙:
 - 분량: 공백 포함 4,500~5,500자. 웹소설 연재 1회분이다. 반드시 채워라.
+{DESCRIPTION_RULES}
 - 역사물이라면 인명·연호·관직·물건의 고증을 지켜라. 그 시대에 없는 것은 등장 금지.
 - 이번 화는 현재 비트의 역할을 수행하되, 전체 결말을 향해 한 걸음 전진해야 한다.
 - 대화 비중 높게, 문단은 짧게, 속도감 있게. 고구마는 짧게, 사이다는 확실하게.

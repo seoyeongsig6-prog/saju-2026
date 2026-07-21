@@ -58,6 +58,7 @@ $("#c-go").onclick = async () => {
     ending: $("#c-ending").value.trim(),
     title: $("#c-title").value.trim(),
     style: $("#c-style").value.trim(),
+    style_sample: $("#c-sample").value.trim(),
     total_chapters: Number($("#c-total").value) || 25,
   };
   if (!body.premise || !body.ending) { notice("로그라인과 결말은 작가만 정할 수 있어요. 두 칸을 채워주세요."); return; }
@@ -115,6 +116,14 @@ function renderChapters() {
 function renderBible() {
   $("#bible-title").value = WORK.title || "";
   $("#bible-ending").value = WORK.ending || "";
+  const spb = $("#style-profile-box");
+  if (WORK.style_profile) {
+    spb.classList.remove("hidden");
+    spb.textContent = WORK.style_profile;
+  } else {
+    spb.classList.add("hidden");
+  }
+  $("#bible-sample").value = WORK.style_sample || "";
   const box = $("#bible-chars");
   box.innerHTML = "";
   WORK.characters.forEach((c, idx) => {
@@ -193,6 +202,21 @@ async function saveBible() {
   else { WORK.title = $("#bible-title").value.trim(); $("#wk-title").textContent = WORK.title; }
 }
 $("#bible-save-core").onclick = async () => { await saveBible(); notice("저장했어요. 이후 회차부터 반영됩니다."); };
+
+$("#bible-learn").onclick = async () => {
+  const sample = $("#bible-sample").value.trim();
+  if (sample.length < 300) { notice("문체를 배우려면 표본이 300자는 넘어야 해요."); return; }
+  busy("문체를 학습하는 중… (15초쯤)");
+  const r = await api(`/api/writer/works/${WORK.id}/style`, {
+    method: "POST", body: JSON.stringify({ sample }),
+  });
+  unbusy();
+  if (!r.ok) { notice(r.error + (r.detail ? `\n\n[원인] ${r.detail}` : "")); return; }
+  WORK.style_profile = r.profile;
+  WORK.style_sample = sample;
+  renderBible();
+  notice("문체를 배웠어요. 다음 회차부터 이 결로 씁니다.\n학습된 프로파일은 문체 섹션에서 확인하세요.");
+};
 
 $("#bible-revise").onclick = async () => {
   const directive = $("#bible-cmd").value.trim();

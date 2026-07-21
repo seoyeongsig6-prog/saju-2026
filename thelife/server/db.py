@@ -131,6 +131,8 @@ CREATE TABLE IF NOT EXISTS works (
     ending TEXT,                      -- 작가가 고정한 결말 — 이야기는 이곳으로 흐른다
     style TEXT,
     total_chapters INTEGER DEFAULT 25,
+    style_sample TEXT,                -- 작가가 붙여넣은 문체 표본
+    style_profile TEXT,               -- 표본에서 학습한 문체 프로파일
     characters_json TEXT,             -- 원형(아키타입) 기반 인물들
     relations_json TEXT,              -- 관계도
     beats_json TEXT,                  -- Save the Cat 15비트
@@ -235,6 +237,8 @@ def _apply_schema(c: "Conn") -> None:
         "ALTER TABLE cast_members ADD COLUMN last_met TEXT",
         "ALTER TABLE events ADD COLUMN detail TEXT",
         "ALTER TABLE avatars ADD COLUMN user_id TEXT",
+        "ALTER TABLE works ADD COLUMN style_sample TEXT",
+        "ALTER TABLE works ADD COLUMN style_profile TEXT",
     ):
         try:
             c.execute(ddl)
