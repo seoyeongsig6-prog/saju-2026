@@ -258,23 +258,30 @@ async def create_from_brief(
                 "error": "설명서에서 읽어낸 내용이 너무 짧아요 (200자 미만). "
                          "텍스트가 있는 .txt/.md/.docx/.pdf 파일인지 확인해 주세요."}
 
-    plan, last_raw = None, ""
+    # 설명서 기반 설계는 반드시 실제 AI가 해야 한다.
+    # 목업(가짜 템플릿)으로 조용히 대체하면 설명서가 무시된 채 엉뚱한 작품이 나온다.
     if llm.is_mock:
-        plan = _mock_setup(WorkBody(premise=brief[:100], ending="설명서의 결말"))
-        plan["premise"], plan["ending"], plan["genre"] = brief[:120], "설명서의 결말", genre or "웹소설"
-    else:
-        for _ in range(2):
-            last_raw = llm.write(_brief_setup_prompt(brief, genre, max(5, total_chapters)),
-                                 mock_text="", max_tokens=16000)
-            plan = parse_llm_json(last_raw)
-            if plan and plan.get("characters") and plan.get("beats"):
-                break
-            plan = None
-        if plan is None:
-            hint = (f"AI 호출 오류 — {llm.last_error}" if llm.last_error
-                    else f"형식 오류 (응답 앞부분: {last_raw[:120]})")
-            return {"ok": False, "error": "설계도 생성에 실패했어요. 한 번 더 시도해 주세요.",
-                    "detail": hint}
+        return {"ok": False,
+                "error": "AI가 연결되어 있지 않아 설명서를 읽을 수 없어요.",
+                "detail": "API 키가 설정되지 않았거나 사용량 한도/잔액이 소진됐을 수 있어요. "
+                          "Anthropic 콘솔에서 크레딧을, 또는 Render 환경변수(ANTHROPIC_API_KEY / "
+                          "GEMINI_API_KEY, LLM_PROVIDER)를 확인해 주세요."}
+    plan, last_raw = None, ""
+    for _ in range(2):
+        last_raw = llm.write(_brief_setup_prompt(brief, genre, max(5, total_chapters)),
+                             mock_text="", max_tokens=16000)
+        plan = parse_llm_json(last_raw)
+        if plan and plan.get("characters") and plan.get("beats"):
+            break
+        plan = None
+    if plan is None:
+        if llm.last_error:
+            hint = (f"AI 호출 오류 — {llm.last_error}. "
+                    "사용량 한도 초과나 크레딧 소진이면 콘솔에서 해결하거나 Gemini로 전환하세요.")
+        else:
+            hint = f"형식 오류 (응답 앞부분: {last_raw[:150] or '빈 응답'})"
+        return {"ok": False, "error": "설계도 생성에 실패했어요. 설명서는 반영되지 않았어요.",
+                "detail": hint}
 
     beats = plan.get("beats") or []
     by_idx = {int(x.get("idx", i)): x for i, x in enumerate(beats) if isinstance(x, dict)}
@@ -313,10 +320,12 @@ def create_work(body: WorkBody, user: str = Header(default="solo", alias="X-User
             plan = None
     if plan is None:
         if llm.is_mock:
-            plan = _mock_setup(body)
+            plan = _mock_setup(body)  # 데모/오프라인 체험용 (직접 입력 경로에 한함)
         else:
-            hint = ("응답이 비어 있음 — API 키/모델 설정 확인 필요"
-                    if not last_raw.strip() else f"형식 오류 (응답 앞부분: {last_raw[:120]})")
+            hint = (f"AI 호출 오류 — {llm.last_error}. 크레딧/사용량 한도를 확인하세요."
+                    if llm.last_error else
+                    ("응답이 비어 있음 — API 키/모델 설정 확인 필요"
+                     if not last_raw.strip() else f"형식 오류 (응답 앞부분: {last_raw[:120]})"))
             return {"ok": False, "error": "설계도 생성에 실패했어요. 한 번 더 시도해 주세요.",
                     "detail": hint}
 
@@ -624,9 +633,12 @@ def _mock_chapter(w: dict, no: int, beat: dict) -> str:
 
 
 def _generate_full_chapter(w: dict, no: int, beat: dict, prev: list, directive: str):
-    """회차 생성 + 분량 보증 루프 — 5,000자에 못 미치면 프로그램이 이어쓰기를 시킨다."""
+    """회차 생성 + 분량 보증 루프 — 5,000자에 못 미치면 프로그램이 이어쓰기를 시킨다.
+    반환: (title, text, summary, state, error) — error가 있으면 저장하지 않는다."""
     raw = llm.write(_chapter_prompt(w, no, beat, prev, directive),
                     mock_text=_mock_chapter(w, no, beat), max_tokens=16000)
+    if not llm.is_mock and llm.last_error:
+        return None, None, None, None, llm.last_error
     title, text, summary, state = _parse_chapter(raw, no)
     tries = 0
     while not llm.is_mock and len(text) < MIN_CHAPTER_CHARS and tries < 2:
@@ -643,7 +655,7 @@ def _generate_full_chapter(w: dict, no: int, beat: dict, prev: list, directive: 
         if st2:
             state = st2
         tries += 1
-    return title, text, summary, state
+    return title, text, summary, state, None
 
 
 @router.post("/works/{work_id}/chapters")
@@ -661,8 +673,11 @@ def write_chapter(work_id: int, body: ChapterBody,
             return {"ok": False, "error": "예정된 회차를 모두 썼어요. 총 회차 수를 늘리거나 완결하세요."}
         beat = w["beats"][beat_for(no, w["total_chapters"])]
 
-        title, text, summary, state = _generate_full_chapter(
+        title, text, summary, state, err = _generate_full_chapter(
             w, no, beat, prev, body.directive.strip())
+        if err:
+            return {"ok": False, "error": "회차 생성에 실패했어요. 저장하지 않았어요.",
+                    "detail": f"AI 호출 오류 — {err}. 크레딧/사용량 한도를 확인하거나 Gemini로 전환하세요."}
         ch_id = c.insert_id(
             "INSERT INTO chapters (work_id, no, title, body, summary, state_json, directive, "
             "beat_idx, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,datetime('now'),datetime('now'))",
@@ -732,8 +747,11 @@ def regen_chapter(chapter_id: int, body: ChapterBody,
             "SELECT no, title, summary, body, state_json FROM chapters WHERE work_id=? AND no<? ORDER BY no",
             (r["work_id"], r["no"])).fetchall()]
         beat = w["beats"][beat_for(r["no"], w["total_chapters"])]
-        title, text, summary, state = _generate_full_chapter(
+        title, text, summary, state, err = _generate_full_chapter(
             w, r["no"], beat, prev, body.directive.strip())
+        if err:
+            return {"ok": False, "error": "다시 쓰기에 실패했어요. 기존 회차는 그대로 유지됩니다.",
+                    "detail": f"AI 호출 오류 — {err}. 크레딧/사용량 한도를 확인하세요."}
         c.execute("UPDATE chapters SET title=?, body=?, summary=?, state_json=?, directive=?, "
                   "updated_at=datetime('now') WHERE id=?",
                   (title, text, summary, state, body.directive.strip(), chapter_id))
