@@ -8,6 +8,7 @@
 """
 import io
 import json
+import re
 
 from fastapi import APIRouter, File, Form, Header, UploadFile
 from pydantic import BaseModel
@@ -134,6 +135,56 @@ def extract_brief_text(filename: str, data: bytes) -> str:
         print(f"[writer] 설명서 추출 실패 ({filename}): {e}", flush=True)
         return ""
     return ""
+
+
+_CH_HEAD = re.compile(r"^\s*(\d{1,3})\s*화\s*[.．·:]?\s*(.*)$")
+
+
+def extract_outline(brief: str) -> list:
+    """계획서에서 'N화. 제목 + 내용' 형식의 회차별 지정 내용을 추출한다.
+    작가가 이미 회차를 짜뒀으면, 우리는 그 회차를 그대로 따른다.
+
+    진짜 회차 목록은 1→N으로 순서대로 이어진다. 문서 제목('50화 웹소설 설계서')이나
+    하단의 참조('49화: …')는 그 흐름 밖에 있으므로, 연속 증가하는 본 흐름만 잡는다."""
+    lines = brief.splitlines()
+    heads = []  # (line_idx, no, title)
+    for i, ln in enumerate(lines):
+        m = _CH_HEAD.match(ln)
+        if not m:
+            continue
+        no = int(m.group(1))
+        title = m.group(2).strip()
+        if not (1 <= no <= 999):
+            continue
+        if title.startswith(("~", "∼", "－", "-", "화")):  # '31화~40화' 같은 범위 헤더 제외
+            continue
+        heads.append((i, no, title))
+
+    # 연속 증가하는 본 흐름만 채택 (expected: 1,2,3,...)
+    main, expected = [], 1
+    for idx, no, title in heads:
+        if no == expected:
+            main.append((idx, no, title))
+            expected += 1
+    if len(main) < 3:  # 연속 흐름이 약하면(회차 목록이 없는 계획서), 추출하지 않는다
+        return []
+
+    outline = []
+    for j, (idx, no, title) in enumerate(main):
+        end = main[j + 1][0] if j + 1 < len(main) else len(lines)
+        body = "\n".join(x.strip() for x in lines[idx + 1:end] if x.strip())
+        outline.append({"no": no, "title": title, "content": body[:1500]})
+    return outline
+
+
+def _outline_for(w: dict, no: int) -> dict:
+    try:
+        for o in json.loads(w.get("outline_json") or "[]"):
+            if o.get("no") == no:
+                return o
+    except Exception:
+        pass
+    return {}
 
 
 def _brief_block(w: dict, limit: int = BRIEF_PROMPT_MAX) -> str:
@@ -298,19 +349,25 @@ async def create_from_brief(
     sample = style_sample.strip()
     profile = analyze_style(sample) if len(sample) >= 300 else ""
 
+    # 계획서에 회차별 내용이 있으면 추출해 그대로 따른다 (작가가 짠 회차 = 절대 기준)
+    outline = extract_outline(brief)
+    if len(outline) >= 3:
+        total_chapters = max(outline[-1]["no"], total_chapters)
+
     with db.connect() as c:
         work_id = c.insert_id(
             "INSERT INTO works (user_id, title, genre, brief, premise, ending, style, "
             "total_chapters, style_sample, style_profile, characters_json, relations_json, "
-            "beats_json, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))",
+            "beats_json, outline_json, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))",
             (user, plan.get("title") or "무제", plan.get("genre") or genre or "웹소설",
              brief[:BRIEF_MAX], plan.get("premise") or "", plan.get("ending") or "",
              plan.get("style") or "", max(5, total_chapters), sample[:6000], profile,
              json.dumps(plan.get("characters", []), ensure_ascii=False),
              json.dumps(plan.get("relations", []), ensure_ascii=False),
-             json.dumps(beats, ensure_ascii=False)),
+             json.dumps(beats, ensure_ascii=False),
+             json.dumps(outline, ensure_ascii=False)),
         )
-    return {"ok": True, "id": work_id}
+    return {"ok": True, "id": work_id, "outline_chapters": len(outline)}
 
 
 @router.post("/works")
@@ -372,6 +429,7 @@ def _load_work(c, work_id: int, user: str):
     w["characters"] = json.loads(w.get("characters_json") or "[]")
     w["relations"] = json.loads(w.get("relations_json") or "[]")
     w["beats"] = json.loads(w.get("beats_json") or "[]")
+    w["outline"] = json.loads(w.get("outline_json") or "[]")
     return w
 
 
@@ -399,7 +457,7 @@ def get_work(work_id: int, user: str = Header(default="solo", alias="X-User-Id")
         return {"ok": True,
                 "work": {k: w.get(k) for k in ("id", "title", "genre", "premise", "ending",
                                                "style", "total_chapters", "characters",
-                                               "relations", "beats", "brief",
+                                               "relations", "beats", "brief", "outline",
                                                "style_profile", "style_sample")},
                 "chapters": chapters}
 
@@ -555,6 +613,16 @@ def _prev_state(prev: list) -> dict:
     return state
 
 
+def _this_chapter_block(w: dict, no: int, beat: dict) -> str:
+    """이번 화의 지침 — 계획서에 이 화 내용이 지정돼 있으면 그것이 절대 우선한다."""
+    o = _outline_for(w, no)
+    if o and (o.get("content") or o.get("title")):
+        return (f"[이번 화 = {no}화 「{o.get('title','')}」 — 계획서가 지정한 이 화의 내용이다.\n"
+                f" 반드시 이 사건·전개를 이번 화로 집필하라. 앞당기거나 미루거나 바꾸지 마라]\n"
+                f"{o.get('content','')}")
+    return f"[이번 화의 위치] {no}화 = 비트 \"{beat['name']}\" — {beat.get('summary','')}"
+
+
 def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str) -> str:
     chars = "\n".join(
         f"- {ch['name']} ({ch.get('archetype','')}): {ch.get('role','')} / "
@@ -590,7 +658,7 @@ def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str) ->
 [전체 플롯 지도 (Save the Cat 15비트)]
 {beats_map}
 
-[이번 화의 위치] {no}화 = 비트 "{beat['name']}" — {beat.get('summary','')}
+{_this_chapter_block(w, no, beat)}
 [지금까지의 전개 (요약)]
 {prev_txt}
 [인물의 현재 상태 — 이 심경과 위치에서 '이어서' 출발하라]

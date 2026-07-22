@@ -67,6 +67,10 @@ $("#cb-go").onclick = async () => {
     notice((r.error || "실패했어요") + (r.detail ? `\n\n[원인] ${r.detail}` : ""));
     return;
   }
+  if (r.outline_chapters >= 3) {
+    notice(`계획서에서 ${r.outline_chapters}개 회차의 지정 내용을 찾았어요.\n` +
+           `각 회차는 계획서에 적힌 그 화의 내용 그대로 집필됩니다.`);
+  }
   openWork(r.id);
 };
 
@@ -125,9 +129,10 @@ function renderChapters() {
   WORK.chapters.forEach((ch) => {
     const el = document.createElement("button");
     el.className = "ch-item";
+    const o = (WORK.outline || []).find((x) => x.no === ch.no);
     const beat = WORK.beats[ch.beat_idx] || {};
     el.innerHTML = `<span class="ch-no">${ch.no}화</span> ${ch.title || ""}
-      <small>${beat.name || ""}</small>`;
+      <small>${o ? "📋 계획서" : (beat.name || "")}</small>`;
     el.onclick = () => openChapter(ch.id);
     box.appendChild(el);
   });

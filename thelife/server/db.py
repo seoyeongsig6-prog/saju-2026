@@ -137,6 +137,7 @@ CREATE TABLE IF NOT EXISTS works (
     characters_json TEXT,             -- 원형(아키타입) 기반 인물들
     relations_json TEXT,              -- 관계도
     beats_json TEXT,                  -- Save the Cat 15비트
+    outline_json TEXT,                -- 계획서에서 추출한 회차별 지정 내용
     created_at TEXT
 );
 CREATE TABLE IF NOT EXISTS chapters (
@@ -243,6 +244,7 @@ def _apply_schema(c: "Conn") -> None:
         "ALTER TABLE works ADD COLUMN style_profile TEXT",
         "ALTER TABLE chapters ADD COLUMN state_json TEXT",
         "ALTER TABLE works ADD COLUMN brief TEXT",
+        "ALTER TABLE works ADD COLUMN outline_json TEXT",
     ):
         try:
             c.execute(ddl)
