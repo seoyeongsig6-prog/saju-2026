@@ -92,6 +92,23 @@ def writer_page():
     return FileResponse(WEB / "writer.html")
 
 
+@app.get("/api/health")
+def health():
+    """진단 — 어떤 AI 공급자·모델이 실제로 연결됐는지 확인."""
+    ping = ""
+    try:
+        ping = llm.write("한 단어로 'OK'라고만 답하라.", mock_text="(mock)", max_tokens=20)
+    except Exception as e:
+        ping = f"오류: {e}"
+    return {
+        "mock_mode": llm.is_mock,
+        "provider": llm.provider,
+        "gemini_model": getattr(llm, "gemini_model", None),
+        "last_error": llm.last_error,
+        "ping": ping[:80],
+    }
+
+
 @app.get("/api/presets")
 def presets():
     return {
