@@ -156,6 +156,7 @@ function renderBible() {
     spb.classList.add("hidden");
   }
   $("#bible-sample").value = WORK.style_sample || "";
+  renderCanon();
   const box = $("#bible-chars");
   box.innerHTML = "";
   WORK.characters.forEach((c, idx) => {
@@ -177,6 +178,43 @@ function renderBible() {
       <span class="no">${i + 1}</span><b>${b.name}</b><span>${b.summary || ""}</span></div>`;
   }).join("");
 }
+
+/* ---------- 고유명사 사전 (정전) ---------- */
+function renderCanon() {
+  const box = $("#canon-list");
+  const canon = WORK.canon || {};
+  const keys = Object.keys(canon);
+  if (!keys.length) {
+    box.innerHTML = `<p class="hint" style="opacity:.7">아직 고정된 이름이 없어요.</p>`;
+    return;
+  }
+  box.innerHTML = "";
+  keys.forEach((k) => {
+    const row = document.createElement("div");
+    row.className = "canon-row";
+    row.innerHTML = `<b>${k}</b>${canon[k] ? ` — <span>${canon[k]}</span>` : ""}
+      <button class="del" title="삭제">✕</button>`;
+    row.querySelector(".del").onclick = async () => {
+      await api(`/api/writer/works/${WORK.id}/canon/${encodeURIComponent(k)}`, { method: "DELETE" });
+      delete WORK.canon[k];
+      renderCanon();
+    };
+    box.appendChild(row);
+  });
+}
+$("#canon-add").onclick = async () => {
+  const name = $("#canon-name").value.trim();
+  if (!name) { notice("고정할 이름을 입력해 주세요."); return; }
+  const r = await api(`/api/writer/works/${WORK.id}/canon`, {
+    method: "POST",
+    body: JSON.stringify({ name, value: $("#canon-value").value.trim() }),
+  });
+  if (!r.ok) { notice(r.error); return; }
+  WORK.canon = r.canon;
+  $("#canon-name").value = ""; $("#canon-value").value = "";
+  renderCanon();
+  notice("고정했어요. 다음 회차부터 이 이름 그대로 씁니다.");
+};
 
 /* ---------- 설정집 편집 ---------- */
 function editChar(el, idx) {

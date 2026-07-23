@@ -47,6 +47,13 @@ textarea:focus { outline: none; border-color: var(--accent2); }
 .brief-view summary { cursor: pointer; color: var(--accent); font-size: 13px; }
 #brief-body { margin-top: 10px; font-size: 12.5px; color: var(--dim); white-space: pre-line;
   line-height: 1.8; max-height: 50vh; overflow-y: auto; }
+.canon-list { display: flex; flex-direction: column; gap: 6px; }
+.canon-row { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 9px 13px; font-size: 13.5px; position: relative; }
+.canon-row b { color: var(--accent); }
+.canon-row span { color: var(--dim); }
+.canon-row .del { position: absolute; right: 8px; top: 7px; background: none; border: none;
+  color: var(--bad); padding: 2px 8px; }
 .style-box { background: var(--panel); border: 1px solid var(--accent2); border-radius: 12px;
   padding: 13px 15px; margin-bottom: 10px; font-size: 12.5px; color: var(--dim);
   white-space: pre-line; line-height: 1.8; }

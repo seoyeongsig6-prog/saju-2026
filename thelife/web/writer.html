@@ -98,6 +98,17 @@
       <textarea id="bible-sample" rows="5" placeholder="문체 표본 붙여넣기 (300자 이상) — 이 작품의 모든 회차가 이 결로 쓰입니다"></textarea>
       <button id="bible-learn" class="primary">이 문체 학습하기</button>
     </div>
+    <div class="story-h">고유명사 사전 — 채널명·조직명·지명·별명 고정</div>
+    <p class="hint">여기 고정한 이름은 모든 회차에서 이 표기 그대로 쓰입니다 (설정 붕괴 방지).<br>
+       AI가 쓰다가 지어낸 이름도 자동으로 여기 쌓입니다.</p>
+    <div id="canon-list" class="canon-list"></div>
+    <div class="write-box" style="margin:8px 0 16px">
+      <div class="row2">
+        <input id="canon-name" placeholder="이름 (예: 비하인드 X)">
+        <input id="canon-value" placeholder="설명 (선택 — 예: 태경의 오컬트 채널)">
+      </div>
+      <button id="canon-add" class="ghost small">이 이름 고정</button>
+    </div>
     <div class="story-h">인물 (보글러 원형) — ✎로 직접 편집</div>
     <div id="bible-chars"></div>
     <div class="story-h">관계도</div>

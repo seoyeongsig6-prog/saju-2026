@@ -430,6 +430,7 @@ def _load_work(c, work_id: int, user: str):
     w["relations"] = json.loads(w.get("relations_json") or "[]")
     w["beats"] = json.loads(w.get("beats_json") or "[]")
     w["outline"] = json.loads(w.get("outline_json") or "[]")
+    w["canon"] = json.loads(w.get("canon_json") or "{}")
     return w
 
 
@@ -457,7 +458,7 @@ def get_work(work_id: int, user: str = Header(default="solo", alias="X-User-Id")
         return {"ok": True,
                 "work": {k: w.get(k) for k in ("id", "title", "genre", "premise", "ending",
                                                "style", "total_chapters", "characters",
-                                               "relations", "beats", "brief", "outline",
+                                               "relations", "beats", "brief", "outline", "canon",
                                                "style_profile", "style_sample")},
                 "chapters": chapters}
 
@@ -499,6 +500,43 @@ def edit_bible(work_id: int, body: BibleBody,
              work_id),
         )
     return {"ok": True}
+
+
+class CanonBody(BaseModel):
+    name: str          # 고유명사 (채널명·조직명·지명·별명·설정용어)
+    value: str = ""    # 짧은 설명 (선택)
+
+
+@router.post("/works/{work_id}/canon")
+def set_canon(work_id: int, body: CanonBody,
+              user: str = Header(default="solo", alias="X-User-Id")):
+    """고유명사 고정 — AI 없이 즉시 정전에 등록한다. 이후 모든 회차가 이 표기를 지킨다."""
+    name = body.name.strip()
+    if not name:
+        return {"ok": False, "error": "고정할 이름을 입력해 주세요."}
+    with db.connect() as c:
+        w = _load_work(c, work_id, user)
+        if not w:
+            return {"ok": False, "error": "작품을 찾을 수 없어요."}
+        canon = w.get("canon") or {}
+        canon[name] = body.value.strip()
+        c.execute("UPDATE works SET canon_json=? WHERE id=?",
+                  (json.dumps(canon, ensure_ascii=False), work_id))
+    return {"ok": True, "canon": canon}
+
+
+@router.delete("/works/{work_id}/canon/{name}")
+def del_canon(work_id: int, name: str,
+              user: str = Header(default="solo", alias="X-User-Id")):
+    with db.connect() as c:
+        w = _load_work(c, work_id, user)
+        if not w:
+            return {"ok": False, "error": "작품을 찾을 수 없어요."}
+        canon = w.get("canon") or {}
+        canon.pop(name, None)
+        c.execute("UPDATE works SET canon_json=? WHERE id=?",
+                  (json.dumps(canon, ensure_ascii=False), work_id))
+    return {"ok": True, "canon": canon}
 
 
 class ReviseBody(BaseModel):
@@ -594,23 +632,52 @@ DESCRIPTION_RULES = """- **묘사는 집요하게 디테일하라 (필수)**:
   · 단, 묘사가 속도를 죽이면 안 된다 — 긴 묘사 덩어리 대신 행동 사이사이에 짧고 선명하게 박아라"""
 
 
+def _merge_canon(base: dict, add) -> None:
+    """정전 사전 병합 — 한번 정해진 고유명사는 계속 유지된다 (먼저 정해진 값 우선)."""
+    if isinstance(add, dict):
+        for k, v in add.items():
+            k = str(k).strip()
+            v = str(v).strip() if v is not None else ""
+            if k and k not in base:
+                base[k] = v
+    elif isinstance(add, list):
+        for item in add:
+            if isinstance(item, dict):
+                name = str(item.get("name", "")).strip()
+                desc = str(item.get("desc", item.get("value", ""))).strip()
+                if name and name not in base:
+                    base[name] = desc
+            elif isinstance(item, str) and item.strip() and item.strip() not in base:
+                base[item.strip()] = ""
+
+
 def _prev_state(prev: list) -> dict:
-    """직전 화의 상태 원장 — 인물 심경·이야기 내 시간·최근 사용 표현."""
+    """직전 화의 상태 원장 — 인물 심경·이야기 내 시간·최근 표현 + 누적 정전 사전(고유명사)."""
     state = {}
     if prev and prev[-1].get("state_json"):
         try:
             state = json.loads(prev[-1]["state_json"]) or {}
         except Exception:
             state = {}
-    phrases = []
-    for p in prev[-3:]:
+    phrases, canon = [], {}
+    for p in prev:  # 전 회차를 훑어 고유명사를 누적 (설정 붕괴 방지의 핵심)
         try:
             st = json.loads(p.get("state_json") or "{}") or {}
-            phrases += [x for x in (st.get("phrases") or []) if isinstance(x, str)]
         except Exception:
-            pass
+            continue
+        _merge_canon(canon, st.get("canon"))
+        phrases += [x for x in (st.get("phrases") or []) if isinstance(x, str)]
     state["banned_phrases"] = phrases[-15:]
+    state["canon"] = canon
     return state
+
+
+def _work_canon(w: dict) -> dict:
+    """작가가 설정집/명령으로 고정한 고유명사 — 작품 전체의 최우선 정전."""
+    try:
+        return json.loads(w.get("canon_json") or "{}") or {}
+    except Exception:
+        return {}
 
 
 def _this_chapter_block(w: dict, no: int, beat: dict) -> str:
@@ -641,6 +708,10 @@ def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str) ->
         f"- {c.get('name','')}: 심경 {c.get('mood','')} / 위치 {c.get('loc','')} / {c.get('change','')}"
         for c in (st.get("chars") or []) if isinstance(c, dict)) or "1화 — 설정집의 초기 상태에서 시작"
     banned = " / ".join(st.get("banned_phrases") or [])
+    # 정전 사전: 작가 고정값(최우선) + 이전 회차들이 확정한 고유명사
+    canon = dict(st.get("canon") or {})
+    canon.update(_work_canon(w))  # 작가 고정이 항상 이긴다
+    canon_lines = "\n".join(f"- {k}: {v}" if v else f"- {k}" for k, v in canon.items())
 
     return f"""당신은 정상급 웹소설 작가다. 아래 작품의 {no}화를 써라.
 
@@ -654,6 +725,9 @@ def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str) ->
 {chars}
 [관계도]
 {rels}
+{f'''[정전 사전 — 이 작품에서 이미 확정된 고유명사다. 채널명·조직명·지명·별명·설정용어를
+ 절대 바꾸지 말고 이 표기 그대로 써라. 새 이름을 지어내지 마라]
+{canon_lines}''' if canon_lines else ''}
 
 [전체 플롯 지도 (Save the Cat 15비트)]
 {beats_map}
@@ -689,7 +763,7 @@ def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str) ->
 ///요약///
 (이번 화에서 벌어진 일과 인물 상태 변화를 4~6문장으로 — 다음 화 집필용 기억)
 ///상태///
-{{"time_start":"이번 화가 시작된 이야기 속 시점","time_end":"끝난 시점","chars":[{{"name":"인물명","mood":"현재 심경","loc":"현재 위치","change":"이번 화에서 달라진 것"}}],"phrases":["이번 화에서 쓴 인상적 표현·비유 5개 — 다음 화 반복 방지용"]}}"""
+{{"time_start":"이번 화가 시작된 이야기 속 시점","time_end":"끝난 시점","chars":[{{"name":"인물명","mood":"현재 심경","loc":"현재 위치","change":"이번 화에서 달라진 것"}}],"phrases":["이번 화에서 쓴 인상적 표현·비유 5개 — 다음 화 반복 방지용"],"canon":{{"이번 화에 처음 등장했거나 확정한 고유명사(채널명/조직명/지명/별명/설정용어)":"짧은 설명"}}}}"""
 
 
 def _mock_chapter(w: dict, no: int, beat: dict) -> str:
