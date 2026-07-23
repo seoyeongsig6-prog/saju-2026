@@ -32,6 +32,33 @@ def _is_model_missing(err: str) -> bool:
             or "unsupported" in e)
 
 
+def _gemini_text(resp) -> str:
+    """response.text 지름길 대신 응답 내부를 안전하게 꺼낸다.
+    안전필터/토큰한도(finish_reason)로 .text가 예외를 던지는 문제를 회피한다.
+    후보는 있으나 텍스트가 없으면 빈 문자열을 돌려준다 (호출부가 finish_reason 처리)."""
+    cands = getattr(resp, "candidates", None)
+    if cands is not None:
+        out = []
+        for cand in cands:
+            content = getattr(cand, "content", None)
+            parts = getattr(content, "parts", None) or []
+            out += [getattr(p, "text", "") for p in parts if getattr(p, "text", "")]
+        return "".join(out)
+    # 후보 속성이 없는 다른 SDK 형태 — 지름길 시도
+    try:
+        return resp.text
+    except Exception:
+        return ""
+
+
+def _finish_reason(resp) -> str:
+    try:
+        cand = (getattr(resp, "candidates", None) or [None])[0]
+        return str(getattr(cand, "finish_reason", "") or "")
+    except Exception:
+        return ""
+
+
 class LLM:
     def __init__(self) -> None:
         self.provider: Optional[str] = None
@@ -65,7 +92,8 @@ class LLM:
 
     # ---- Gemini: 모델 후보를 순회하며 호출 ----
     def _gemini_generate(self, prompt: str, max_tokens: int, stream: bool):
-        cfg = {"max_output_tokens": min(max_tokens, 8192)}
+        # 2.5계열은 '생각'에 출력 토큰을 쓰므로 넉넉히 준다 (최소 800, 최대 8192)
+        cfg = {"max_output_tokens": max(800, min(max_tokens, 8192))}
         tried = []
         # 현재 모델을 맨 앞에 두고, 나머지 후보를 뒤에 붙인다
         order = [self.gemini_model] + [m for m in GEMINI_CANDIDATES if m != self.gemini_model]
@@ -101,10 +129,11 @@ class LLM:
                 self.last_error = "빈 응답"
             elif self.provider == "gemini":
                 resp = self._gemini_generate(prompt, max_tokens, stream=False)
-                text = resp.text
+                text = _gemini_text(resp)
                 if text and text.strip():
                     return text.strip()
-                self.last_error = "빈 응답"
+                fr = _finish_reason(resp)
+                self.last_error = f"빈 응답 (finish_reason={fr})" if fr else "빈 응답"
         except Exception as e:
             self.last_error = f"{type(e).__name__}: {str(e)[:200]}"
             print(f"[llm] 호출 실패: {self.last_error}", flush=True)
@@ -121,10 +150,22 @@ class LLM:
                         yield text
                 return
             elif self.provider == "gemini":
+                got = False
                 for chunk in self._gemini_generate(prompt, 4096, stream=True):
-                    if chunk.text:
-                        yield chunk.text
-                return
+                    t = _gemini_text(chunk) if False else None  # 스트림 청크는 아래서 안전 처리
+                    try:
+                        t = chunk.text
+                    except Exception:
+                        t = "".join(
+                            getattr(p, "text", "")
+                            for cand in (getattr(chunk, "candidates", None) or [])
+                            for p in (getattr(getattr(cand, "content", None), "parts", None) or [])
+                        )
+                    if t:
+                        got = True
+                        yield t
+                if got:
+                    return
         except Exception as e:
             print(f"[llm] 스트림 실패: {type(e).__name__}: {str(e)[:150]}", flush=True)
         for line in mock_text.splitlines(keepends=True):
