@@ -16,6 +16,17 @@ const api = async (path, opts = {}) => {
 
 let WORK = null, CHAPTER = null;
 
+/* ---------- 테마 (밝게/어둡게 — 기본 밝게) ---------- */
+function applyTheme(t) {
+  document.body.dataset.theme = t;
+  localStorage.setItem("thelife_theme", t);
+  const b = $("#theme-toggle");
+  if (b) b.textContent = t === "dark" ? "☀️" : "🌙";
+}
+applyTheme(localStorage.getItem("thelife_theme") || "light");
+$("#theme-toggle").onclick = () =>
+  applyTheme(document.body.dataset.theme === "dark" ? "light" : "dark");
+
 function view(id) {
   ["w-home", "w-create", "w-build", "w-work", "w-editor"].forEach((v) =>
     $(`#${v}`).classList.toggle("hidden", v !== id));
@@ -352,12 +363,12 @@ function renderBible() {
 /* ---------- 인물 관계도 (시각화) ---------- */
 const RL_ESC = (s) => (s || "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 function archColor(a = "") {
-  if (a.includes("영웅") || a.includes("주인공")) return "var(--accent)";
-  if (a.includes("그림자") || a.includes("적")) return "var(--bad)";
-  if (a.includes("멘토") || a.includes("스승")) return "#6fb0ff";
-  if (a.includes("애정") || a.includes("연인") || a.includes("로맨스")) return "#ff8ec2";
-  if (a.includes("조력")) return "#57c7a3";
-  return "var(--accent2)";
+  if (a.includes("영웅") || a.includes("주인공")) return "#7a5cf0";
+  if (a.includes("그림자") || a.includes("적")) return "#d64b43";
+  if (a.includes("멘토") || a.includes("스승")) return "#3f8ae0";
+  if (a.includes("애정") || a.includes("연인") || a.includes("로맨스")) return "#d9559b";
+  if (a.includes("조력")) return "#2fa07f";
+  return "#6b6ae0";
 }
 
 function renderRelGraph() {
