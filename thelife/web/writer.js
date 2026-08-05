@@ -17,7 +17,7 @@ const api = async (path, opts = {}) => {
 let WORK = null, CHAPTER = null;
 
 function view(id) {
-  ["w-home", "w-create", "w-work", "w-editor"].forEach((v) =>
+  ["w-home", "w-create", "w-build", "w-work", "w-editor"].forEach((v) =>
     $(`#${v}`).classList.toggle("hidden", v !== id));
 }
 function notice(t) { $("#notice-text").textContent = t; $("#notice").classList.remove("hidden"); }
@@ -93,6 +93,161 @@ $("#c-go").onclick = async () => {
     notice((r.error || "실패했어요") + (r.detail ? `\n\n[원인] ${r.detail}` : "") +
       (r.trace ? `\n${r.trace.join("\n")}` : ""));
     return;
+  }
+  openWork(r.id);
+};
+
+/* ---------- 작품설명서 상세 빌더 ---------- */
+const bdVal = (id) => $("#" + id).value.trim();
+
+$("#open-build").onclick = () => {
+  view("w-build");
+  if (!$("#bd-chars").children.length) { bdAddChar(); bdAddChar(); }
+  if (!$("#bd-canon").children.length) { bdAddCanon(); }
+};
+
+function bdAddChar(d = {}) {
+  const el = document.createElement("div");
+  el.className = "bd-char-row";
+  el.innerHTML = `
+    <button class="row-del" title="삭제">✕</button>
+    <div class="row2">
+      <input class="c-name" placeholder="이름">
+      <input class="c-role" placeholder="역할 (적대자·조력자·애정상대…)">
+    </div>
+    <input class="c-rel" placeholder="주인공과의 관계">
+    <div class="row2">
+      <input class="c-want" placeholder="욕망(want)">
+      <input class="c-need" placeholder="결핍(need)">
+    </div>
+    <input class="c-secret" placeholder="비밀 (선택)">`;
+  const set = (cls, v) => { el.querySelector(cls).value = v || ""; };
+  set(".c-name", d.name); set(".c-role", d.role); set(".c-rel", d.relation);
+  set(".c-want", d.want); set(".c-need", d.need); set(".c-secret", d.secret);
+  el.querySelector(".row-del").onclick = () => el.remove();
+  $("#bd-chars").appendChild(el);
+}
+
+function bdAddCanon(d = {}) {
+  const el = document.createElement("div");
+  el.className = "bd-canon-row";
+  el.innerHTML = `<button class="row-del" title="삭제">✕</button>
+    <div class="row2"><input class="cn-name" placeholder="이름"><input class="cn-desc" placeholder="설명 (선택)"></div>`;
+  el.querySelector(".cn-name").value = d.name || "";
+  el.querySelector(".cn-desc").value = d.desc || "";
+  el.querySelector(".row-del").onclick = () => el.remove();
+  $("#bd-canon").appendChild(el);
+}
+
+function bdAddOutline(d = {}) {
+  const el = document.createElement("div");
+  el.className = "bd-outline-row";
+  el.innerHTML = `<button class="row-del" title="삭제">✕</button>
+    <div class="o-head"><input class="o-no" type="number" min="1" placeholder="화"><input class="o-title" placeholder="제목"></div>
+    <textarea class="o-content" rows="2" placeholder="이 화의 핵심 사건 — 누가 무엇을 하고 무엇이 바뀌는지"></textarea>`;
+  el.querySelector(".o-no").value = d.no || "";
+  el.querySelector(".o-title").value = d.title || "";
+  el.querySelector(".o-content").value = d.content || "";
+  el.querySelector(".row-del").onclick = () => el.remove();
+  $("#bd-outline").appendChild(el);
+}
+
+$("#bd-add-char").onclick = () => bdAddChar();
+$("#bd-add-canon").onclick = () => bdAddCanon();
+$("#bd-add-outline").onclick = () => bdAddOutline();
+
+function bdCollect() {
+  return {
+    title: bdVal("bd-title"), genre: bdVal("bd-genre"),
+    total_chapters: Number($("#bd-total").value) || 25,
+    chars_per_chapter: Number($("#bd-cpc").value) || 5000,
+    keywords: bdVal("bd-keywords"),
+    logline: bdVal("bd-logline"), intent: bdVal("bd-intent"),
+    world_setting: bdVal("bd-world"), world_rules: bdVal("bd-rules"), taboos: bdVal("bd-taboos"),
+    protagonist: {
+      name: bdVal("bd-p-name"), age: bdVal("bd-p-age"), job: bdVal("bd-p-job"),
+      personality: bdVal("bd-p-personality"), want: bdVal("bd-p-want"),
+      need: bdVal("bd-p-need"), secret: bdVal("bd-p-secret"), arc: bdVal("bd-p-arc"),
+    },
+    characters: [...$("#bd-chars").querySelectorAll(".bd-char-row")].map((r) => ({
+      name: r.querySelector(".c-name").value.trim(), role: r.querySelector(".c-role").value.trim(),
+      relation: r.querySelector(".c-rel").value.trim(), want: r.querySelector(".c-want").value.trim(),
+      need: r.querySelector(".c-need").value.trim(), secret: r.querySelector(".c-secret").value.trim(),
+    })).filter((c) => c.name),
+    canon: [...$("#bd-canon").querySelectorAll(".bd-canon-row")].map((r) => ({
+      name: r.querySelector(".cn-name").value.trim(), desc: r.querySelector(".cn-desc").value.trim(),
+    })).filter((c) => c.name),
+    style: bdVal("bd-style"), style_sample: bdVal("bd-sample"), ending: bdVal("bd-ending"),
+    outline: [...$("#bd-outline").querySelectorAll(".bd-outline-row")].map((r) => ({
+      no: Number(r.querySelector(".o-no").value) || 0,
+      title: r.querySelector(".o-title").value.trim(), content: r.querySelector(".o-content").value.trim(),
+    })).filter((o) => o.no >= 1 && (o.title || o.content)),
+  };
+}
+
+function bdSetIfEmpty(id, val) { const e = $("#" + id); if (val && !e.value.trim()) e.value = val; }
+function bdFill(d) {
+  d = d || {};
+  [["bd-title", d.title], ["bd-logline", d.logline], ["bd-intent", d.intent],
+   ["bd-world", d.world_setting], ["bd-rules", d.world_rules], ["bd-taboos", d.taboos],
+   ["bd-ending", d.ending], ["bd-style", d.style]].forEach(([id, v]) => bdSetIfEmpty(id, v));
+  const p = d.protagonist || {};
+  [["bd-p-name", p.name], ["bd-p-age", p.age], ["bd-p-job", p.job],
+   ["bd-p-personality", p.personality], ["bd-p-want", p.want], ["bd-p-need", p.need],
+   ["bd-p-secret", p.secret], ["bd-p-arc", p.arc]].forEach(([id, v]) => bdSetIfEmpty(id, v));
+  const allEmpty = (sel, f) => [...$(sel).children].every((r) => !f(r));
+  if (Array.isArray(d.characters) && d.characters.length &&
+      allEmpty("#bd-chars", (r) => r.querySelector(".c-name").value.trim())) {
+    $("#bd-chars").innerHTML = ""; d.characters.forEach(bdAddChar);
+  }
+  if (Array.isArray(d.canon) && d.canon.length &&
+      allEmpty("#bd-canon", (r) => r.querySelector(".cn-name").value.trim())) {
+    $("#bd-canon").innerHTML = ""; d.canon.forEach(bdAddCanon);
+  }
+}
+
+$("#bd-ai-draft").onclick = async () => {
+  const seed = {
+    title: bdVal("bd-title"), genre: bdVal("bd-genre"), logline: bdVal("bd-logline"),
+    ending: bdVal("bd-ending"), keywords: bdVal("bd-keywords"),
+    total_chapters: Number($("#bd-total").value) || 25,
+  };
+  if (!seed.logline && !seed.genre && !seed.keywords) {
+    notice("장르·로그라인·키워드 중 하나는 먼저 알려주세요. 거기서 상세 기획을 지어드려요."); return;
+  }
+  busy("AI가 상세 기획 초안을 짜는 중… (20초쯤)");
+  const r = await api("/api/writer/brief/draft", { method: "POST", body: JSON.stringify(seed) });
+  unbusy();
+  if (!r.ok) { notice((r.error || "실패했어요") + (r.detail ? `\n\n[원인] ${r.detail}` : "")); return; }
+  bdFill(r.draft);
+  notice("초안을 채웠어요. 빈 칸만 메꿨으니, 마음껏 고친 뒤 회차 전개를 짜고 작품을 만드세요.");
+};
+
+$("#bd-ai-outline").onclick = async () => {
+  const b = bdCollect();
+  if (!b.logline && !b.ending && !b.world_setting) {
+    notice("회차 전개를 짜려면 로그라인·세계관·결말 중 하나는 채워주세요."); return;
+  }
+  busy(`AI가 ${b.total_chapters}화 전개를 짜는 중… (30초~1분)`);
+  const r = await api("/api/writer/brief/outline", { method: "POST", body: JSON.stringify(b) });
+  unbusy();
+  if (!r.ok) { notice((r.error || "실패했어요") + (r.detail ? `\n\n[원인] ${r.detail}` : "")); return; }
+  $("#bd-outline").innerHTML = "";
+  (r.outline || []).forEach(bdAddOutline);
+  notice(`${(r.outline || []).length}개 회차 전개를 채웠어요. 각 칸을 자유롭게 고치세요.`);
+};
+
+$("#bd-go").onclick = async () => {
+  const b = bdCollect();
+  if (!b.logline && !b.ending) { notice("최소한 로그라인이나 결말 중 하나는 채워주세요."); return; }
+  busy("설명서를 정리하고 설계도(인물·관계·15비트)를 만드는 중… (30초쯤)");
+  const r = await api("/api/writer/works/build", { method: "POST", body: JSON.stringify(b) });
+  unbusy();
+  if (!r.ok) {
+    notice((r.error || "실패했어요") + (r.detail ? `\n\n[원인] ${r.detail}` : "")); return;
+  }
+  if (r.outline_chapters >= 3) {
+    notice(`${r.outline_chapters}개 회차의 지정 내용이 저장됐어요.\n각 회차는 이 전개 그대로 집필됩니다.`);
   }
   openWork(r.id);
 };

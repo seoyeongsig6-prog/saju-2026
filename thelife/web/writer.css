@@ -57,6 +57,32 @@ textarea:focus { outline: none; border-color: var(--accent2); }
 .style-box { background: var(--panel); border: 1px solid var(--accent2); border-radius: 12px;
   padding: 13px 15px; margin-bottom: 10px; font-size: 12.5px; color: var(--dim);
   white-space: pre-line; line-height: 1.8; }
+/* 작품설명서 상세 빌더 */
+.build-cta { text-align: left; padding: 14px 16px; border-radius: 14px; background: var(--panel);
+  border: 1px dashed var(--accent2); color: var(--text); font-size: 15px; font-weight: 700; }
+.build-cta small { display: block; font-weight: 400; color: var(--dim); margin-top: 4px; font-size: 12.5px; }
+.row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.bd-sec { margin-bottom: 6px; }
+.ai-btn { width: 100%; text-align: left; padding: 12px 15px; border-radius: 12px; margin: 4px 0 12px;
+  background: linear-gradient(135deg, rgba(120,110,255,.16), rgba(255,180,90,.10));
+  border: 1px solid var(--accent2); color: var(--text); font-size: 14px; font-weight: 700; }
+.ai-btn small { display: block; font-weight: 400; color: var(--dim); margin-top: 3px; font-size: 12px; }
+.ai-btn:active { transform: scale(.99); }
+.bd-char-row, .bd-canon-row, .bd-outline-row { position: relative; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 8px;
+  display: flex; flex-direction: column; gap: 7px; }
+.bd-char-row input, .bd-canon-row input, .bd-outline-row input, .bd-outline-row textarea {
+  width: 100%; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--bg, #14161c); color: var(--text); font-size: 14px; font-family: inherit; }
+.bd-char-row .row2, .bd-canon-row .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.o-head { display: grid; grid-template-columns: 60px 1fr; gap: 7px; }
+.o-head .o-no { text-align: center; }
+.bd-outline-row textarea { resize: vertical; line-height: 1.6; }
+.row-del { position: absolute; top: 8px; right: 8px; z-index: 1; background: none; border: none;
+  color: var(--bad); font-size: 13px; padding: 2px 7px; opacity: .7; }
+.row-del:hover { opacity: 1; }
+#bd-chars .bd-char-row .c-secret { margin-top: 0; }
+
 .ed-title { font-size: 17px; font-weight: 700; }
 .ed-body { flex: 1; min-height: 55vh; line-height: 1.9; font-size: 15.5px; }
 .ed-actions { display: flex; gap: 8px; flex-wrap: wrap; }

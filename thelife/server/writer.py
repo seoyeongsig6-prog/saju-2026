@@ -370,6 +370,302 @@ async def create_from_brief(
     return {"ok": True, "id": work_id, "outline_chapters": len(outline)}
 
 
+# ── 앱 안에서 작품설명서를 직접 만든다 (상세 빌더) ──────────────────────────
+# 파일 업로드 없이도, 구조화된 상세 폼을 정식 기획안 텍스트로 조립해
+# 위의 from-brief 파이프라인에 그대로 투입한다. 설명서는 완결까지 절대 기준.
+
+class ProtIn(BaseModel):
+    name: str = ""
+    age: str = ""
+    job: str = ""
+    personality: str = ""
+    want: str = ""
+    need: str = ""
+    secret: str = ""
+    arc: str = ""
+
+
+class CharIn(BaseModel):
+    name: str = ""
+    role: str = ""
+    relation: str = ""
+    want: str = ""
+    need: str = ""
+    secret: str = ""
+
+
+class CanonIn(BaseModel):
+    name: str = ""
+    desc: str = ""
+
+
+class OutlineIn(BaseModel):
+    no: int = 0
+    title: str = ""
+    content: str = ""
+
+
+class BuildBody(BaseModel):
+    title: str = ""
+    genre: str = ""
+    total_chapters: int = 25
+    chars_per_chapter: int = 5000
+    keywords: str = ""
+    logline: str = ""            # 로그라인
+    intent: str = ""             # 기획 의도
+    world_setting: str = ""      # 배경 — 시대·공간
+    world_rules: str = ""        # 핵심 규칙·시스템
+    taboos: str = ""             # 금기·제약
+    protagonist: ProtIn = ProtIn()
+    characters: list[CharIn] = []
+    canon: list[CanonIn] = []
+    style: str = ""
+    style_sample: str = ""
+    ending: str = ""
+    outline: list[OutlineIn] = []
+
+
+def _sec(title: str, body: str) -> str:
+    body = (body or "").strip()
+    return f"## {title}\n{body}\n\n" if body else ""
+
+
+def _assemble_brief(b: BuildBody) -> str:
+    """구조화된 빌더 입력을 사람이 읽는 정식 기획안 텍스트로 조립한다.
+    회차별 전개는 'N화. 제목' 형식으로 써서 extract_outline과도 호환된다."""
+    out = [f"# {b.title.strip() or '무제'}\n"
+           f"장르: {b.genre.strip() or '미정'} · 총 {max(5, b.total_chapters)}화 · "
+           f"회당 목표 {b.chars_per_chapter or 5000}자\n"
+           + (f"키워드: {b.keywords.strip()}\n" if b.keywords.strip() else "") + "\n"]
+    out.append(_sec("로그라인", b.logline))
+    out.append(_sec("기획 의도", b.intent))
+
+    world = ""
+    if b.world_setting.strip():
+        world += f"배경: {b.world_setting.strip()}\n"
+    if b.world_rules.strip():
+        world += f"핵심 규칙·시스템:\n{b.world_rules.strip()}\n"
+    if b.taboos.strip():
+        world += f"금기·제약:\n{b.taboos.strip()}\n"
+    out.append(_sec("세계관", world))
+
+    p = b.protagonist
+    if any(x.strip() for x in (p.name, p.personality, p.want, p.need, p.secret, p.arc, p.job, p.age)):
+        tags = " · ".join(x.strip() for x in (p.age, p.job) if x.strip())
+        pl = [f"{p.name.strip() or '주인공'}{' (' + tags + ')' if tags else ''}"]
+        for label, val in (("성격", p.personality), ("욕망(want)", p.want),
+                           ("결핍(need)", p.need), ("비밀", p.secret), ("성장 아크", p.arc)):
+            if val.strip():
+                pl.append(f"{label}: {val.strip()}")
+        out.append(_sec("주인공", "\n".join(pl)))
+
+    chars = [ch for ch in b.characters if ch.name.strip()]
+    if chars:
+        lines = []
+        for ch in chars:
+            parts = [f"- {ch.name.strip()}"]
+            for label, val in (("역할", ch.role), ("관계", ch.relation), ("욕망", ch.want),
+                               ("결핍", ch.need), ("비밀", ch.secret)):
+                if val.strip():
+                    parts.append(f"{label}: {val.strip()}")
+            lines.append(" / ".join(parts))
+        out.append(_sec("등장인물", "\n".join(lines)))
+
+    canon = [cc for cc in b.canon if cc.name.strip()]
+    if canon:
+        lines = [f"- {cc.name.strip()}" + (f": {cc.desc.strip()}" if cc.desc.strip() else "")
+                 for cc in canon]
+        out.append(_sec("핵심 설정·고유명사 (표기 고정)", "\n".join(lines)))
+
+    out.append(_sec("문체", b.style))
+    out.append(_sec("결말 — 이야기는 반드시 이곳에 도달한다", b.ending))
+
+    valid = sorted([o for o in b.outline if o.no and o.no >= 1 and (o.title.strip() or o.content.strip())],
+                   key=lambda o: o.no)
+    if valid:
+        lines = []
+        for o in valid:
+            lines.append(f"{o.no}화. {o.title.strip()}".rstrip())
+            if o.content.strip():
+                lines.append(o.content.strip())
+            lines.append("")
+        out.append(_sec("회차별 전개", "\n".join(lines).strip()))
+    return "".join(out).strip()
+
+
+@router.post("/works/build")
+def build_work(b: BuildBody, user: str = Header(default="solo", alias="X-User-Id")):
+    """상세 빌더로 만든 작품설명서로 설계도를 만들고 작품을 생성한다."""
+    brief = _assemble_brief(b)
+    if not (b.logline.strip() or b.ending.strip()):
+        return {"ok": False, "error": "최소한 로그라인이나 결말 중 하나는 있어야 이야기가 방향을 잡아요."}
+    if len(brief) < 200:
+        return {"ok": False, "error": "설명서 내용이 아직 짧아요. 세계관·주인공·결말 등을 더 채워주세요 (최소 200자)."}
+    if llm.is_mock:
+        return {"ok": False, "error": "AI가 연결되어 있지 않아 설계도를 만들 수 없어요.",
+                "detail": "API 키가 없거나 사용량 한도/잔액이 소진됐을 수 있어요 "
+                          "(ANTHROPIC_API_KEY / GEMINI_API_KEY, LLM_PROVIDER 확인)."}
+
+    total = max(5, b.total_chapters)
+    plan, last_raw = None, ""
+    for _ in range(2):
+        last_raw = llm.write(_brief_setup_prompt(brief, b.genre, total), mock_text="", max_tokens=16000)
+        plan = parse_llm_json(last_raw)
+        if plan and plan.get("characters") and plan.get("beats"):
+            break
+        plan = None
+    if plan is None:
+        hint = (f"AI 호출 오류 — {llm.last_error}. 사용량 한도/크레딧을 확인하세요."
+                if llm.last_error else f"형식 오류 (응답 앞부분: {last_raw[:150] or '빈 응답'})")
+        return {"ok": False, "error": "설계도 생성에 실패했어요. 설명서는 반영되지 않았어요.", "detail": hint}
+
+    beats = plan.get("beats") or []
+    by_idx = {int(x.get("idx", i)): x for i, x in enumerate(beats) if isinstance(x, dict)}
+    beats = [{"idx": i, "name": n, "summary": (by_idx.get(i) or {}).get("summary", "")}
+             for i, n in enumerate(BEATS)]
+
+    # 회차별 전개 — 작가가 빌더에서 짠 것이 절대 기준. 없으면 조립 텍스트에서 추출.
+    outline = [{"no": o.no, "title": o.title.strip(), "content": o.content.strip()}
+               for o in sorted(b.outline, key=lambda o: o.no)
+               if o.no and o.no >= 1 and (o.title.strip() or o.content.strip())]
+    if not outline:
+        outline = extract_outline(brief)
+    if outline:
+        total = max(outline[-1]["no"], total)
+
+    canon = {cc.name.strip(): cc.desc.strip() for cc in b.canon if cc.name.strip()}
+    sample = b.style_sample.strip()
+    profile = analyze_style(sample) if len(sample) >= 300 else ""
+
+    with db.connect() as c:
+        work_id = c.insert_id(
+            "INSERT INTO works (user_id, title, genre, brief, premise, ending, style, "
+            "total_chapters, style_sample, style_profile, characters_json, relations_json, "
+            "beats_json, outline_json, canon_json, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))",
+            (user, plan.get("title") or b.title or "무제", plan.get("genre") or b.genre or "웹소설",
+             brief[:BRIEF_MAX], plan.get("premise") or b.logline, plan.get("ending") or b.ending,
+             plan.get("style") or b.style, total, sample[:6000], profile,
+             json.dumps(plan.get("characters", []), ensure_ascii=False),
+             json.dumps(plan.get("relations", []), ensure_ascii=False),
+             json.dumps(beats, ensure_ascii=False),
+             json.dumps(outline, ensure_ascii=False),
+             json.dumps(canon, ensure_ascii=False)),
+        )
+    return {"ok": True, "id": work_id, "outline_chapters": len(outline)}
+
+
+class DraftBody(BaseModel):
+    title: str = ""
+    genre: str = ""
+    logline: str = ""
+    ending: str = ""
+    keywords: str = ""
+    total_chapters: int = 25
+
+
+@router.post("/brief/draft")
+def draft_brief(b: DraftBody):
+    """씨앗(장르·로그라인·결말·키워드)으로 상세 기획 초안을 지어 폼을 채운다."""
+    if llm.is_mock:
+        return {"ok": False, "error": "AI가 연결되어 있지 않아요.",
+                "detail": "API 키/사용량 한도를 확인해 주세요."}
+    if not (b.logline.strip() or b.genre.strip() or b.keywords.strip()):
+        return {"ok": False, "error": "장르·로그라인·키워드 중 하나는 알려주세요. 거기서 상세 기획을 지어드릴게요."}
+    schema = {
+        "title": "제목 (없으면 창작)",
+        "logline": "로그라인 한두 문장",
+        "intent": "기획 의도 2~3문장 (독자·재미 포인트)",
+        "world_setting": "시대·공간 배경",
+        "world_rules": "핵심 규칙·시스템 (여러 줄, 각 줄 하나의 규칙)",
+        "taboos": "이 세계의 금기·제약",
+        "protagonist": {"name": "", "age": "", "job": "", "personality": "성격",
+                        "want": "외적 욕망", "need": "내적 결핍", "secret": "비밀", "arc": "성장 아크"},
+        "characters": [{"name": "", "role": "역할", "relation": "주인공과의 관계",
+                        "want": "욕망", "need": "결핍", "secret": "비밀"}],
+        "canon": [{"name": "채널명·조직명·지명·별명 등", "desc": "설명"}],
+        "style": "문체 지침 한 줄",
+        "ending": "고정된 결말",
+    }
+    prompt = f"""당신은 프로 웹소설 기획자다. 아래 씨앗으로 '매우 상세한' 작품 기획을 JSON으로 지어라.
+
+[장르] {b.genre or '자유'}
+[로그라인] {b.logline or '(비어 있음 — 장르·키워드로 매력적인 로그라인을 지어라)'}
+[결말] {b.ending or '(비어 있음 — 이 이야기에 어울리는 강한 결말을 지어라)'}
+[키워드] {b.keywords or '없음'}
+[총 회차] {max(5, b.total_chapters)}화
+
+JSON 스키마 (다른 텍스트 없이 압축 JSON만):
+{json.dumps(schema, ensure_ascii=False, separators=(",", ":"))}
+
+요구사항:
+- characters는 5~7명. 주인공과 대립하는 적대자, 조력자, 애정상대 등 원형을 고루.
+  각 인물의 want와 need는 어긋나게(입체성). 관계(relation)를 분명히.
+- world_rules는 이 작품만의 독창적 설정을 구체적으로 (독자가 처음 보는 규칙일수록 좋다).
+- canon은 이 작품에서 표기가 흔들리면 안 되는 고유명사 3~6개.
+- ending은 반드시 하나의 도달점으로 고정(열린 결말 금지).
+- 역사물이면 실존 인물의 인명·호칭·관계를 실제대로.
+- 상투적이지 않게, 그러나 장르 독자가 좋아하는 코드는 지켜라. JSON만 출력."""
+    raw = llm.write(prompt, mock_text="", max_tokens=8000)
+    data = parse_llm_json(raw)
+    if not isinstance(data, dict):
+        return {"ok": False, "error": "기획 초안 생성에 실패했어요. 한 번 더 시도해 주세요.",
+                "detail": (llm.last_error or (raw[:150] or "빈 응답"))}
+    return {"ok": True, "draft": data}
+
+
+@router.post("/brief/outline")
+def draft_outline(b: BuildBody):
+    """지금까지 채운 설정을 바탕으로 회차별 전개(1화~N화)를 통째로 생성한다."""
+    if llm.is_mock:
+        return {"ok": False, "error": "AI가 연결되어 있지 않아요.",
+                "detail": "API 키/사용량 한도를 확인해 주세요."}
+    if not (b.logline.strip() or b.ending.strip() or b.world_setting.strip()):
+        return {"ok": False, "error": "회차 전개를 짜려면 최소한 로그라인·세계관·결말 중 하나는 채워주세요."}
+    total = max(5, min(b.total_chapters, 200))
+    context = _assemble_brief(b)
+    beats_guide = "\n".join(
+        f"- {int(edge*100)}%까지: {name}" for name, edge in zip(BEATS, BEAT_EDGES))
+    prompt = f"""당신은 웹소설 플롯 설계자다. 아래 기획을 바탕으로 {total}화 전체의 '회차별 전개'를 짜라.
+Save the Cat 15비트를 회차 진행률에 맞춰 배치하고, 반드시 고정된 결말로 수렴시켜라.
+
+[기획]
+{context}
+
+[비트 배치 가이드 (진행률 기준)]
+{beats_guide}
+
+출력: 아래 형식의 JSON 하나만 (1화부터 {total}화까지 '전부', 빠짐없이):
+{{"outline":[{{"no":1,"title":"이 화 제목","content":"이 화의 핵심 사건 2~3문장. 누가 무엇을 하고 무엇이 바뀌는지 구체적으로"}}]}}
+
+규칙:
+- no는 1부터 {total}까지 연속. 한 화도 빠뜨리지 마라.
+- 각 화는 갈등이 전진하거나 반전이 있어야 한다. 사이다-고구마 리듬을 지켜라.
+- 초반 3화 안에 후킹(주인공의 문제·목표·세계 규칙)을 확실히.
+- 마지막 화들은 고정된 결말을 실현한다.
+- content는 요약이 아니라 '이 화에 실제로 벌어지는 일'. 설정·인물을 구체적으로 사용.
+- 압축 JSON만 출력. 설명·코드펜스 금지."""
+    raw = llm.write(prompt, mock_text="", max_tokens=16000)
+    data = parse_llm_json(raw)
+    items = data.get("outline") if isinstance(data, dict) else (data if isinstance(data, list) else None)
+    if not items:
+        return {"ok": False, "error": "회차 전개 생성에 실패했어요. 한 번 더 시도해 주세요.",
+                "detail": (llm.last_error or (raw[:150] or "빈 응답"))}
+    outline = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        try:
+            no = int(it.get("no"))
+        except (TypeError, ValueError):
+            continue
+        if 1 <= no <= 200:
+            outline.append({"no": no, "title": str(it.get("title", "")).strip(),
+                            "content": str(it.get("content", "")).strip()})
+    outline.sort(key=lambda o: o["no"])
+    return {"ok": True, "outline": outline}
+
+
 @router.post("/works")
 def create_work(body: WorkBody, user: str = Header(default="solo", alias="X-User-Id")):
     if not body.premise.strip() or not body.ending.strip():
@@ -718,7 +1014,7 @@ def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str) ->
 
 집필 규칙:
 - **앞 회차 절대 준수**: 위에 이미 쓰인 내용과 모순되면 안 된다.
-  · 이미 일어난 사건을 다시 처음 일어난 것처럼 쓰지 마라 (예: 이미 한 구독·각성·재회·죽음).
+  · 이미 일어난 사건을 다시 처음 일어난 것처럼 쓰지 마라 (예: 이미 치른 재회·고백·죽음·각성·승부의 결말).
   · 능력치·수치(포인트, 금액, 시청자 수, 날짜 등)는 앞 회차의 마지막 값에서 이어가라.
   · 인물의 말투·성격·호칭은 앞 회차에서 확립된 그대로 유지하라.
   · 앞에서 밝혀진 비밀·정보를 인물이 다시 모르는 상태로 되돌리지 마라.

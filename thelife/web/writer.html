@@ -37,7 +37,10 @@
     <button id="cb-go" class="primary">설명서로 설계도 만들기</button>
   </div>
 
-  <p class="hint" style="text-align:center">— 또는 직접 입력 —</p>
+  <button id="open-build" class="build-cta">✍ 앱에서 상세 설명서 직접 만들기
+    <small>파일 없이 — 세계관·인물·고유명사·회차별 전개까지. AI가 초안을 도와줘요.</small></button>
+
+  <p class="hint" style="text-align:center">— 또는 로그라인만으로 간단히 —</p>
   <div class="form">
     <input id="c-genre" placeholder="장르 (예: 현대 판타지, 회귀물, 로맨스, 무협)">
     <textarea id="c-premise" rows="3" placeholder="로그라인 — 한두 문장 (예: 재벌가 막내로 회귀한 만년 과장, 이번 생은 다르게 산다)"></textarea>
@@ -50,6 +53,104 @@
     <textarea id="c-sample" rows="5" placeholder="문체 표본 (선택) — 원하는 문체의 글을 300자 이상 붙여넣으면 그 결을 학습해서 씁니다. 본인 글이나 지향하는 문체의 글."></textarea>
     <button id="c-go" class="primary">설계도 만들기</button>
   </div>
+</div>
+
+<!-- 작품설명서 상세 빌더 -->
+<div id="w-build" class="wview hidden">
+  <button class="ghost small" onclick="view('w-create')">← 뒤로</button>
+  <h2>작품설명서 만들기</h2>
+  <p class="hint">채운 만큼 정확해져요. 비운 칸은 AI가 설계에서 메꿉니다.
+     완성하면 이 설명서가 <b>완결까지 모든 회차의 절대 기준</b>이 됩니다.</p>
+
+  <div class="bd-sec">
+    <div class="story-h">기본</div>
+    <div class="form">
+      <div class="row2">
+        <input id="bd-title" placeholder="제목 (비우면 지어드려요)">
+        <input id="bd-genre" placeholder="장르 (예: 현대 판타지, 회귀, 로맨스, 무협)">
+      </div>
+      <div class="row2">
+        <input id="bd-total" type="number" value="25" min="5" max="200" placeholder="총 회차">
+        <input id="bd-cpc" type="number" value="5000" min="1000" step="500" placeholder="회당 목표 자수">
+      </div>
+      <input id="bd-keywords" placeholder="키워드·태그 (예: 먼치킨, 사이다, 성장, 복수)">
+    </div>
+  </div>
+
+  <button id="bd-ai-draft" class="ai-btn">✨ AI로 상세 초안 자동 완성
+    <small>장르·로그라인·결말만 있으면 나머지 칸(세계관·인물·고유명사·문체)을 채워줘요</small></button>
+
+  <div class="bd-sec">
+    <div class="story-h">로그라인 · 기획 의도</div>
+    <div class="form">
+      <textarea id="bd-logline" rows="2" placeholder="로그라인 — 한두 문장 (예: 밑바닥 헌터가 계약 능력으로 정점에 오른다)"></textarea>
+      <textarea id="bd-intent" rows="2" placeholder="기획 의도 (선택) — 독자·재미 포인트"></textarea>
+    </div>
+  </div>
+
+  <div class="bd-sec">
+    <div class="story-h">세계관</div>
+    <div class="form">
+      <input id="bd-world" placeholder="배경 — 시대·공간 (예: 2020년대 서울 / 조선 후기 / 이세계 제국)">
+      <textarea id="bd-rules" rows="3" placeholder="핵심 규칙·시스템 — 이 작품만의 설정 (한 줄에 하나씩)"></textarea>
+      <textarea id="bd-taboos" rows="2" placeholder="금기·제약 (선택) — 이 세계에서 하면 안 되는 것"></textarea>
+    </div>
+  </div>
+
+  <div class="bd-sec">
+    <div class="story-h">주인공</div>
+    <div class="form">
+      <div class="row3">
+        <input id="bd-p-name" placeholder="이름">
+        <input id="bd-p-age" placeholder="나이">
+        <input id="bd-p-job" placeholder="직업·신분">
+      </div>
+      <input id="bd-p-personality" placeholder="성격">
+      <div class="row2">
+        <input id="bd-p-want" placeholder="욕망(want) — 겉으로 쫓는 것">
+        <input id="bd-p-need" placeholder="결핍(need) — 진짜 필요한 것">
+      </div>
+      <input id="bd-p-secret" placeholder="비밀 (선택)">
+      <input id="bd-p-arc" placeholder="성장 아크 (선택) — 어떻게 변해가는가">
+    </div>
+  </div>
+
+  <div class="bd-sec">
+    <div class="story-h">등장인물</div>
+    <div id="bd-chars"></div>
+    <button id="bd-add-char" class="ghost small">＋ 인물 추가</button>
+  </div>
+
+  <div class="bd-sec">
+    <div class="story-h">핵심 설정·고유명사 <small class="dim">(표기 고정 — 채널명·조직명·지명·별명)</small></div>
+    <div id="bd-canon"></div>
+    <button id="bd-add-canon" class="ghost small">＋ 이름 추가</button>
+  </div>
+
+  <div class="bd-sec">
+    <div class="story-h">문체</div>
+    <div class="form">
+      <input id="bd-style" placeholder="문체 지침 (예: 건조하고 빠르게 / 서정적이고 묘사 짙게)">
+      <textarea id="bd-sample" rows="4" placeholder="문체 표본 (선택 · 300자 이상) — 이 결을 학습해서 씁니다"></textarea>
+    </div>
+  </div>
+
+  <div class="bd-sec">
+    <div class="story-h">결말 — 반드시 도달할 곳</div>
+    <div class="form">
+      <textarea id="bd-ending" rows="2" placeholder="결말 (예: 그룹을 차지하되 전생의 은인을 지켜낸다). 이야기는 이곳으로 흐릅니다"></textarea>
+    </div>
+  </div>
+
+  <div class="bd-sec">
+    <div class="story-h">회차별 전개 <small class="dim">(각 화의 핵심 사건 — 있으면 그대로 집필됩니다)</small></div>
+    <button id="bd-ai-outline" class="ai-btn">✨ 지금까지 설정으로 회차 전개 짜기
+      <small>1화부터 마지막 화까지 각 화의 사건을 AI가 배치해줘요 (편집 가능)</small></button>
+    <div id="bd-outline"></div>
+    <button id="bd-add-outline" class="ghost small">＋ 회차 추가</button>
+  </div>
+
+  <button id="bd-go" class="primary big">이 설명서로 작품 만들기</button>
 </div>
 
 <!-- 작품 화면 -->
@@ -76,7 +177,7 @@
   <!-- 설정집 탭 -->
   <div id="wt-bible" class="wtabpane hidden">
     <div class="write-box" style="margin:0 0 16px">
-      <input id="bible-cmd" placeholder="설정 수정 명령 (예: 주인공 이름을 이홍위로 바꿔 / 여주인공을 추가해)">
+      <input id="bible-cmd" placeholder="설정 수정 명령 (예: 주인공 이름을 ○○로 바꿔 / 여주인공을 추가해)">
       <button id="bible-revise" class="primary">명령대로 설정 고치기</button>
     </div>
     <div id="brief-section" class="hidden">
@@ -104,8 +205,8 @@
     <div id="canon-list" class="canon-list"></div>
     <div class="write-box" style="margin:8px 0 16px">
       <div class="row2">
-        <input id="canon-name" placeholder="이름 (예: 비하인드 X)">
-        <input id="canon-value" placeholder="설명 (선택 — 예: 태경의 오컬트 채널)">
+        <input id="canon-name" placeholder="이름 (예: 조직명·채널명·지명·별명)">
+        <input id="canon-value" placeholder="설명 (선택 — 예: 주인공이 속한 길드)">
       </div>
       <button id="canon-add" class="ghost small">이 이름 고정</button>
     </div>
