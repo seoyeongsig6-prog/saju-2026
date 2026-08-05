@@ -206,21 +206,33 @@ function bdFill(d) {
   }
 }
 
-$("#bd-ai-draft").onclick = async () => {
-  const seed = {
-    title: bdVal("bd-title"), genre: bdVal("bd-genre"), logline: bdVal("bd-logline"),
-    ending: bdVal("bd-ending"), keywords: bdVal("bd-keywords"),
-    total_chapters: Number($("#bd-total").value) || 25,
-  };
-  if (!seed.logline && !seed.genre && !seed.keywords) {
+/* 초안 생성에서 AI가 채우는 부분만 비운다 (로그라인·결말·표본 등 씨앗은 유지) */
+function bdResetGenerated() {
+  ["bd-intent", "bd-world", "bd-rules", "bd-taboos", "bd-p-name", "bd-p-age", "bd-p-job",
+   "bd-p-personality", "bd-p-want", "bd-p-need", "bd-p-secret", "bd-p-arc", "bd-style"]
+    .forEach((id) => { $("#" + id).value = ""; });
+  $("#bd-chars").innerHTML = "";
+  $("#bd-canon").innerHTML = "";
+}
+
+async function bdDraft() {
+  const b = bdCollect();
+  if (!b.logline && !b.genre && !b.keywords) {
     notice("장르·로그라인·키워드 중 하나는 먼저 알려주세요. 거기서 상세 기획을 지어드려요."); return;
   }
   busy("AI가 상세 기획 초안을 짜는 중… (20초쯤)");
-  const r = await api("/api/writer/brief/draft", { method: "POST", body: JSON.stringify(seed) });
+  const r = await api("/api/writer/brief/draft", { method: "POST", body: JSON.stringify(b) });
   unbusy();
   if (!r.ok) { notice((r.error || "실패했어요") + (r.detail ? `\n\n[원인] ${r.detail}` : "")); return; }
   bdFill(r.draft);
-  notice("초안을 채웠어요. 빈 칸만 메꿨으니, 마음껏 고친 뒤 회차 전개를 짜고 작품을 만드세요.");
+  notice("초안을 채웠어요. 각 칸을 직접 고치거나, 다시 짓고 싶은 칸은 비우고 ‘AI 초안 생성’을 다시 누르세요.");
+}
+
+$("#bd-ai-draft").onclick = bdDraft;
+$("#bd-ai-redraft").onclick = () => {
+  if (!confirm("주인공·인물·세계관·문체 등 AI가 채운 부분을 비우고 처음부터 다시 생성할까요?\n(로그라인·결말·문체 표본은 그대로 둡니다)")) return;
+  bdResetGenerated();
+  bdDraft();
 };
 
 $("#bd-ai-outline").onclick = async () => {
@@ -228,6 +240,8 @@ $("#bd-ai-outline").onclick = async () => {
   if (!b.logline && !b.ending && !b.world_setting) {
     notice("회차 전개를 짜려면 로그라인·세계관·결말 중 하나는 채워주세요."); return;
   }
+  if ($("#bd-outline").children.length &&
+      !confirm("이미 짜둔 회차 전개를 지우고 새로 생성할까요?")) return;
   busy(`AI가 ${b.total_chapters}화 전개를 짜는 중… (30초~1분)`);
   const r = await api("/api/writer/brief/outline", { method: "POST", body: JSON.stringify(b) });
   unbusy();

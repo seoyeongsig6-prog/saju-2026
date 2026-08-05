@@ -68,6 +68,8 @@ textarea:focus { outline: none; border-color: var(--accent2); }
   border: 1px solid var(--accent2); color: var(--text); font-size: 14px; font-weight: 700; }
 .ai-btn small { display: block; font-weight: 400; color: var(--dim); margin-top: 3px; font-size: 12px; }
 .ai-btn:active { transform: scale(.99); }
+.ai-row { display: flex; flex-direction: column; gap: 6px; }
+.ai-btn.subtle { background: var(--panel); border-color: var(--line); }
 .bd-char-row, .bd-canon-row, .bd-outline-row { position: relative; background: var(--panel);
   border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 8px;
   display: flex; flex-direction: column; gap: 7px; }

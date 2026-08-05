@@ -555,23 +555,16 @@ def build_work(b: BuildBody, user: str = Header(default="solo", alias="X-User-Id
     return {"ok": True, "id": work_id, "outline_chapters": len(outline)}
 
 
-class DraftBody(BaseModel):
-    title: str = ""
-    genre: str = ""
-    logline: str = ""
-    ending: str = ""
-    keywords: str = ""
-    total_chapters: int = 25
-
-
 @router.post("/brief/draft")
-def draft_brief(b: DraftBody):
-    """씨앗(장르·로그라인·결말·키워드)으로 상세 기획 초안을 지어 폼을 채운다."""
+def draft_brief(b: BuildBody):
+    """지금까지 작가가 채운 내용을 존중하며, 빈 칸을 일관되게 채운 상세 기획을 짓는다.
+    작가가 칸을 비우고 다시 누르면 그 칸만 새로 생성된다 (새로고침)."""
     if llm.is_mock:
         return {"ok": False, "error": "AI가 연결되어 있지 않아요.",
                 "detail": "API 키/사용량 한도를 확인해 주세요."}
     if not (b.logline.strip() or b.genre.strip() or b.keywords.strip()):
         return {"ok": False, "error": "장르·로그라인·키워드 중 하나는 알려주세요. 거기서 상세 기획을 지어드릴게요."}
+    filled = _assemble_brief(b)
     schema = {
         "title": "제목 (없으면 창작)",
         "logline": "로그라인 한두 문장",
@@ -587,23 +580,27 @@ def draft_brief(b: DraftBody):
         "style": "문체 지침 한 줄",
         "ending": "고정된 결말",
     }
-    prompt = f"""당신은 프로 웹소설 기획자다. 아래 씨앗으로 '매우 상세한' 작품 기획을 JSON으로 지어라.
+    prompt = f"""당신은 프로 웹소설 기획자다. 아래는 작가가 지금까지 채운 기획이다.
+이걸 바탕으로 '매우 상세한' 완성 기획을 JSON으로 지어라.
+
+[작가가 지금까지 채운 내용 — 이미 적힌 것은 작가의 의도다]
+{filled}
 
 [장르] {b.genre or '자유'}
-[로그라인] {b.logline or '(비어 있음 — 장르·키워드로 매력적인 로그라인을 지어라)'}
-[결말] {b.ending or '(비어 있음 — 이 이야기에 어울리는 강한 결말을 지어라)'}
-[키워드] {b.keywords or '없음'}
 [총 회차] {max(5, b.total_chapters)}화
 
 JSON 스키마 (다른 텍스트 없이 압축 JSON만):
 {json.dumps(schema, ensure_ascii=False, separators=(",", ":"))}
 
-요구사항:
-- characters는 5~7명. 주인공과 대립하는 적대자, 조력자, 애정상대 등 원형을 고루.
-  각 인물의 want와 need는 어긋나게(입체성). 관계(relation)를 분명히.
-- world_rules는 이 작품만의 독창적 설정을 구체적으로 (독자가 처음 보는 규칙일수록 좋다).
-- canon은 이 작품에서 표기가 흔들리면 안 되는 고유명사 3~6개.
-- ending은 반드시 하나의 도달점으로 고정(열린 결말 금지).
+핵심 규칙:
+- **작가가 이미 쓴 항목은 그 의도와 표현을 최대한 존중하라.** 로그라인·세계관·주인공·
+  결말 등 작가가 채운 값은 그대로 옮기고(사소한 다듬기만 허용), 임의로 뒤집지 마라.
+- **비어 있는 항목만 새로 지어라.** 채운 내용과 모순 없이, 구체적이고 일관되게.
+- characters는 5~7명(작가가 넣은 인물은 유지). 적대자·조력자·애정상대 등 원형을 고루,
+  각 인물의 want와 need는 어긋나게(입체성), 관계(relation)를 분명히.
+- world_rules는 이 작품만의 독창적 설정을 구체적으로.
+- canon은 표기가 흔들리면 안 되는 고유명사 3~6개.
+- ending은 하나의 도달점으로 고정(열린 결말 금지).
 - 역사물이면 실존 인물의 인명·호칭·관계를 실제대로.
 - 상투적이지 않게, 그러나 장르 독자가 좋아하는 코드는 지켜라. JSON만 출력."""
     raw = llm.write(prompt, mock_text="", max_tokens=8000)
