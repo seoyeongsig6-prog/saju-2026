@@ -96,13 +96,15 @@ body.writer button.danger { border-color: var(--bad); color: var(--bad); backgro
 body.writer .hint { color: var(--dim); font-size: 12.5px; line-height: 1.7; }
 body.writer .story-h {
   font-size: 13px; font-weight: 800; letter-spacing: .3px; color: var(--text);
-  margin: 24px 0 11px; display: flex; align-items: center; gap: 8px; text-transform: none;
+  margin: 24px 0 11px; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px;
+  text-transform: none;
 }
 body.writer .story-h::before {
   content: ""; width: 3px; height: 15px; border-radius: 3px;
   background: var(--grad); flex-shrink: 0;
 }
-body.writer .story-h small { font-weight: 400; letter-spacing: 0; }
+body.writer .story-h small { font-weight: 400; letter-spacing: 0; color: var(--dim);
+  flex-basis: 100%; margin-left: 11px; }
 
 /* 모달 */
 body.writer .modal { background: rgba(30, 24, 12, .38); backdrop-filter: blur(3px); }
@@ -241,6 +243,9 @@ textarea { width: 100%; font-family: inherit; resize: vertical; line-height: 1.6
 .build-cta:hover { box-shadow: var(--shadow); }
 .build-cta small { display: block; font-weight: 400; color: var(--dim); margin-top: 5px; font-size: 12.5px; }
 .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.bd-field { display: flex; flex-direction: column; gap: 5px; flex: 1; }
+.bd-field > span { font-size: 12px; color: var(--dim); font-weight: 600; padding-left: 2px; }
+.bd-field input, .bd-field select { width: 100%; }
 .bd-sec { margin-bottom: 4px; }
 .ai-row { display: flex; flex-direction: column; gap: 7px; }
 .ai-btn {

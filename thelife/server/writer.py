@@ -537,12 +537,13 @@ def build_work(b: BuildBody, user: str = Header(default="solo", alias="X-User-Id
     sample = b.style_sample.strip()
     profile = analyze_style(sample) if len(sample) >= 300 else ""
 
+    cpc = max(1000, min(int(b.chars_per_chapter or 5000), 8000))
     with db.connect() as c:
         work_id = c.insert_id(
             "INSERT INTO works (user_id, title, genre, brief, premise, ending, style, "
             "total_chapters, style_sample, style_profile, characters_json, relations_json, "
-            "beats_json, outline_json, canon_json, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))",
+            "beats_json, outline_json, canon_json, chars_per_chapter, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))",
             (user, plan.get("title") or b.title or "무제", plan.get("genre") or b.genre or "웹소설",
              brief[:BRIEF_MAX], plan.get("premise") or b.logline, plan.get("ending") or b.ending,
              plan.get("style") or b.style, total, sample[:6000], profile,
@@ -550,7 +551,7 @@ def build_work(b: BuildBody, user: str = Header(default="solo", alias="X-User-Id
              json.dumps(plan.get("relations", []), ensure_ascii=False),
              json.dumps(beats, ensure_ascii=False),
              json.dumps(outline, ensure_ascii=False),
-             json.dumps(canon, ensure_ascii=False)),
+             json.dumps(canon, ensure_ascii=False), cpc),
         )
     return {"ok": True, "id": work_id, "outline_chapters": len(outline)}
 
@@ -752,7 +753,7 @@ def get_work(work_id: int, user: str = Header(default="solo", alias="X-User-Id")
                 "work": {k: w.get(k) for k in ("id", "title", "genre", "premise", "ending",
                                                "style", "total_chapters", "characters",
                                                "relations", "beats", "brief", "outline", "canon",
-                                               "style_profile", "style_sample")},
+                                               "style_profile", "style_sample", "chars_per_chapter")},
                 "chapters": chapters}
 
 
@@ -967,7 +968,17 @@ def _prior_chapters_block(prev: list, budget: int = 240000) -> str:
     return out
 
 
+def _target_chars(w: dict) -> int:
+    """이 작품의 회당 목표 글자수 (작가가 빌더에서 고른 값). 기본 5,000."""
+    try:
+        t = int(w.get("chars_per_chapter") or 5000)
+    except (TypeError, ValueError):
+        t = 5000
+    return max(800, min(t, 12000))
+
+
 def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str) -> str:
+    target = _target_chars(w)
     chars = "\n".join(
         f"- {ch['name']} ({ch.get('archetype','')}): {ch.get('role','')} / "
         f"욕망: {ch.get('want','')} / 결핍: {ch.get('need','')} / 비밀: {ch.get('secret','')}"
@@ -1015,7 +1026,7 @@ def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str) ->
   · 능력치·수치(포인트, 금액, 시청자 수, 날짜 등)는 앞 회차의 마지막 값에서 이어가라.
   · 인물의 말투·성격·호칭은 앞 회차에서 확립된 그대로 유지하라.
   · 앞에서 밝혀진 비밀·정보를 인물이 다시 모르는 상태로 되돌리지 마라.
-- **분량: 공백 포함 5,000자 이상 (5,000~6,000자).** 장면 3~4개로 구성하라.
+- **분량: 공백 포함 {target:,}자 이상 ({target:,}~{int(target * 1.2):,}자).** 여러 장면으로 구성하라.
 {DESCRIPTION_RULES}
 - **심경 변화**는 반드시 이번 화의 사건이 원인이어야 하고, 몸짓과 대사로 단계적으로 보여라.
 - **시간 일관성**: 앞 화가 끝난 시점 이후에서 시작하고, 낮/밤·이동시간·계절이 맞아야 한다.
@@ -1048,8 +1059,9 @@ def _generate_full_chapter(w: dict, no: int, beat: dict, prev: list, directive: 
     if not llm.is_mock and llm.last_error:
         return None, None, None, llm.last_error
     title, text, summary = _parse_chapter(raw, no)
+    min_chars = int(_target_chars(w) * 0.86)  # 목표의 86% 미만이면 이어쓰기
     tries = 0
-    while not llm.is_mock and len(text) < MIN_CHAPTER_CHARS and tries < 2:
+    while not llm.is_mock and len(text) < min_chars and tries < 2:
         cont = llm.write(_continue_prompt(w, no, beat, text, directive),
                          mock_text="", max_tokens=16000)
         if not cont.strip():
@@ -1114,8 +1126,9 @@ MIN_CHAPTER_CHARS = 4300  # 이 밑이면 프로그램이 이어쓰기를 시킨
 
 
 def _continue_prompt(w: dict, no: int, beat: dict, body_so_far: str, directive: str) -> str:
+    target = _target_chars(w)
     return f"""당신은 정상급 웹소설 작가다. 아래는 {w['title']} {no}화의 앞부분이다.
-현재 {len(body_so_far)}자인데 연재 1회분(공백 포함 5,000자 이상)이 되려면 부족하다.
+현재 {len(body_so_far)}자인데 연재 1회분(공백 포함 {target:,}자 이상)이 되려면 부족하다.
 같은 화의 연속으로, 끊긴 지점에서 자연스럽게 이어서 써라.
 
 {_brief_block(w, 3000)}

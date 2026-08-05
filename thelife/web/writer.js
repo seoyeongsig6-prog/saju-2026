@@ -61,30 +61,6 @@ async function delWork(id, title) {
 }
 $("#w-new").onclick = () => view("w-create");
 
-/* ---------- 새 작품 — 작품설명서 파일로 ---------- */
-$("#cb-go").onclick = async () => {
-  const f = $("#c-brief-file").files[0];
-  if (!f) { notice("작품설명서 파일을 먼저 선택해 주세요. (.txt .md .docx .pdf)"); return; }
-  const fd = new FormData();
-  fd.append("file", f);
-  fd.append("genre", $("#cb-genre").value.trim());
-  fd.append("total_chapters", Number($("#cb-total").value) || 25);
-  busy("설명서를 정독하고 설계도를 만드는 중… (30초쯤)");
-  const r = await fetch("/api/writer/works/from-brief", {
-    method: "POST", body: fd, headers: { "X-User-Id": UID },
-  }).then((x) => x.json()).catch((e) => ({ ok: false, error: String(e) }));
-  unbusy();
-  if (!r.ok) {
-    notice((r.error || "실패했어요") + (r.detail ? `\n\n[원인] ${r.detail}` : ""));
-    return;
-  }
-  if (r.outline_chapters >= 3) {
-    notice(`계획서에서 ${r.outline_chapters}개 회차의 지정 내용을 찾았어요.\n` +
-           `각 회차는 계획서에 적힌 그 화의 내용 그대로 집필됩니다.`);
-  }
-  openWork(r.id);
-};
-
 /* ---------- 새 작품 — 직접 입력 ---------- */
 $("#c-go").onclick = async () => {
   const body = {
@@ -165,7 +141,28 @@ function bdAddOutline(d = {}) {
 
 $("#bd-add-char").onclick = () => bdAddChar();
 $("#bd-add-canon").onclick = () => bdAddCanon();
-$("#bd-add-outline").onclick = () => bdAddOutline();
+$("#bd-add-outline").onclick = () => {
+  const have = [...$("#bd-outline").querySelectorAll(".o-no")].map((i) => Number(i.value) || 0);
+  bdAddOutline({ no: (Math.max(0, ...have) || 0) + 1 });
+};
+/* 1화~끝화까지 빈 줄거리 칸을 한 번에 만든다 (직접 쓰기용) */
+$("#bd-fill-outline").onclick = () => {
+  const total = Math.max(1, Math.min(Number($("#bd-total").value) || 25, 200));
+  const have = new Set([...$("#bd-outline").querySelectorAll(".o-no")].map((i) => Number(i.value)));
+  let added = 0;
+  for (let n = 1; n <= total; n++) {
+    if (!have.has(n)) { bdAddOutline({ no: n }); added++; }
+  }
+  bdSortOutline();
+  if (!added) notice("이미 1~" + total + "화 칸이 다 있어요.");
+};
+/* 화 번호 순으로 정렬해 다시 배치 */
+function bdSortOutline() {
+  const box = $("#bd-outline");
+  [...box.children]
+    .sort((a, b) => (Number(a.querySelector(".o-no").value) || 0) - (Number(b.querySelector(".o-no").value) || 0))
+    .forEach((el) => box.appendChild(el));
+}
 
 function bdCollect() {
   return {
@@ -577,7 +574,8 @@ $("#bible-revise").onclick = async () => {
 
 /* ---------- 회차 쓰기 ---------- */
 $("#btn-write").onclick = async () => {
-  busy(`${WORK.chapters.length + 1}화를 쓰는 중… (5,000자, 30초~1분)`);
+  const cpc = (WORK.chars_per_chapter || 5000).toLocaleString();
+  busy(`${WORK.chapters.length + 1}화를 쓰는 중… (${cpc}자, 30초~1분)`);
   const r = await api(`/api/writer/works/${WORK.id}/chapters`, {
     method: "POST", body: JSON.stringify({ directive: $("#directive").value.trim() }),
   });

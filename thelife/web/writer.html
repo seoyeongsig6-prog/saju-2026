@@ -25,21 +25,9 @@
   <button class="ghost small" onclick="showHome()">← 작품 목록</button>
   <h2>새 작품 설계</h2>
 
-  <div class="brief-upload">
-    <b>작품설명서로 시작 (추천)</b>
-    <p class="hint">기획해 둔 작품설명서 파일을 올리면, <b>그 설명서만으로</b> 인물·관계도·플롯 지도를
-       설계합니다. 아래 칸들은 채우지 않아도 돼요. 설명서는 완결까지 모든 회차의 절대 기준으로
-       유지됩니다 — 결코 잊히지 않습니다.</p>
-    <input type="file" id="c-brief-file" accept=".txt,.md,.docx,.pdf">
-    <div class="row2">
-      <input id="cb-genre" placeholder="장르 (선택)">
-      <input id="cb-total" type="number" value="25" min="5" max="200" placeholder="총 회차">
-    </div>
-    <button id="cb-go" class="primary">설명서로 설계도 만들기</button>
-  </div>
-
-  <button id="open-build" class="build-cta">✍ 앱에서 상세 설명서 직접 만들기
-    <small>파일 없이 — 세계관·인물·고유명사·회차별 전개까지. AI가 초안을 도와줘요.</small></button>
+  <button id="open-build" class="build-cta">✍ 작품설명서 만들기 (추천)
+    <small>세계관·인물·고유명사·회차별 전개까지 상세하게. AI가 초안을 도와줘요.
+       완성한 설명서는 완결까지 모든 회차의 절대 기준이 됩니다.</small></button>
 
   <p class="hint" style="text-align:center">— 또는 로그라인만으로 간단히 —</p>
   <div class="form">
@@ -71,8 +59,16 @@
         <input id="bd-genre" placeholder="장르 (예: 현대 판타지, 회귀, 로맨스, 무협)">
       </div>
       <div class="row2">
-        <input id="bd-total" type="number" value="25" min="5" max="200" placeholder="총 회차">
-        <input id="bd-cpc" type="number" value="5000" min="1000" step="500" placeholder="회당 목표 자수">
+        <label class="bd-field"><span>총 회차</span>
+          <input id="bd-total" type="number" value="25" min="5" max="200"></label>
+        <label class="bd-field"><span>회당 글자수</span>
+          <select id="bd-cpc">
+            <option value="1000">1000자</option>
+            <option value="2000">2000자</option>
+            <option value="3000">3000자</option>
+            <option value="4000">4000자</option>
+            <option value="5000" selected>5000자</option>
+          </select></label>
       </div>
       <input id="bd-keywords" placeholder="키워드·태그 (예: 먼치킨, 사이다, 성장, 복수)">
     </div>
@@ -148,11 +144,14 @@
   </div>
 
   <div class="bd-sec">
-    <div class="story-h">회차별 전개 <small class="dim">(각 화의 핵심 사건 — 있으면 그대로 집필됩니다)</small></div>
-    <button id="bd-ai-outline" class="ai-btn">✨ 지금까지 설정으로 회차 전개 짜기
-      <small>1화부터 마지막 화까지 각 화의 사건을 AI가 배치해줘요 (편집 가능)</small></button>
+    <div class="story-h">회차별 전개 <small class="dim">(1화~끝화 각 화의 줄거리 — 생성하거나 직접 쓰고, 매화 수정 가능)</small></div>
+    <button id="bd-ai-outline" class="ai-btn">✨ 회차 전개 생성하기
+      <small>1화부터 마지막 화까지 각 화의 줄거리를 AI가 배치해줘요 (이후 매화 수정 가능)</small></button>
+    <div class="ai-row" style="flex-direction:row; gap:8px">
+      <button id="bd-fill-outline" class="ghost small" style="flex:1">＋ 1~끝화 빈 칸</button>
+      <button id="bd-add-outline" class="ghost small" style="flex:1">＋ 회차 추가</button>
+    </div>
     <div id="bd-outline"></div>
-    <button id="bd-add-outline" class="ghost small">＋ 회차 추가</button>
   </div>
 
   <button id="bd-go" class="primary big">이 설명서로 작품 만들기</button>

@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS works (
     beats_json TEXT,                  -- Save the Cat 15비트
     outline_json TEXT,                -- 계획서에서 추출한 회차별 지정 내용
     canon_json TEXT,                  -- 작가가 고정한 고유명사 정전 사전
+    chars_per_chapter INTEGER DEFAULT 5000,  -- 회당 목표 글자수
     created_at TEXT
 );
 CREATE TABLE IF NOT EXISTS chapters (
@@ -247,6 +248,7 @@ def _apply_schema(c: "Conn") -> None:
         "ALTER TABLE works ADD COLUMN brief TEXT",
         "ALTER TABLE works ADD COLUMN outline_json TEXT",
         "ALTER TABLE works ADD COLUMN canon_json TEXT",
+        "ALTER TABLE works ADD COLUMN chars_per_chapter INTEGER DEFAULT 5000",
     ):
         try:
             c.execute(ddl)
