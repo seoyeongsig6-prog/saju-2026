@@ -340,12 +340,103 @@ function renderBible() {
   });
   $("#bible-rels").innerHTML = WORK.relations.map((r) => `
     <div class="b-rel"><b>${r.a} ↔ ${r.b}</b> · ${r.type || ""} — ${r.tension || ""}</div>`).join("");
+  renderRelGraph();
   const written = WORK.chapters.length;
   $("#bible-beats").innerHTML = WORK.beats.map((b, i) => {
     const lastBeat = written ? WORK.chapters[written - 1].beat_idx : -1;
     return `<div class="b-beat ${i <= lastBeat ? "done" : ""}">
       <span class="no">${i + 1}</span><b>${b.name}</b><span>${b.summary || ""}</span></div>`;
   }).join("");
+}
+
+/* ---------- 인물 관계도 (시각화) ---------- */
+const RL_ESC = (s) => (s || "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+function archColor(a = "") {
+  if (a.includes("영웅") || a.includes("주인공")) return "var(--accent)";
+  if (a.includes("그림자") || a.includes("적")) return "var(--bad)";
+  if (a.includes("멘토") || a.includes("스승")) return "#6fb0ff";
+  if (a.includes("애정") || a.includes("연인") || a.includes("로맨스")) return "#ff8ec2";
+  if (a.includes("조력")) return "#57c7a3";
+  return "var(--accent2)";
+}
+
+function renderRelGraph() {
+  const box = $("#rel-graph");
+  const hint = $("#rel-graph-hint");
+  const chars = WORK.characters || [];
+  const rels = WORK.relations || [];
+  if (!chars.length) { box.innerHTML = ""; box.classList.add("hidden"); if (hint) hint.classList.add("hidden"); return; }
+  box.classList.remove("hidden"); if (hint) hint.classList.toggle("hidden", !rels.length);
+
+  // 노드 = 인물 + (관계에만 등장하는 이름도 빠뜨리지 않는다)
+  const nodes = chars.map((c) => ({ name: c.name, arch: c.archetype || "" }));
+  const known = new Set(nodes.map((n) => n.name));
+  rels.forEach((r) => [r.a, r.b].forEach((nm) => {
+    if (nm && !known.has(nm)) { known.add(nm); nodes.push({ name: nm, arch: "" }); }
+  }));
+
+  const N = nodes.length;
+  const W = 380, cx = W / 2, cy = W / 2, R = N <= 1 ? 0 : Math.min(120, 66 + N * 8);
+  const pos = {};
+  nodes.forEach((n, i) => {
+    const ang = -Math.PI / 2 + (i * 2 * Math.PI) / N;
+    pos[n.name] = { x: cx + R * Math.cos(ang), y: cy + R * Math.sin(ang) };
+  });
+
+  let edges = "";
+  rels.forEach((r, i) => {
+    const a = pos[r.a], b = pos[r.b];
+    if (!a || !b) return;
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    edges += `<line class="rl-edge" data-rel="${i}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`;
+    const label = (r.type || "").slice(0, 8);
+    if (label) {
+      const w = label.length * 12 + 12;
+      edges += `<g class="rl-elabel" data-rel="${i}">
+        <rect x="${mx - w / 2}" y="${my - 10}" width="${w}" height="20" rx="6"/>
+        <text x="${mx}" y="${my + 4}">${RL_ESC(label)}</text></g>`;
+    }
+  });
+
+  let nodeSvg = "";
+  nodes.forEach((n) => {
+    const p = pos[n.name];
+    const w = Math.max(48, [...n.name].length * 15 + 20);
+    nodeSvg += `<g class="rl-node" data-name="${encodeURIComponent(n.name)}" transform="translate(${p.x},${p.y})">
+      <rect x="${-w / 2}" y="-15" width="${w}" height="30" rx="15" fill="${archColor(n.arch)}"/>
+      <text x="0" y="5">${RL_ESC(n.name)}</text></g>`;
+  });
+
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${W}" class="rl-svg"><g>${edges}</g>${nodeSvg}</svg>`;
+  const svg = box.querySelector("svg");
+
+  const clear = () => svg.querySelectorAll(".rl-node,.rl-edge,.rl-elabel")
+    .forEach((e) => e.classList.remove("on", "dim"));
+  svg.querySelectorAll(".rl-node").forEach((g) => {
+    g.onclick = () => {
+      const name = decodeURIComponent(g.dataset.name);
+      if (g.classList.contains("on")) { clear(); return; }
+      clear();
+      const neigh = new Set([name]);
+      rels.forEach((r) => { if (r.a === name) neigh.add(r.b); if (r.b === name) neigh.add(r.a); });
+      svg.querySelectorAll(".rl-edge,.rl-elabel").forEach((e) => {
+        const r = rels[+e.dataset.rel];
+        const hit = r && (r.a === name || r.b === name);
+        e.classList.add(hit ? "on" : "dim");
+      });
+      svg.querySelectorAll(".rl-node").forEach((nn) => {
+        const nm = decodeURIComponent(nn.dataset.name);
+        nn.classList.add(nm === name ? "on" : (neigh.has(nm) ? "" : "dim"));
+      });
+    };
+  });
+  svg.querySelectorAll(".rl-elabel").forEach((g) => {
+    g.onclick = (ev) => {
+      ev.stopPropagation();
+      const r = rels[+g.dataset.rel];
+      notice(`${r.a} ↔ ${r.b}\n\n${r.type || "관계"}${r.tension ? "\n— " + r.tension : ""}`);
+    };
+  });
 }
 
 /* ---------- 고유명사 사전 (정전) ---------- */

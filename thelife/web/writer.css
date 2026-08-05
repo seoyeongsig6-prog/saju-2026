@@ -85,6 +85,27 @@ textarea:focus { outline: none; border-color: var(--accent2); }
 .row-del:hover { opacity: 1; }
 #bd-chars .bd-char-row .c-secret { margin-top: 0; }
 
+/* 인물 관계도 (시각화) */
+.rel-graph { margin: 2px 0 6px; }
+.rl-svg { width: 100%; height: auto; max-width: 440px; display: block; margin: 0 auto;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.rl-edge { stroke: var(--line); stroke-width: 1.5; transition: stroke .15s, opacity .15s; }
+.rl-edge.on { stroke: var(--accent); stroke-width: 2.5; }
+.rl-edge.dim { opacity: .15; }
+.rl-elabel { cursor: pointer; }
+.rl-elabel rect { fill: var(--panel); stroke: var(--line); stroke-width: 1; }
+.rl-elabel text { fill: var(--dim); font-size: 11.5px; font-weight: 600; text-anchor: middle;
+  pointer-events: none; }
+.rl-elabel.on rect { stroke: var(--accent); }
+.rl-elabel.on text { fill: var(--text); }
+.rl-elabel.dim { opacity: .18; }
+.rl-node { cursor: pointer; }
+.rl-node rect { stroke: transparent; stroke-width: 2; transition: filter .15s, opacity .15s; }
+.rl-node text { fill: #0b0d12; font-size: 13px; font-weight: 800; text-anchor: middle;
+  pointer-events: none; }
+.rl-node.on rect { filter: brightness(1.12); stroke: var(--text); }
+.rl-node.dim { opacity: .32; }
+
 .ed-title { font-size: 17px; font-weight: 700; }
 .ed-body { flex: 1; min-height: 55vh; line-height: 1.9; font-size: 15.5px; }
 .ed-actions { display: flex; gap: 8px; flex-wrap: wrap; }
