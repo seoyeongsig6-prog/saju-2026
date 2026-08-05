@@ -52,6 +52,7 @@ class WorkBody(BaseModel):
 
 class ChapterBody(BaseModel):
     directive: str = ""
+    forward: bool = False   # True면 '이후 화' 맥락을 빼고 앞만 보고 다시 쓴다(모든 회차 다시 쓰기용)
 
 
 class StyleBody(BaseModel):
@@ -747,7 +748,7 @@ def get_work(work_id: int, user: str = Header(default="solo", alias="X-User-Id")
         if not w:
             return {"ok": False, "error": "작품을 찾을 수 없어요."}
         chapters = [dict(r) for r in c.execute(
-            "SELECT id, no, title, beat_idx, directive FROM chapters WHERE work_id=? ORDER BY no",
+            "SELECT id, no, title, summary, beat_idx, directive FROM chapters WHERE work_id=? ORDER BY no",
             (work_id,)).fetchall()]
         return {"ok": True,
                 "work": {k: w.get(k) for k in ("id", "title", "genre", "premise", "ending",
@@ -839,6 +840,50 @@ def edit_outline(work_id: int, body: OutlineBody,
         c.execute("UPDATE works SET outline_json=?, total_chapters=? WHERE id=?",
                   (json.dumps(outline, ensure_ascii=False), total, work_id))
     return {"ok": True, "outline_count": len(outline)}
+
+
+class RenameBody(BaseModel):
+    old: str
+    new: str
+
+
+@router.post("/works/{work_id}/rename")
+def rename_term(work_id: int, body: RenameBody,
+                user: str = Header(default="solo", alias="X-User-Id")):
+    """이름·고유명사 일괄 변경 — 설정집은 물론 '이미 쓴 모든 회차 본문'까지 그대로 반영한다.
+    이야기를 흔드는 고유명사(인명·지명·조직명 등)는 앞 내용까지 함께 바뀌어야 하므로 전역 치환한다."""
+    old, new = body.old.strip(), body.new.strip()
+    if not old or not new:
+        return {"ok": False, "error": "바꿀 이름과 새 이름을 모두 입력해 주세요."}
+    if old == new:
+        return {"ok": True, "chapters": 0}
+    if any(ch in (old + new) for ch in ('"', "\\")):
+        return {"ok": False, "error": "이름에 따옴표(\")나 역슬래시(\\)는 쓸 수 없어요."}
+    rep = lambda s: (s or "").replace(old, new)
+    with db.connect() as c:
+        w = _load_work(c, work_id, user)
+        if not w:
+            return {"ok": False, "error": "작품을 찾을 수 없어요."}
+        # 작품 설정 전반 (JSON 문자열째로 치환 — 값 안의 이름까지 모두 바뀐다)
+        c.execute(
+            "UPDATE works SET title=?, premise=?, ending=?, brief=?, style=?, "
+            "characters_json=?, relations_json=?, beats_json=?, outline_json=?, canon_json=? "
+            "WHERE id=?",
+            (rep(w["title"]), rep(w.get("premise")), rep(w.get("ending")), rep(w.get("brief")),
+             rep(w.get("style")), rep(w.get("characters_json")), rep(w.get("relations_json")),
+             rep(w.get("beats_json")), rep(w.get("outline_json")), rep(w.get("canon_json")),
+             work_id),
+        )
+        # 이미 쓴 모든 회차 본문·제목·요약
+        rows = c.execute("SELECT id, title, body, summary FROM chapters WHERE work_id=?",
+                         (work_id,)).fetchall()
+        n = 0
+        for r in rows:
+            if old in (r["title"] or "") or old in (r["body"] or "") or old in (r["summary"] or ""):
+                c.execute("UPDATE chapters SET title=?, body=?, summary=?, updated_at=datetime('now') "
+                          "WHERE id=?", (rep(r["title"]), rep(r["body"]), rep(r["summary"]), r["id"]))
+                n += 1
+    return {"ok": True, "chapters": n}
 
 
 class CanonBody(BaseModel):
@@ -1013,6 +1058,22 @@ def _prior_chapters_block(prev: list, budget: int = 240000) -> str:
     return out
 
 
+def _later_chapters_block(later: list, budget: int = 120000) -> str:
+    """이 화 '다음'에 이미 연재된 화들의 본문 — 다시 쓸 때 뒤와도 안 어긋나게."""
+    if not later:
+        return ""
+    out, used = [], 0
+    for p in later:  # 바로 다음 화부터 순서대로
+        body = (p.get("body") or "").strip()
+        piece = f"═══ {p['no']}화 「{p.get('title','')}」 ═══\n{body}\n"
+        if used + len(piece) <= budget:
+            out.append(piece)
+            used += len(piece)
+        else:
+            out.append(f"[{p['no']}화 「{p.get('title','')}」 요약] {p.get('summary','') or body[:200]}")
+    return "\n".join(out)
+
+
 def _target_chars(w: dict) -> int:
     """이 작품의 회당 목표 글자수 (작가가 빌더에서 고른 값). 기본 5,000."""
     try:
@@ -1022,7 +1083,8 @@ def _target_chars(w: dict) -> int:
     return max(800, min(t, 12000))
 
 
-def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str) -> str:
+def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str,
+                    later: list = None) -> str:
     target = _target_chars(w)
     chars = "\n".join(
         f"- {ch['name']} ({ch.get('archetype','')}): {ch.get('role','')} / "
@@ -1036,10 +1098,15 @@ def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str) ->
     canon = dict(_work_canon(w))  # 작가 고정 고유명사
     canon_lines = "\n".join(f"- {k}: {v}" if v else f"- {k}" for k, v in canon.items())
     prior = _prior_chapters_block(prev)
+    later_block = _later_chapters_block(later) if later else ""
+    rewriting = bool(later_block)
 
-    return f"""당신은 정상급 웹소설 작가다. 아래 작품의 {no}화를 써라.
+    return f"""당신은 정상급 웹소설 작가다. 아래 작품의 {no}화를 {'다시 ' if rewriting else ''}써라.
 당신은 앞의 모든 화를 이미 다 읽었다. 앞에서 벌어진 사건·설정·수치·인물의 말투를
 완벽히 기억한 상태로, 그와 모순 없이 이어서 써야 한다.
+{'''지금은 이 화를 '다시 쓰는' 중이다. 아래에 이 화 앞의 내용과 뒤의 내용이 모두 주어진다.
+새로 쓰는 이 화는 앞 화의 끝과 자연스럽게 이어지고, 뒤 화의 시작과도 매끄럽게 맞물려야 하며,
+뒤 화에서 이미 벌어진 사건·밝혀진 정보·인물의 상태와 절대 모순되면 안 된다.''' if rewriting else ''}
 
 {_brief_block(w)}
 [작품] {w['title']} ({w['genre']}) — 총 {w['total_chapters']}화 예정
@@ -1059,9 +1126,13 @@ def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str) ->
 
 {_this_chapter_block(w, no, beat)}
 
-━━━━━━━━━━ 지금까지 연재된 내용 ━━━━━━━━━━
+━━━━━━━━━━ 지금까지 연재된 내용 (이 화 앞) ━━━━━━━━━━
 {prior}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{f'''
+━━━━━━ 이 화 '다음'에 이미 연재된 내용 (여기와도 모순되면 안 된다) ━━━━━━
+{later_block}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━''' if rewriting else ''}
 
 {f'[작가의 지시 — 최우선으로 따르라] {directive}' if directive else ''}
 
@@ -1096,10 +1167,12 @@ def _mock_chapter(w: dict, no: int, beat: dict) -> str:
             f"{no}화: {beat['name']} 단계가 진행됐고, 마지막에 뜻밖의 인물이 등장했다.")
 
 
-def _generate_full_chapter(w: dict, no: int, beat: dict, prev: list, directive: str):
+def _generate_full_chapter(w: dict, no: int, beat: dict, prev: list, directive: str,
+                           later: list = None):
     """회차 생성 + 분량 보증 루프 — 5,000자에 못 미치면 프로그램이 이어쓰기를 시킨다.
+    later가 있으면 '다시 쓰기'로 보고 이후 화들과도 모순 없게 한다.
     반환: (title, text, summary, error) — error가 있으면 저장하지 않는다."""
-    raw = llm.write(_chapter_prompt(w, no, beat, prev, directive),
+    raw = llm.write(_chapter_prompt(w, no, beat, prev, directive, later),
                     mock_text=_mock_chapter(w, no, beat), max_tokens=16000)
     if not llm.is_mock and llm.last_error:
         return None, None, None, llm.last_error
@@ -1207,9 +1280,15 @@ def regen_chapter(chapter_id: int, body: ChapterBody,
         prev = [dict(x) for x in c.execute(
             "SELECT no, title, summary, body, state_json FROM chapters WHERE work_id=? AND no<? ORDER BY no",
             (r["work_id"], r["no"])).fetchall()]
+        # 단일 '다시 쓰기'는 뒤 화들과도 맞춰야 한다. '모든 회차 다시 쓰기'(forward)는 앞만 본다.
+        later = None
+        if not body.forward:
+            later = [dict(x) for x in c.execute(
+                "SELECT no, title, summary, body FROM chapters WHERE work_id=? AND no>? ORDER BY no",
+                (r["work_id"], r["no"])).fetchall()]
         beat = w["beats"][beat_for(r["no"], w["total_chapters"])]
         title, text, summary, err = _generate_full_chapter(
-            w, r["no"], beat, prev, body.directive.strip())
+            w, r["no"], beat, prev, body.directive.strip(), later)
         if err:
             return {"ok": False, "error": "다시 쓰기에 실패했어요. 기존 회차는 그대로 유지됩니다.",
                     "detail": f"AI 호출 오류 — {err}. 크레딧/사용량 한도를 확인하세요."}

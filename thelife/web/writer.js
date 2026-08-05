@@ -675,6 +675,73 @@ $("#bible-revise").onclick = async () => {
   notice("설정집을 고쳤어요. 이후 회차부터 반영됩니다.\n(이미 쓴 회차는 편집기에서 직접 고치거나 '다시 쓰기' 하세요)");
 };
 
+/* ---------- 전체 플롯 보기 ---------- */
+$("#btn-plot").onclick = () => {
+  const p = $("#plot-panel");
+  if (!p.classList.contains("hidden")) { p.classList.add("hidden"); return; }
+  const byNo = {};
+  (WORK.outline || []).forEach((o) => { byNo[o.no] = o; });
+  const written = {};
+  WORK.chapters.forEach((ch) => { written[ch.no] = ch; });
+  const total = Math.max(WORK.total_chapters || 0, WORK.chapters.length,
+    ...(WORK.outline || []).map((o) => o.no), 0);
+  let rows = "";
+  for (let n = 1; n <= total; n++) {
+    const ch = written[n], o = byNo[n];
+    const done = !!ch;
+    const title = (ch && ch.title) || (o && o.title) || "";
+    const text = done ? (ch.summary || "(요약 없음)") : (o && o.content ? o.content : "계획 미정");
+    rows += `<div class="plot-row ${done ? "done" : "plan"}">
+      <div class="plot-no">${n}화 <span>${done ? "✍ 집필됨" : "· 계획"}</span></div>
+      ${title ? `<b>${escapeHtml(title)}</b>` : ""}
+      <p>${escapeHtml(text)}</p></div>`;
+  }
+  p.innerHTML = `<div class="plot-h">${escapeHtml(WORK.title)} — 전체 플롯</div>
+    <div class="plot-goal">목표: ${escapeHtml(WORK.ending || "")}</div>${rows || "<p class='hint'>아직 없어요.</p>"}`;
+  p.classList.remove("hidden");
+};
+
+/* ---------- 모든 회차 다시 쓰기 (앞→뒤 순차, 설정·이름·결말 고정) ---------- */
+$("#btn-rewrite-all").onclick = async () => {
+  const chs = WORK.chapters;
+  if (!chs.length) { notice("아직 쓴 회차가 없어요."); return; }
+  if (!confirm(`이미 쓴 ${chs.length}개 회차를 1화부터 순서대로 모두 다시 씁니다.\n` +
+    `제목·인물 이름·결말·설명서 등 기본 설정은 절대 바뀌지 않아요.\n` +
+    `시간이 오래 걸리고 AI 사용량이 많이 듭니다. 진행할까요?`)) return;
+  for (let i = 0; i < chs.length; i++) {
+    busy(`모든 회차 다시 쓰는 중… (${i + 1}/${chs.length}화)`);
+    const r = await api(`/api/writer/chapters/${chs[i].id}/regenerate`, {
+      method: "POST", body: JSON.stringify({ directive: "", forward: true }),
+    });
+    if (!r.ok) {
+      unbusy();
+      notice(`${chs[i].no}화에서 멈췄어요.\n\n${r.error || ""}${r.detail ? "\n" + r.detail : ""}`);
+      await openWork(WORK.id);
+      return;
+    }
+  }
+  unbusy();
+  await openWork(WORK.id);
+  notice("모든 회차를 다시 썼어요.");
+};
+
+/* ---------- 이름·고유명사 일괄 변경 (기존 회차까지 반영) ---------- */
+$("#rename-go").onclick = async () => {
+  const oldN = $("#rename-old").value.trim(), newN = $("#rename-new").value.trim();
+  if (!oldN || !newN) { notice("바꿀 이름과 새 이름을 모두 입력해 주세요."); return; }
+  if (!confirm(`'${oldN}' → '${newN}' 로 바꿉니다.\n설정집과 이미 쓴 모든 회차 본문에서 이 표기가 전부 바뀝니다. 진행할까요?`)) return;
+  busy("모든 회차에 반영하는 중…");
+  const r = await api(`/api/writer/works/${WORK.id}/rename`, {
+    method: "POST", body: JSON.stringify({ old: oldN, new: newN }),
+  });
+  unbusy();
+  if (!r.ok) { notice(r.error || "실패했어요"); return; }
+  $("#rename-old").value = ""; $("#rename-new").value = "";
+  await openWork(WORK.id);
+  wtab("bible");
+  notice(`바꿨어요. 회차 ${r.chapters}개 본문에 반영됐어요.`);
+};
+
 /* ---------- 회차 쓰기 ---------- */
 $("#btn-write").onclick = async () => {
   const cpc = (WORK.chars_per_chapter || 5000).toLocaleString();

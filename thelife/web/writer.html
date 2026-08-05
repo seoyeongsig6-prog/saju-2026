@@ -197,6 +197,11 @@
 
   <!-- 회차 탭 -->
   <div id="wt-chapters" class="wtabpane">
+    <div class="ch-toolbar">
+      <button id="btn-plot" class="ghost small">📖 전체 플롯 보기</button>
+      <button id="btn-rewrite-all" class="ghost small">🔄 모든 회차 다시 쓰기</button>
+    </div>
+    <div id="plot-panel" class="plot-panel hidden"></div>
     <div id="ch-list" class="ch-list"></div>
     <div class="write-box">
       <input id="directive" placeholder="작가의 지시 (선택 — 예: 이번 화에서 멘토의 비밀이 드러난다)">
@@ -209,6 +214,14 @@
     <div class="write-box" style="margin:0 0 16px">
       <input id="bible-cmd" placeholder="설정 수정 명령 (예: 주인공 이름을 ○○로 바꿔 / 여주인공을 추가해)">
       <button id="bible-revise" class="primary">명령대로 설정 고치기</button>
+    </div>
+    <div class="write-box" style="margin:0 0 16px">
+      <div class="story-h" style="margin:0 0 4px">이름·고유명사 일괄 변경 <small class="dim">(이미 쓴 회차 본문까지 그대로 반영)</small></div>
+      <div class="row2">
+        <input id="rename-old" placeholder="바꿀 이름 (예: 강도현)">
+        <input id="rename-new" placeholder="새 이름 (예: 강도훈)">
+      </div>
+      <button id="rename-go" class="ghost small">모든 회차에 반영</button>
     </div>
     <div id="brief-section" class="hidden">
       <div class="story-h">작품설명서 — 절대 기준 <small class="dim">(모든 회차가 이 문서를 다시 읽으며 쓰입니다. 여기 고치면 이후 회차에 바로 반영돼요)</small></div>
