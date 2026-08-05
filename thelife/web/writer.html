@@ -20,34 +20,10 @@
   <button id="w-new" class="primary big">＋ 새 작품 설계</button>
 </div>
 
-<!-- 새 작품 -->
-<div id="w-create" class="wview hidden">
-  <button class="ghost small" onclick="showHome()">← 작품 목록</button>
-  <h2>새 작품 설계</h2>
-
-  <button id="open-build" class="build-cta">✍ 작품설명서 만들기 (추천)
-    <small>세계관·인물·고유명사·회차별 전개까지 상세하게. AI가 초안을 도와줘요.
-       완성한 설명서는 완결까지 모든 회차의 절대 기준이 됩니다.</small></button>
-
-  <p class="hint" style="text-align:center">— 또는 로그라인만으로 간단히 —</p>
-  <div class="form">
-    <input id="c-genre" placeholder="장르 (예: 현대 판타지, 회귀물, 로맨스, 무협)">
-    <textarea id="c-premise" rows="3" placeholder="로그라인 — 한두 문장 (예: 재벌가 막내로 회귀한 만년 과장, 이번 생은 다르게 산다)"></textarea>
-    <textarea id="c-ending" rows="3" placeholder="결말 — 이야기가 반드시 도달할 곳 (예: 그룹을 차지하되, 전생의 은인을 지켜낸다)"></textarea>
-    <div class="row2">
-      <input id="c-title" placeholder="제목 (비우면 지어드려요)">
-      <input id="c-total" type="number" value="25" min="5" max="200" placeholder="총 회차">
-    </div>
-    <input id="c-style" placeholder="문체 (선택 — 예: 건조하고 빠르게)">
-    <textarea id="c-sample" rows="5" placeholder="문체 표본 (선택) — 원하는 문체의 글을 300자 이상 붙여넣으면 그 결을 학습해서 씁니다. 본인 글이나 지향하는 문체의 글."></textarea>
-    <button id="c-go" class="primary">설계도 만들기</button>
-  </div>
-</div>
-
-<!-- 작품설명서 상세 빌더 -->
+<!-- 작품설명서 상세 빌더 (새 작품 = 바로 이 페이지) -->
 <div id="w-build" class="wview hidden">
-  <button class="ghost small" onclick="view('w-create')">← 뒤로</button>
-  <h2>작품설명서 만들기</h2>
+  <button class="ghost small" onclick="showHome()">← 작품 목록</button>
+  <h2>새 작품 — 작품설명서 만들기</h2>
   <p class="hint">채운 만큼 정확해져요. 비운 칸은 AI가 설계에서 메꿉니다.
      완성하면 이 설명서가 <b>완결까지 모든 회차의 절대 기준</b>이 됩니다.</p>
 
@@ -185,17 +161,27 @@
       <button id="bible-revise" class="primary">명령대로 설정 고치기</button>
     </div>
     <div id="brief-section" class="hidden">
-      <div class="story-h">작품설명서 — 절대 기준</div>
-      <details class="brief-view">
-        <summary>설명서 전문 보기 (모든 회차가 이 문서를 다시 읽으며 쓰입니다)</summary>
-        <div id="brief-body"></div>
-      </details>
+      <div class="story-h">작품설명서 — 절대 기준 <small class="dim">(모든 회차가 이 문서를 다시 읽으며 쓰입니다. 여기 고치면 이후 회차에 바로 반영돼요)</small></div>
+      <div class="form" style="margin-bottom:8px">
+        <textarea id="brief-edit" rows="10" placeholder="작품설명서 전문"></textarea>
+        <button id="brief-save" class="ghost small">설명서 저장</button>
+      </div>
     </div>
     <div class="story-h">작품의 심장</div>
     <div class="form" style="margin-bottom:8px">
-      <input id="bible-title">
-      <textarea id="bible-ending" rows="2"></textarea>
-      <button id="bible-save-core" class="ghost small">제목·결말 저장</button>
+      <input id="bible-title" placeholder="작품 제목">
+      <textarea id="bible-ending" rows="2" placeholder="결말 — 이야기가 반드시 도달할 곳"></textarea>
+      <div class="row2">
+        <label class="bd-field"><span>총 회차</span>
+          <input id="bible-total" type="number" min="5" max="200"></label>
+        <label class="bd-field"><span>회당 글자수</span>
+          <select id="bible-cpc">
+            <option value="1000">1000자</option><option value="2000">2000자</option>
+            <option value="3000">3000자</option><option value="4000">4000자</option>
+            <option value="5000">5000자</option>
+          </select></label>
+      </div>
+      <button id="bible-save-core" class="ghost small">작품 설정 저장</button>
     </div>
     <div class="story-h">문체</div>
     <div id="style-profile-box" class="style-box hidden"></div>

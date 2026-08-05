@@ -28,7 +28,7 @@ $("#theme-toggle").onclick = () =>
   applyTheme(document.body.dataset.theme === "dark" ? "light" : "dark");
 
 function view(id) {
-  ["w-home", "w-create", "w-build", "w-work", "w-editor"].forEach((v) =>
+  ["w-home", "w-build", "w-work", "w-editor"].forEach((v) =>
     $(`#${v}`).classList.toggle("hidden", v !== id));
 }
 function notice(t) { $("#notice-text").textContent = t; $("#notice").classList.remove("hidden"); }
@@ -59,35 +59,10 @@ async function delWork(id, title) {
   await api(`/api/writer/works/${id}`, { method: "DELETE" });
   showHome();
 }
-$("#w-new").onclick = () => view("w-create");
-
-/* ---------- 새 작품 — 직접 입력 ---------- */
-$("#c-go").onclick = async () => {
-  const body = {
-    genre: $("#c-genre").value.trim() || "현대 판타지",
-    premise: $("#c-premise").value.trim(),
-    ending: $("#c-ending").value.trim(),
-    title: $("#c-title").value.trim(),
-    style: $("#c-style").value.trim(),
-    style_sample: $("#c-sample").value.trim(),
-    total_chapters: Number($("#c-total").value) || 25,
-  };
-  if (!body.premise || !body.ending) { notice("로그라인과 결말은 작가만 정할 수 있어요. 두 칸을 채워주세요."); return; }
-  busy("설계도를 만드는 중… 인물, 관계도, 15비트 플롯 (20초쯤)");
-  const r = await api("/api/writer/works", { method: "POST", body: JSON.stringify(body) });
-  unbusy();
-  if (!r.ok) {
-    notice((r.error || "실패했어요") + (r.detail ? `\n\n[원인] ${r.detail}` : "") +
-      (r.trace ? `\n${r.trace.join("\n")}` : ""));
-    return;
-  }
-  openWork(r.id);
-};
-
-/* ---------- 작품설명서 상세 빌더 ---------- */
+/* ---------- 새 작품 = 작품설명서 빌더로 바로 ---------- */
 const bdVal = (id) => $("#" + id).value.trim();
 
-$("#open-build").onclick = () => {
+$("#w-new").onclick = () => {
   view("w-build");
   if (!$("#bd-chars").children.length) { bdAddChar(); bdAddChar(); }
   if (!$("#bd-canon").children.length) { bdAddCanon(); }
@@ -296,32 +271,96 @@ function wtab(name) {
   $("#wt-bible").classList.toggle("hidden", name !== "bible");
 }
 
+const escapeHtml = (s) => (s || "").replace(/[&<>"]/g,
+  (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
 function renderChapters() {
   const box = $("#ch-list");
   box.innerHTML = "";
-  if (!WORK.chapters.length) {
-    box.innerHTML = `<p class="hint">아직 첫 회차가 없어요. 아래 버튼으로 1화를 시작하세요.<br>
-      지시 없이 쓰면 플롯 지도대로, 지시를 넣으면 그 방향으로 씁니다.</p>`;
+  const written = WORK.chapters.length;
+  if (!written) {
+    box.innerHTML = `<p class="hint">아직 첫 회차가 없어요. 아래 '다음 회차 쓰기'로 1화를 시작하세요.<br>
+      아래 '예정 회차'의 계획을 눌러 미리 각 화 줄거리를 짜둘 수 있어요.</p>`;
   }
   WORK.chapters.forEach((ch) => {
     const el = document.createElement("button");
     el.className = "ch-item";
     const o = (WORK.outline || []).find((x) => x.no === ch.no);
     const beat = WORK.beats[ch.beat_idx] || {};
-    el.innerHTML = `<span class="ch-no">${ch.no}화</span> ${ch.title || ""}
-      <small>${o ? "📋 계획서" : (beat.name || "")}</small>`;
+    el.innerHTML = `<span class="ch-no">${ch.no}화</span> ${escapeHtml(ch.title) || ""}
+      <small>${o ? "📋 계획" : (beat.name || "")}</small>`;
     el.onclick = () => openChapter(ch.id);
     box.appendChild(el);
   });
+
+  // 예정 회차 — 아직 안 쓴 회차를 계획대로 보여주고 매화 편집
+  const total = WORK.total_chapters || 0;
+  const byNo = {};
+  (WORK.outline || []).forEach((o) => { byNo[o.no] = o; });
+  const nos = [];
+  for (let n = written + 1; n <= total; n++) nos.push(n);
+  (WORK.outline || []).forEach((o) => {
+    if (o.no > written && !nos.includes(o.no)) nos.push(o.no);
+  });
+  nos.sort((a, b) => a - b);
+  if (!nos.length) return;
+
+  const sep = document.createElement("div");
+  sep.className = "ch-plan-sep";
+  sep.innerHTML = `예정 회차 <small>· 계획을 눌러 각 화 줄거리를 수정하세요 (지정한 내용대로 집필됩니다)</small>`;
+  box.appendChild(sep);
+  nos.forEach((n) => {
+    const o = byNo[n];
+    const el = document.createElement("div");
+    el.className = "ch-item planned";
+    el.innerHTML = `<span class="ch-no">${n}화</span>
+      <span class="plan-body">
+        ${o && o.title ? `<b>${escapeHtml(o.title)}</b>` : `<span class="dim">계획 미정 — 눌러서 작성</span>`}
+        ${o && o.content ? `<small>${escapeHtml(o.content).slice(0, 70)}</small>` : ""}
+      </span><span class="plan-edit">✎</span>`;
+    el.onclick = () => editOutline(n, el);
+    box.appendChild(el);
+  });
+}
+
+function editOutline(n, el) {
+  const o = (WORK.outline || []).find((x) => x.no === n) || { title: "", content: "" };
+  el.onclick = null;
+  el.classList.add("editing");
+  el.innerHTML = `
+    <div class="plan-ed">
+      <div class="plan-ed-h">${n}화 계획</div>
+      <input class="pe-title" placeholder="이 화 제목">
+      <textarea class="pe-content" rows="3" placeholder="이 화의 핵심 사건 — 누가 무엇을 하고 무엇이 바뀌는지"></textarea>
+      <div class="row2"><button class="primary pe-save">저장</button><button class="pe-cancel">취소</button></div>
+    </div>`;
+  el.querySelector(".pe-title").value = o.title || "";
+  el.querySelector(".pe-content").value = o.content || "";
+  el.querySelector(".pe-cancel").onclick = () => renderChapters();
+  el.querySelector(".pe-save").onclick = async () => {
+    const title = el.querySelector(".pe-title").value.trim();
+    const content = el.querySelector(".pe-content").value.trim();
+    const list = (WORK.outline || []).filter((x) => x.no !== n);
+    if (title || content) list.push({ no: n, title, content });
+    list.sort((a, b) => a.no - b.no);
+    const r = await api(`/api/writer/works/${WORK.id}/outline`, {
+      method: "PUT", body: JSON.stringify({ outline: list }),
+    });
+    if (!r.ok) { notice(r.error || "저장 실패"); return; }
+    WORK.outline = list;
+    renderChapters();
+  };
 }
 
 function renderBible() {
   $("#bible-title").value = WORK.title || "";
   $("#bible-ending").value = WORK.ending || "";
+  $("#bible-total").value = WORK.total_chapters || 25;
+  $("#bible-cpc").value = String(WORK.chars_per_chapter || 5000);
   const bs = $("#brief-section");
   if (WORK.brief) {
     bs.classList.remove("hidden");
-    $("#brief-body").textContent = WORK.brief;
+    $("#brief-edit").value = WORK.brief;
   } else {
     bs.classList.add("hidden");
   }
@@ -528,18 +567,38 @@ function editChar(el, idx) {
 }
 
 async function saveBible() {
+  const total = Number($("#bible-total").value) || WORK.total_chapters || 25;
+  const cpc = Number($("#bible-cpc").value) || WORK.chars_per_chapter || 5000;
   const r = await api(`/api/writer/works/${WORK.id}/bible`, {
     method: "PUT",
     body: JSON.stringify({
       title: $("#bible-title").value.trim(),
       ending: $("#bible-ending").value.trim(),
       characters: WORK.characters, relations: WORK.relations, beats: WORK.beats,
+      total_chapters: total, chars_per_chapter: cpc,
     }),
   });
-  if (!r.ok) notice(r.error || "저장 실패");
-  else { WORK.title = $("#bible-title").value.trim(); $("#wk-title").textContent = WORK.title; }
+  if (!r.ok) { notice(r.error || "저장 실패"); return; }
+  WORK.title = $("#bible-title").value.trim(); $("#wk-title").textContent = WORK.title;
+  WORK.ending = $("#bible-ending").value.trim();
+  WORK.total_chapters = total; WORK.chars_per_chapter = cpc;
+  $("#wk-progress").textContent = `${WORK.chapters.length}/${total}화`;
 }
-$("#bible-save-core").onclick = async () => { await saveBible(); notice("저장했어요. 이후 회차부터 반영됩니다."); };
+$("#bible-save-core").onclick = async () => {
+  await saveBible();
+  renderChapters();  // 총 회차 바뀌면 예정 회차 목록도 갱신
+  notice("저장했어요. 이후 회차부터 반영됩니다.");
+};
+
+$("#brief-save").onclick = async () => {
+  const brief = $("#brief-edit").value;
+  const r = await api(`/api/writer/works/${WORK.id}/brief`, {
+    method: "PUT", body: JSON.stringify({ brief }),
+  });
+  if (!r.ok) { notice(r.error || "저장 실패"); return; }
+  WORK.brief = brief;
+  notice("설명서를 저장했어요. 이후 모든 회차가 이 내용을 절대 기준으로 씁니다.");
+};
 
 $("#bible-learn").onclick = async () => {
   const sample = $("#bible-sample").value.trim();
@@ -600,6 +659,9 @@ async function openChapter(id) {
   $("#ed-beat").textContent = `${CHAPTER.no}화 · 비트: ${beat.name || ""}`;
   $("#ed-title").value = CHAPTER.title || "";
   $("#ed-body").value = CHAPTER.body || "";
+  // 삭제는 마지막 회차만 (중간을 비우면 기억이 끊긴다) — 아니면 버튼을 숨긴다
+  const lastNo = WORK.chapters.length ? WORK.chapters[WORK.chapters.length - 1].no : 0;
+  $("#ed-del").style.display = (CHAPTER.no === lastNo) ? "" : "none";
   countChars();
 }
 $("#ed-body").addEventListener("input", countChars);

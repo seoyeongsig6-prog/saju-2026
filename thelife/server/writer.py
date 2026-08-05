@@ -763,6 +763,8 @@ class BibleBody(BaseModel):
     characters: list = []
     relations: list = []
     beats: list = []
+    total_chapters: int = 0       # 0이면 그대로 둔다
+    chars_per_chapter: int = 0    # 0이면 그대로 둔다
 
 
 def _normalize_beats(beats: list) -> list:
@@ -783,17 +785,60 @@ def edit_bible(work_id: int, body: BibleBody,
         w = _load_work(c, work_id, user)
         if not w:
             return {"ok": False, "error": "작품을 찾을 수 없어요."}
+        total = body.total_chapters if body.total_chapters and body.total_chapters >= 5 \
+            else w["total_chapters"]
+        cpc = max(1000, min(body.chars_per_chapter, 8000)) if body.chars_per_chapter \
+            else (w.get("chars_per_chapter") or 5000)
         c.execute(
             "UPDATE works SET title=?, ending=?, characters_json=?, relations_json=?, "
-            "beats_json=? WHERE id=?",
+            "beats_json=?, total_chapters=?, chars_per_chapter=? WHERE id=?",
             (body.title.strip() or w["title"],
              body.ending.strip() or w["ending"],
              json.dumps(body.characters or w["characters"], ensure_ascii=False),
              json.dumps(body.relations or w["relations"], ensure_ascii=False),
              json.dumps(_normalize_beats(body.beats or w["beats"]), ensure_ascii=False),
-             work_id),
+             total, cpc, work_id),
         )
     return {"ok": True}
+
+
+class BriefBody(BaseModel):
+    brief: str = ""
+
+
+@router.put("/works/{work_id}/brief")
+def edit_brief(work_id: int, body: BriefBody,
+               user: str = Header(default="solo", alias="X-User-Id")):
+    """작품설명서 직접 편집 — 절대 기준이므로 작가가 언제든 고칠 수 있어야 한다."""
+    with db.connect() as c:
+        w = _load_work(c, work_id, user)
+        if not w:
+            return {"ok": False, "error": "작품을 찾을 수 없어요."}
+        c.execute("UPDATE works SET brief=? WHERE id=?", (body.brief[:BRIEF_MAX], work_id))
+    return {"ok": True}
+
+
+class OutlineBody(BaseModel):
+    outline: list[OutlineIn] = []
+
+
+@router.put("/works/{work_id}/outline")
+def edit_outline(work_id: int, body: OutlineBody,
+                 user: str = Header(default="solo", alias="X-User-Id")):
+    """회차별 전개(계획) 편집 — 지정된 회차는 그 내용대로 집필된다."""
+    with db.connect() as c:
+        w = _load_work(c, work_id, user)
+        if not w:
+            return {"ok": False, "error": "작품을 찾을 수 없어요."}
+        outline = [{"no": o.no, "title": o.title.strip(), "content": o.content.strip()}
+                   for o in sorted(body.outline, key=lambda o: o.no)
+                   if o.no and o.no >= 1 and (o.title.strip() or o.content.strip())]
+        total = w["total_chapters"]
+        if outline:
+            total = max(total, outline[-1]["no"])
+        c.execute("UPDATE works SET outline_json=?, total_chapters=? WHERE id=?",
+                  (json.dumps(outline, ensure_ascii=False), total, work_id))
+    return {"ok": True, "outline_count": len(outline)}
 
 
 class CanonBody(BaseModel):

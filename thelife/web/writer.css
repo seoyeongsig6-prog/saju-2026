@@ -174,6 +174,20 @@ textarea { width: 100%; font-family: inherit; resize: vertical; line-height: 1.6
 .ch-item small { margin-left: auto; color: var(--dim); font-size: 11.5px; }
 .write-box { display: flex; flex-direction: column; gap: 9px; margin-top: 16px; }
 
+/* 예정 회차 (계획) */
+.ch-plan-sep { margin: 20px 2px 9px; font-size: 12.5px; font-weight: 800; color: var(--text); }
+.ch-plan-sep small { font-weight: 400; color: var(--dim); }
+.ch-item.planned { border-style: dashed; background: var(--panel2); box-shadow: none; align-items: flex-start; }
+.ch-item.planned .plan-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.ch-item.planned .plan-body b { font-weight: 600; font-size: 14px; }
+.ch-item.planned .plan-body small { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ch-item.planned .plan-edit { margin-left: auto; color: var(--dim); align-self: center; }
+.ch-item.editing { display: block; cursor: default; }
+.plan-ed { display: flex; flex-direction: column; gap: 8px; }
+.plan-ed-h { font-weight: 700; font-size: 13px; color: var(--accent); }
+.plan-ed .row2 { display: flex; gap: 8px; }
+.plan-ed .row2 button { flex: 1; }
+
 /* 인물 카드 */
 .b-char {
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
