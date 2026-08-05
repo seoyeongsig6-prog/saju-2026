@@ -277,10 +277,23 @@ textarea { width: 100%; font-family: inherit; resize: vertical; line-height: 1.6
   border-radius: 13px; padding: 13px; margin-bottom: 8px; box-shadow: var(--shadow-sm);
   display: flex; flex-direction: column; gap: 7px;
 }
-.bd-char-row input, .bd-canon-row input, .bd-outline-row input, .bd-outline-row textarea {
+.bd-char-row input, .bd-char-row select, .bd-canon-row input,
+.bd-outline-row input, .bd-outline-row textarea {
   width: 100%; padding: 10px 12px; border-radius: 9px; border: 1px solid var(--line);
   background: var(--panel2); color: var(--text); font-size: 14px; font-family: inherit;
 }
+.bd-outline-row .o-content { min-height: 92px; }
+.bd-char-row .cf { display: flex; flex-direction: column; gap: 5px; }
+.bd-char-row .cf > span { font-size: 11.5px; color: var(--dim); font-weight: 600; padding-left: 2px; }
+
+.req { color: var(--bad); font-weight: 800; }
+.bd-detail-head { display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin: 26px 0 4px; }
+.ai-btn.compact { width: auto; margin: 0; padding: 9px 15px; font-size: 13px; white-space: nowrap; flex-shrink: 0; }
+.wns-help { font-size: 12px; color: var(--dim); background: var(--panel2);
+  border: 1px solid var(--line-soft); border-radius: 10px; padding: 9px 12px;
+  margin: 0 0 9px; line-height: 1.7; }
+.wns-help b { color: var(--accent2); }
 .bd-char-row .row2, .bd-canon-row .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .o-head { display: grid; grid-template-columns: 62px 1fr; gap: 7px; }
 .o-head .o-no { text-align: center; }

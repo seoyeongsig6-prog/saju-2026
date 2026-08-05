@@ -68,24 +68,62 @@ $("#w-new").onclick = () => {
   if (!$("#bd-canon").children.length) { bdAddCanon(); }
 };
 
+/* 선택지 + '기타(직접 입력)' 패턴 */
+const ROLE_OPTS = ["적대자(메인 빌런)", "서브 빌런", "조력자", "멘토·스승", "애정상대",
+  "라이벌", "동료", "가족", "부하·수하", "상관·윗사람", "배신자", "전령·정보원", "관문 수호자", "기타"];
+const REL_OPTS = ["연인·애정", "친구·동료", "스승·사제", "가족·혈연", "라이벌·경쟁", "원수·적대",
+  "상하관계", "협력자", "은인", "배신자", "첫사랑", "소꿉친구", "계약관계", "기타"];
+
+function optSelectHtml(cls, opts, ph) {
+  return `<select class="${cls}"><option value="">${ph}</option>` +
+    opts.map((x) => `<option>${x}</option>`).join("") + `</select>` +
+    `<input class="${cls}-other hidden" placeholder="직접 입력">`;
+}
+function isEtc(sel) { return !!sel.value && sel.value.indexOf("기타") === 0; }
+function wireOther(sel, other) {
+  const upd = () => other.classList.toggle("hidden", !isEtc(sel));
+  sel.addEventListener("change", upd); upd();
+}
+function getOtherSelect(sel, other) { return isEtc(sel) ? other.value.trim() : (sel.value || "").trim(); }
+function setOtherSelect(sel, other, val) {
+  val = (val || "").trim();
+  const match = [...sel.options].find((o) => (o.value || o.text) === val);
+  if (!val) { sel.value = ""; other.value = ""; }
+  else if (match) { sel.value = match.value || match.text; other.value = ""; }
+  else {
+    const etc = [...sel.options].find((o) => o.text.indexOf("기타") === 0);
+    sel.value = etc ? (etc.value || etc.text) : ""; other.value = val;
+  }
+  other.classList.toggle("hidden", !isEtc(sel));
+}
+
+// 장르·문체 선택창의 '기타' 토글 초기화
+wireOther($("#bd-genre-sel"), $("#bd-genre-other"));
+wireOther($("#bd-style-sel"), $("#bd-style-other"));
+const bdGenre = () => getOtherSelect($("#bd-genre-sel"), $("#bd-genre-other"));
+const bdStyle = () => getOtherSelect($("#bd-style-sel"), $("#bd-style-other"));
+
 function bdAddChar(d = {}) {
   const el = document.createElement("div");
   el.className = "bd-char-row";
   el.innerHTML = `
     <button class="row-del" title="삭제">✕</button>
+    <input class="c-name" placeholder="이름">
+    <label class="cf"><span>역할</span>${optSelectHtml("c-role", ROLE_OPTS, "역할 선택")}</label>
+    <label class="cf"><span>주인공과의 관계</span>${optSelectHtml("c-rel", REL_OPTS, "관계 선택")}</label>
     <div class="row2">
-      <input class="c-name" placeholder="이름">
-      <input class="c-role" placeholder="역할 (적대자·조력자·애정상대…)">
+      <input class="c-want" placeholder="욕망 — 겉으로 쫓는 것">
+      <input class="c-need" placeholder="결핍 — 진짜 필요한 것">
     </div>
-    <input class="c-rel" placeholder="주인공과의 관계">
-    <div class="row2">
-      <input class="c-want" placeholder="욕망(want)">
-      <input class="c-need" placeholder="결핍(need)">
-    </div>
-    <input class="c-secret" placeholder="비밀 (선택)">`;
-  const set = (cls, v) => { el.querySelector(cls).value = v || ""; };
-  set(".c-name", d.name); set(".c-role", d.role); set(".c-rel", d.relation);
-  set(".c-want", d.want); set(".c-need", d.need); set(".c-secret", d.secret);
+    <input class="c-secret" placeholder="비밀 (선택) — 숨기는 것">`;
+  el.querySelector(".c-name").value = d.name || "";
+  setOtherSelect(el.querySelector(".c-role"), el.querySelector(".c-role-other"), d.role);
+  setOtherSelect(el.querySelector(".c-rel"), el.querySelector(".c-rel-other"), d.relation);
+  el.querySelector(".c-want").value = d.want || "";
+  el.querySelector(".c-need").value = d.need || "";
+  el.querySelector(".c-secret").value = d.secret || "";
+  wireOther(el.querySelector(".c-role"), el.querySelector(".c-role-other"));
+  wireOther(el.querySelector(".c-rel"), el.querySelector(".c-rel-other"));
   el.querySelector(".row-del").onclick = () => el.remove();
   $("#bd-chars").appendChild(el);
 }
@@ -106,7 +144,7 @@ function bdAddOutline(d = {}) {
   el.className = "bd-outline-row";
   el.innerHTML = `<button class="row-del" title="삭제">✕</button>
     <div class="o-head"><input class="o-no" type="number" min="1" placeholder="화"><input class="o-title" placeholder="제목"></div>
-    <textarea class="o-content" rows="2" placeholder="이 화의 핵심 사건 — 누가 무엇을 하고 무엇이 바뀌는지"></textarea>`;
+    <textarea class="o-content" rows="5" placeholder="이 화의 핵심 사건 — 누가 무엇을 하고 무엇이 바뀌는지"></textarea>`;
   el.querySelector(".o-no").value = d.no || "";
   el.querySelector(".o-title").value = d.title || "";
   el.querySelector(".o-content").value = d.content || "";
@@ -141,7 +179,7 @@ function bdSortOutline() {
 
 function bdCollect() {
   return {
-    title: bdVal("bd-title"), genre: bdVal("bd-genre"),
+    title: bdVal("bd-title"), genre: bdGenre(),
     total_chapters: Number($("#bd-total").value) || 25,
     chars_per_chapter: Number($("#bd-cpc").value) || 5000,
     keywords: bdVal("bd-keywords"),
@@ -153,14 +191,16 @@ function bdCollect() {
       need: bdVal("bd-p-need"), secret: bdVal("bd-p-secret"), arc: bdVal("bd-p-arc"),
     },
     characters: [...$("#bd-chars").querySelectorAll(".bd-char-row")].map((r) => ({
-      name: r.querySelector(".c-name").value.trim(), role: r.querySelector(".c-role").value.trim(),
-      relation: r.querySelector(".c-rel").value.trim(), want: r.querySelector(".c-want").value.trim(),
+      name: r.querySelector(".c-name").value.trim(),
+      role: getOtherSelect(r.querySelector(".c-role"), r.querySelector(".c-role-other")),
+      relation: getOtherSelect(r.querySelector(".c-rel"), r.querySelector(".c-rel-other")),
+      want: r.querySelector(".c-want").value.trim(),
       need: r.querySelector(".c-need").value.trim(), secret: r.querySelector(".c-secret").value.trim(),
     })).filter((c) => c.name),
     canon: [...$("#bd-canon").querySelectorAll(".bd-canon-row")].map((r) => ({
       name: r.querySelector(".cn-name").value.trim(), desc: r.querySelector(".cn-desc").value.trim(),
     })).filter((c) => c.name),
-    style: bdVal("bd-style"), style_sample: bdVal("bd-sample"), ending: bdVal("bd-ending"),
+    style: bdStyle(), style_sample: bdVal("bd-sample"), ending: bdVal("bd-ending"),
     outline: [...$("#bd-outline").querySelectorAll(".bd-outline-row")].map((r) => ({
       no: Number(r.querySelector(".o-no").value) || 0,
       title: r.querySelector(".o-title").value.trim(), content: r.querySelector(".o-content").value.trim(),
@@ -173,7 +213,8 @@ function bdFill(d) {
   d = d || {};
   [["bd-title", d.title], ["bd-logline", d.logline], ["bd-intent", d.intent],
    ["bd-world", d.world_setting], ["bd-rules", d.world_rules], ["bd-taboos", d.taboos],
-   ["bd-ending", d.ending], ["bd-style", d.style]].forEach(([id, v]) => bdSetIfEmpty(id, v));
+   ["bd-ending", d.ending]].forEach(([id, v]) => bdSetIfEmpty(id, v));
+  if (d.style && !bdStyle()) setOtherSelect($("#bd-style-sel"), $("#bd-style-other"), d.style);
   const p = d.protagonist || {};
   [["bd-p-name", p.name], ["bd-p-age", p.age], ["bd-p-job", p.job],
    ["bd-p-personality", p.personality], ["bd-p-want", p.want], ["bd-p-need", p.need],
@@ -191,9 +232,10 @@ function bdFill(d) {
 
 /* 초안 생성에서 AI가 채우는 부분만 비운다 (로그라인·결말·표본 등 씨앗은 유지) */
 function bdResetGenerated() {
-  ["bd-intent", "bd-world", "bd-rules", "bd-taboos", "bd-p-name", "bd-p-age", "bd-p-job",
-   "bd-p-personality", "bd-p-want", "bd-p-need", "bd-p-secret", "bd-p-arc", "bd-style"]
+  ["bd-world", "bd-rules", "bd-taboos", "bd-p-name", "bd-p-age", "bd-p-job",
+   "bd-p-personality", "bd-p-want", "bd-p-need", "bd-p-secret", "bd-p-arc"]
     .forEach((id) => { $("#" + id).value = ""; });
+  setOtherSelect($("#bd-style-sel"), $("#bd-style-other"), "");
   $("#bd-chars").innerHTML = "";
   $("#bd-canon").innerHTML = "";
 }
@@ -236,7 +278,9 @@ $("#bd-ai-outline").onclick = async () => {
 
 $("#bd-go").onclick = async () => {
   const b = bdCollect();
-  if (!b.logline && !b.ending) { notice("최소한 로그라인이나 결말 중 하나는 채워주세요."); return; }
+  if (!b.genre) { notice("장르를 선택해 주세요. (필수)"); return; }
+  if (!b.logline) { notice("로그라인을 입력해 주세요. (필수)"); return; }
+  if (!b.intent) { notice("기획 의도를 입력해 주세요. (필수)"); return; }
   busy("설명서를 정리하고 설계도(인물·관계·15비트)를 만드는 중… (30초쯤)");
   const r = await api("/api/writer/works/build", { method: "POST", body: JSON.stringify(b) });
   unbusy();

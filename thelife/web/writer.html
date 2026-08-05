@@ -28,12 +28,34 @@
      완성하면 이 설명서가 <b>완결까지 모든 회차의 절대 기준</b>이 됩니다.</p>
 
   <div class="bd-sec">
-    <div class="story-h">기본</div>
+    <div class="story-h">기본 <small class="dim">(<span class="req">*</span>는 필수)</small></div>
     <div class="form">
-      <div class="row2">
-        <input id="bd-title" placeholder="제목 (비우면 지어드려요)">
-        <input id="bd-genre" placeholder="장르 (예: 현대 판타지, 회귀, 로맨스, 무협)">
-      </div>
+      <input id="bd-title" placeholder="제목 (비우면 지어드려요)">
+      <label class="bd-field"><span>장르 <span class="req">*</span></span>
+        <select id="bd-genre-sel">
+          <option value="">장르 선택</option>
+          <option>현대 판타지</option>
+          <option>로맨스 판타지</option>
+          <option>로맨스</option>
+          <option>정통 판타지</option>
+          <option>무협</option>
+          <option>현대물(현대 배경)</option>
+          <option>회귀·환생·빙의</option>
+          <option>게임 판타지·가상현실</option>
+          <option>헌터·각성물</option>
+          <option>아카데미·학원</option>
+          <option>실용·전문직</option>
+          <option>미스터리·스릴러</option>
+          <option>SF·과학</option>
+          <option>대체역사·전쟁</option>
+          <option>드라마·일상</option>
+          <option>공포·호러</option>
+          <option>사극·시대극</option>
+          <option>BL</option>
+          <option>GL</option>
+          <option>기타(직접 입력)</option>
+        </select></label>
+      <input id="bd-genre-other" class="hidden" placeholder="장르 직접 입력">
       <div class="row2">
         <label class="bd-field"><span>총 회차</span>
           <input id="bd-total" type="number" value="25" min="5" max="200"></label>
@@ -50,20 +72,27 @@
     </div>
   </div>
 
-  <div class="ai-row">
-    <button id="bd-ai-draft" class="ai-btn">✨ AI 초안 생성
-      <small>이미 쓴 칸은 그대로, 빈 칸만 채워요. 다시 짓고 싶은 칸은 비우고 다시 누르세요</small></button>
-    <button id="bd-ai-redraft" class="ai-btn subtle">🔄 전부 새로
-      <small>초안 부분을 비우고 처음부터 다시 (로그라인·결말·표본은 유지)</small></button>
-  </div>
-
   <div class="bd-sec">
-    <div class="story-h">로그라인 · 기획 의도</div>
+    <div class="story-h">로그라인 <span class="req">*</span></div>
     <div class="form">
-      <textarea id="bd-logline" rows="2" placeholder="로그라인 — 한두 문장 (예: 밑바닥 헌터가 계약 능력으로 정점에 오른다)"></textarea>
-      <textarea id="bd-intent" rows="2" placeholder="기획 의도 (선택) — 독자·재미 포인트"></textarea>
+      <textarea id="bd-logline" rows="2" placeholder="한두 문장으로 작품의 핵심 (예: 밑바닥 헌터가 계약 능력으로 정점에 오른다)"></textarea>
     </div>
   </div>
+  <div class="bd-sec">
+    <div class="story-h">기획 의도 <span class="req">*</span></div>
+    <div class="form">
+      <textarea id="bd-intent" rows="2" placeholder="이 작품으로 무엇을 보여주려는가 — 독자·재미 포인트 (예: 약자가 규칙을 뒤집는 쾌감)"></textarea>
+    </div>
+  </div>
+
+  <div class="bd-detail-head">
+    <div class="story-h" style="margin:0">상세 설정</div>
+    <button id="bd-ai-draft" class="ai-btn compact">✨ AI로 설정하기</button>
+  </div>
+  <p class="hint" style="margin:0 0 6px">아래 상세 설정(세계관·인물·고유명사·문체·결말)을 AI가 모두 창작합니다.
+     이미 채운 칸은 그대로 두고 빈 칸만 채워요.</p>
+  <button id="bd-ai-redraft" class="ai-btn subtle" style="margin-bottom:6px">🔄 전부 새로
+    <small>상세 설정을 비우고 처음부터 다시 (로그라인·결말·표본은 유지)</small></button>
 
   <div class="bd-sec">
     <div class="story-h">세계관</div>
@@ -76,6 +105,7 @@
 
   <div class="bd-sec">
     <div class="story-h">주인공</div>
+    <p class="wns-help"><b>욕망</b> 겉으로 쫓는 목표(하려는 일) · <b>결핍</b> 속으로 진짜 필요한 것(본인도 모를 수 있음) · <b>비밀</b> 숨기는 것(밝혀지면 판이 흔들림)</p>
     <div class="form">
       <div class="row3">
         <input id="bd-p-name" placeholder="이름">
@@ -84,16 +114,17 @@
       </div>
       <input id="bd-p-personality" placeholder="성격">
       <div class="row2">
-        <input id="bd-p-want" placeholder="욕망(want) — 겉으로 쫓는 것">
-        <input id="bd-p-need" placeholder="결핍(need) — 진짜 필요한 것">
+        <input id="bd-p-want" placeholder="욕망 — 겉으로 쫓는 것">
+        <input id="bd-p-need" placeholder="결핍 — 진짜 필요한 것">
       </div>
-      <input id="bd-p-secret" placeholder="비밀 (선택)">
+      <input id="bd-p-secret" placeholder="비밀 (선택) — 숨기는 것">
       <input id="bd-p-arc" placeholder="성장 아크 (선택) — 어떻게 변해가는가">
     </div>
   </div>
 
   <div class="bd-sec">
     <div class="story-h">등장인물</div>
+    <p class="wns-help"><b>욕망</b> 겉으로 쫓는 것 · <b>결핍</b> 진짜 필요한 것 · <b>비밀</b> 숨기는 것. 역할·관계는 목록에서 고르고, 없으면 '기타'로 직접 입력하세요.</p>
     <div id="bd-chars"></div>
     <button id="bd-add-char" class="ghost small">＋ 인물 추가</button>
   </div>
@@ -107,8 +138,27 @@
   <div class="bd-sec">
     <div class="story-h">문체</div>
     <div class="form">
-      <input id="bd-style" placeholder="문체 지침 (예: 건조하고 빠르게 / 서정적이고 묘사 짙게)">
-      <textarea id="bd-sample" rows="4" placeholder="문체 표본 (선택 · 300자 이상) — 이 결을 학습해서 씁니다"></textarea>
+      <label class="bd-field"><span>문체 선택</span>
+        <select id="bd-style-sel">
+          <option value="">문체 선택 (또는 아래 표본 붙여넣기)</option>
+          <option>간결하고 빠른 전개 (사이다 중심)</option>
+          <option>묘사가 풍부하고 서정적</option>
+          <option>건조하고 하드보일드</option>
+          <option>유머러스하고 경쾌한</option>
+          <option>진중하고 무게감 있는</option>
+          <option>감성적이고 섬세한</option>
+          <option>고전적·문어체 (사극·무협 톤)</option>
+          <option>담백하고 담담한</option>
+          <option>화려하고 극적인</option>
+          <option>다크하고 냉혹한</option>
+          <option>따뜻하고 다정한</option>
+          <option>긴장감 있는 스릴러체</option>
+          <option>1인칭 몰입형</option>
+          <option>구어체·가벼운 웹소설체</option>
+          <option>기타(직접 입력)</option>
+        </select></label>
+      <input id="bd-style-other" class="hidden" placeholder="문체 직접 입력">
+      <textarea id="bd-sample" rows="4" placeholder="문체 표본 (선택 · 300자 이상) — 붙여넣으면 그 결을 학습해서 씁니다"></textarea>
     </div>
   </div>
 
