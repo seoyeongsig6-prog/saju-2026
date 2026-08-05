@@ -228,7 +228,9 @@ textarea { width: 100%; font-family: inherit; resize: vertical; line-height: 1.6
 .ed-body { flex: 1; min-height: 55vh; line-height: 1.95; font-size: 15.5px;
   background: var(--panel); border-radius: var(--radius); }
 .ed-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.ed-actions button { flex: 1; min-width: 90px; }
+.ed-actions button { flex: 1; min-width: 88px; white-space: nowrap; }
+.ed-nav { flex-basis: 100% !important; background: var(--panel2); border: 1px solid var(--line);
+  color: var(--text); font-weight: 700; }
 
 /* ===== 작품설명서 상세 빌더 ===== */
 .build-cta {
