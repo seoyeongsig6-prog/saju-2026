@@ -31,7 +31,23 @@ function view(id) {
   ["w-home", "w-build", "w-work", "w-editor"].forEach((v) =>
     $(`#${v}`).classList.toggle("hidden", v !== id));
 }
-function notice(t) { $("#notice-text").textContent = t; $("#notice").classList.remove("hidden"); }
+function notice(t) {
+  $("#notice-text").textContent = t;
+  $("#notice-undo").classList.add("hidden");
+  $("#notice").classList.remove("hidden");
+}
+/* 삭제 후 되돌리기 — onUndo를 실행하는 버튼이 함께 뜬다 */
+function noticeUndo(t, onUndo) {
+  $("#notice-text").textContent = t;
+  const u = $("#notice-undo");
+  u.classList.remove("hidden");
+  u.onclick = async () => {
+    u.classList.add("hidden");
+    $("#notice").classList.add("hidden");
+    await onUndo();
+  };
+  $("#notice").classList.remove("hidden");
+}
 $("#notice-close").onclick = () => $("#notice").classList.add("hidden");
 function busy(t) { $("#busy-text").textContent = t; $("#busy").classList.remove("hidden"); }
 function unbusy() { $("#busy").classList.add("hidden"); }
@@ -55,9 +71,17 @@ async function showHome() {
   });
 }
 async function delWork(id, title) {
-  if (!confirm(`『${title}』을(를) 삭제할까요? 되돌릴 수 없어요.`)) return;
-  await api(`/api/writer/works/${id}`, { method: "DELETE" });
-  showHome();
+  if (!confirm(`『${title}』을(를) 삭제할까요?`)) return;
+  const r = await api(`/api/writer/works/${id}`, { method: "DELETE" });
+  await showHome();
+  if (r && r.undo) {
+    noticeUndo(`『${title}』을(를) 삭제했어요.`, async () => {
+      const rr = await api(`/api/writer/trash/${r.undo}/restore`, { method: "POST" });
+      if (!rr.ok) { notice(rr.error || "되돌리기 실패"); return; }
+      await showHome();
+      notice("되돌렸어요.");
+    });
+  }
 }
 /* ---------- 새 작품 = 작품설명서 빌더로 바로 ---------- */
 const bdVal = (id) => $("#" + id).value.trim();
@@ -812,9 +836,18 @@ $("#ed-regen").onclick = async () => {
 };
 $("#ed-del").onclick = async () => {
   if (!confirm("이 회차를 삭제할까요?")) return;
+  const wid = WORK.id;
   const r = await api(`/api/writer/chapters/${CHAPTER.id}`, { method: "DELETE" });
   if (!r.ok) { notice(r.error); return; }
-  openWork(WORK.id);
+  await openWork(wid);
+  if (r.undo) {
+    noticeUndo("회차를 삭제했어요.", async () => {
+      const rr = await api(`/api/writer/trash/${r.undo}/restore`, { method: "POST" });
+      if (!rr.ok) { notice(rr.error || "되돌리기 실패"); return; }
+      await openWork(wid);
+      notice("되돌렸어요.");
+    });
+  }
 };
 
 showHome();

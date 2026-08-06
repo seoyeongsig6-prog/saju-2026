@@ -114,6 +114,8 @@ body.writer .modal-card {
   border-radius: 20px; box-shadow: var(--shadow-lg);
 }
 body.writer .notice-text { color: var(--text); }
+.notice-actions { display: flex; gap: 8px; }
+.notice-actions button { flex: 1; }
 
 /* ===== 레이아웃 ===== */
 .wview { min-height: 100vh; display: flex; flex-direction: column; padding: 30px 18px 44px; gap: 15px; }

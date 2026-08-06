@@ -9,6 +9,7 @@
 import io
 import json
 import re
+import uuid
 
 from fastapi import APIRouter, File, Form, Header, UploadFile
 from pydantic import BaseModel
@@ -1312,29 +1313,79 @@ def edit_chapter(chapter_id: int, body: EditBody,
     return {"ok": True}
 
 
+def _stash(c, kind: str, user: str, data: dict) -> str:
+    """삭제한 데이터를 휴지통(kv)에 보관하고 되돌리기 토큰을 돌려준다."""
+    token = uuid.uuid4().hex[:12]
+    db.kv_set(c, f"trash:{token}",
+              json.dumps({"kind": kind, "user": user, **data}, ensure_ascii=False))
+    return token
+
+
+def _insert_row(c, table: str, row: dict, override: dict = None) -> int:
+    """dict 한 줄을 그대로 되살린다 (id는 새로 발급)."""
+    d = {k: v for k, v in row.items() if k != "id"}
+    if override:
+        d.update(override)
+    cols = list(d.keys())
+    ph = ",".join("?" * len(cols))
+    return c.insert_id(f"INSERT INTO {table} ({','.join(cols)}) VALUES ({ph})",
+                       tuple(d[k] for k in cols))
+
+
 @router.delete("/chapters/{chapter_id}")
 def delete_chapter(chapter_id: int, user: str = Header(default="solo", alias="X-User-Id")):
-    """마지막 회차만 삭제 가능 — 중간을 비우면 기억이 끊긴다."""
+    """마지막 회차만 삭제 가능 — 중간을 비우면 기억이 끊긴다. 되돌리기 토큰을 준다."""
     with db.connect() as c:
-        r = c.execute(
+        own = c.execute(
             "SELECT ch.no, ch.work_id FROM chapters ch JOIN works w ON w.id = ch.work_id "
             "WHERE ch.id=? AND w.user_id=?", (chapter_id, user)).fetchone()
-        if not r:
+        if not own:
             return {"ok": False, "error": "회차를 찾을 수 없어요."}
         last = c.execute("SELECT MAX(no) AS m FROM chapters WHERE work_id=?",
-                         (r["work_id"],)).fetchone()["m"]
-        if r["no"] != last:
+                         (own["work_id"],)).fetchone()["m"]
+        if own["no"] != last:
             return {"ok": False, "error": "마지막 회차만 지울 수 있어요."}
+        row = dict(c.execute("SELECT * FROM chapters WHERE id=?", (chapter_id,)).fetchone())
+        token = _stash(c, "chapter", user, {"chapter": row})
         c.execute("DELETE FROM chapters WHERE id=?", (chapter_id,))
-    return {"ok": True}
+    return {"ok": True, "undo": token}
 
 
 @router.delete("/works/{work_id}")
 def delete_work(work_id: int, user: str = Header(default="solo", alias="X-User-Id")):
     with db.connect() as c:
-        if not c.execute("SELECT id FROM works WHERE id=? AND user_id=?",
-                         (work_id, user)).fetchone():
+        w = c.execute("SELECT * FROM works WHERE id=? AND user_id=?", (work_id, user)).fetchone()
+        if not w:
             return {"ok": False, "error": "작품을 찾을 수 없어요."}
+        chapters = [dict(x) for x in c.execute(
+            "SELECT * FROM chapters WHERE work_id=? ORDER BY no", (work_id,)).fetchall()]
+        token = _stash(c, "work", user, {"work": dict(w), "chapters": chapters})
         c.execute("DELETE FROM chapters WHERE work_id=?", (work_id,))
         c.execute("DELETE FROM works WHERE id=?", (work_id,))
-    return {"ok": True}
+    return {"ok": True, "undo": token}
+
+
+@router.post("/trash/{token}/restore")
+def restore_trash(token: str, user: str = Header(default="solo", alias="X-User-Id")):
+    """방금 삭제한 회차/작품을 되살린다."""
+    with db.connect() as c:
+        raw = db.kv_get(c, f"trash:{token}", "")
+        if not raw:
+            return {"ok": False, "error": "되돌릴 항목이 없어요 (이미 되돌렸거나 만료됐어요)."}
+        data = json.loads(raw)
+        if data.get("user") != user:
+            return {"ok": False, "error": "권한이 없어요."}
+        if data["kind"] == "chapter":
+            ch = data["chapter"]
+            if not c.execute("SELECT id FROM works WHERE id=? AND user_id=?",
+                             (ch.get("work_id"), user)).fetchone():
+                return {"ok": False, "error": "이 회차가 속한 작품이 사라졌어요."}
+            _insert_row(c, "chapters", ch)
+            out = {"ok": True, "kind": "chapter", "work_id": ch.get("work_id")}
+        else:
+            new_wid = _insert_row(c, "works", data["work"], override={"user_id": user})
+            for ch in data.get("chapters", []):
+                _insert_row(c, "chapters", ch, override={"work_id": new_wid})
+            out = {"ok": True, "kind": "work", "id": new_wid}
+        db.kv_set(c, f"trash:{token}", "")  # 되돌린 뒤엔 소비
+    return out
