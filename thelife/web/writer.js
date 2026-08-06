@@ -127,6 +127,34 @@ wireOther($("#bd-style-sel"), $("#bd-style-other"));
 const bdGenre = () => getOtherSelect($("#bd-genre-sel"), $("#bd-genre-other"));
 const bdStyle = () => getOtherSelect($("#bd-style-sel"), $("#bd-style-other"));
 
+/* ✕ 삭제 → 되돌리기 (빌더 행: 인물·고유명사·회차) */
+function readChar(r) {
+  return {
+    name: r.querySelector(".c-name").value,
+    role: getOtherSelect(r.querySelector(".c-role"), r.querySelector(".c-role-other")),
+    relation: getOtherSelect(r.querySelector(".c-rel"), r.querySelector(".c-rel-other")),
+    want: r.querySelector(".c-want").value, need: r.querySelector(".c-need").value,
+    secret: r.querySelector(".c-secret").value,
+  };
+}
+const readCanonRow = (r) => ({ name: r.querySelector(".cn-name").value, desc: r.querySelector(".cn-desc").value });
+const readOutlineRow = (r) => ({
+  no: Number(r.querySelector(".o-no").value) || "", title: r.querySelector(".o-title").value,
+  content: r.querySelector(".o-content").value,
+});
+function removeRowUndo(el, boxId, reader, adder, label) {
+  const box = $(boxId);
+  const idx = [...box.children].indexOf(el);
+  const data = reader(el);
+  el.remove();
+  noticeUndo(`${label}을(를) 삭제했어요.`, () => {
+    adder(data);
+    const added = box.lastElementChild;
+    const ref = box.children[idx];
+    if (ref && ref !== added) box.insertBefore(added, ref);
+  });
+}
+
 function bdAddChar(d = {}) {
   const el = document.createElement("div");
   el.className = "bd-char-row";
@@ -148,7 +176,7 @@ function bdAddChar(d = {}) {
   el.querySelector(".c-secret").value = d.secret || "";
   wireOther(el.querySelector(".c-role"), el.querySelector(".c-role-other"));
   wireOther(el.querySelector(".c-rel"), el.querySelector(".c-rel-other"));
-  el.querySelector(".row-del").onclick = () => el.remove();
+  el.querySelector(".row-del").onclick = () => removeRowUndo(el, "#bd-chars", readChar, bdAddChar, "인물");
   $("#bd-chars").appendChild(el);
 }
 
@@ -159,7 +187,7 @@ function bdAddCanon(d = {}) {
     <div class="row2"><input class="cn-name" placeholder="이름"><input class="cn-desc" placeholder="설명 (선택)"></div>`;
   el.querySelector(".cn-name").value = d.name || "";
   el.querySelector(".cn-desc").value = d.desc || "";
-  el.querySelector(".row-del").onclick = () => el.remove();
+  el.querySelector(".row-del").onclick = () => removeRowUndo(el, "#bd-canon", readCanonRow, bdAddCanon, "고유명사");
   $("#bd-canon").appendChild(el);
 }
 
@@ -172,7 +200,7 @@ function bdAddOutline(d = {}) {
   el.querySelector(".o-no").value = d.no || "";
   el.querySelector(".o-title").value = d.title || "";
   el.querySelector(".o-content").value = d.content || "";
-  el.querySelector(".row-del").onclick = () => el.remove();
+  el.querySelector(".row-del").onclick = () => removeRowUndo(el, "#bd-outline", readOutlineRow, bdAddOutline, "회차");
   $("#bd-outline").appendChild(el);
 }
 
@@ -570,9 +598,18 @@ function renderCanon() {
     row.innerHTML = `<b>${k}</b>${canon[k] ? ` — <span>${canon[k]}</span>` : ""}
       <button class="del" title="삭제">✕</button>`;
     row.querySelector(".del").onclick = async () => {
+      const val = canon[k];
       await api(`/api/writer/works/${WORK.id}/canon/${encodeURIComponent(k)}`, { method: "DELETE" });
       delete WORK.canon[k];
       renderCanon();
+      noticeUndo(`'${k}'을(를) 사전에서 지웠어요.`, async () => {
+        const r = await api(`/api/writer/works/${WORK.id}/canon`, {
+          method: "POST", body: JSON.stringify({ name: k, value: val }),
+        });
+        if (!r.ok) { notice(r.error || "되돌리기 실패"); return; }
+        WORK.canon = r.canon;
+        renderCanon();
+      });
     };
     box.appendChild(row);
   });
