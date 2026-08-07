@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="/static/style.css">
 <link rel="stylesheet" href="/static/writer.css">
 </head>
-<body class="writer">
+<body class="writer launch">
 <button id="theme-toggle" class="theme-toggle" title="화면 색 바꾸기" aria-label="테마 전환">🌙</button>
 
 <!-- 작품 목록 -->
@@ -203,7 +203,7 @@
     </div>
     <div id="plot-panel" class="plot-panel hidden"></div>
     <div id="ch-list" class="ch-list"></div>
-    <div class="write-box">
+    <div id="ch-write-box" class="write-box">
       <input id="directive" placeholder="작가의 지시 (선택 — 예: 이번 화에서 멘토의 비밀이 드러난다)">
       <button id="btn-write" class="primary">다음 회차 쓰기 ✍</button>
     </div>
@@ -211,11 +211,11 @@
 
   <!-- 설정집 탭 -->
   <div id="wt-bible" class="wtabpane hidden">
-    <div class="write-box" style="margin:0 0 16px">
+    <div id="revise-box" class="write-box" style="margin:0 0 16px">
       <input id="bible-cmd" placeholder="설정 수정 명령 (예: 주인공 이름을 ○○로 바꿔 / 여주인공을 추가해)">
       <button id="bible-revise" class="primary">명령대로 설정 고치기</button>
     </div>
-    <div class="write-box" style="margin:0 0 16px">
+    <div id="rename-box" class="write-box" style="margin:0 0 16px">
       <div class="story-h" style="margin:0 0 4px">이름·고유명사 일괄 변경 <small class="dim">(이미 쓴 회차 본문까지 그대로 반영)</small></div>
       <div class="row2">
         <input id="rename-old" placeholder="바꿀 이름 (예: 강도현)">

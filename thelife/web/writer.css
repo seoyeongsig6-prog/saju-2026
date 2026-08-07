@@ -176,6 +176,12 @@ textarea { width: 100%; font-family: inherit; resize: vertical; line-height: 1.6
 .ch-item small { margin-left: auto; color: var(--dim); font-size: 11.5px; }
 .write-box { display: flex; flex-direction: column; gap: 9px; margin-top: 16px; }
 
+/* 판매용 런치 버전 — 본문 집필 관련 UI 숨김 */
+body.launch #ch-write-box,
+body.launch #btn-rewrite-all,
+body.launch #revise-box,
+body.launch #rename-box { display: none !important; }
+
 .ch-toolbar { display: flex; gap: 8px; margin-bottom: 10px; }
 .ch-toolbar button { flex: 1; }
 .plot-panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);

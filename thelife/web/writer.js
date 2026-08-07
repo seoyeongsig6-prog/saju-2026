@@ -16,6 +16,17 @@ const api = async (path, opts = {}) => {
 
 let WORK = null, CHAPTER = null;
 
+/* 판매용 런치 버전 여부 — 서버 플래그. 기본은 런치(본문 집필 숨김)로 시작하고,
+   전체 기능(WRITER_LAUNCH_MODE=0)이면 서버 확인 후 본문 UI를 되살린다. */
+let LAUNCH = true;
+(async () => {
+  try {
+    const cfg = await api("/api/writer/config");
+    LAUNCH = !!(cfg && cfg.launch_mode);
+    if (cfg && cfg.writing_enabled) document.body.classList.remove("launch");
+  } catch (e) { /* 실패 시 런치 기본 유지 */ }
+})();
+
 /* ---------- 테마 (밝게/어둡게 — 기본 밝게) ---------- */
 function applyTheme(t) {
   document.body.dataset.theme = t;
@@ -375,8 +386,11 @@ function renderChapters() {
   box.innerHTML = "";
   const written = WORK.chapters.length;
   if (!written) {
-    box.innerHTML = `<p class="hint">아직 첫 회차가 없어요. 아래 '다음 회차 쓰기'로 1화를 시작하세요.<br>
-      아래 '예정 회차'의 계획을 눌러 미리 각 화 줄거리를 짜둘 수 있어요.</p>`;
+    box.innerHTML = LAUNCH
+      ? `<p class="hint">각 화 줄거리를 아래 '예정 회차'에서 직접 짜거나,<br>
+         설정집의 'AI 회차 전개 생성'으로 1화부터 한 번에 만들 수 있어요.</p>`
+      : `<p class="hint">아직 첫 회차가 없어요. 아래 '다음 회차 쓰기'로 1화를 시작하세요.<br>
+         아래 '예정 회차'의 계획을 눌러 미리 각 화 줄거리를 짜둘 수 있어요.</p>`;
   }
   WORK.chapters.forEach((ch) => {
     const el = document.createElement("button");

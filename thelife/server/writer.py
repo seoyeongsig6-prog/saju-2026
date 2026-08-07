@@ -8,6 +8,7 @@
 """
 import io
 import json
+import os
 import re
 import uuid
 
@@ -19,6 +20,17 @@ from .engine.world import parse_llm_json
 from .llm import llm
 
 router = APIRouter(prefix="/api/writer")
+
+# 판매용 런치 버전 — 소설 '본문 집필'과 거기 딸린 기능을 끈다.
+# 환경변수 WRITER_LAUNCH_MODE=0 이면 전체 기능(본문 집필 포함)이 다시 켜진다.
+LAUNCH_MODE = os.environ.get("WRITER_LAUNCH_MODE", "1") != "0"
+_LAUNCH_OFF = {"ok": False, "error": "이 버전에서는 제공하지 않는 기능이에요."}
+
+
+@router.get("/config")
+def writer_config():
+    """앱이 시작할 때 어떤 기능이 켜져 있는지 알려준다."""
+    return {"launch_mode": LAUNCH_MODE, "writing_enabled": not LAUNCH_MODE}
 
 BEATS = [
     "오프닝 이미지", "주제 제시", "설정", "계기(촉발 사건)", "고민",
@@ -853,6 +865,8 @@ def rename_term(work_id: int, body: RenameBody,
                 user: str = Header(default="solo", alias="X-User-Id")):
     """이름·고유명사 일괄 변경 — 설정집은 물론 '이미 쓴 모든 회차 본문'까지 그대로 반영한다.
     이야기를 흔드는 고유명사(인명·지명·조직명 등)는 앞 내용까지 함께 바뀌어야 하므로 전역 치환한다."""
+    if LAUNCH_MODE:
+        return _LAUNCH_OFF
     old, new = body.old.strip(), body.new.strip()
     if not old or not new:
         return {"ok": False, "error": "바꿀 이름과 새 이름을 모두 입력해 주세요."}
@@ -932,6 +946,8 @@ class ReviseBody(BaseModel):
 def revise_bible(work_id: int, body: ReviseBody,
                  user: str = Header(default="solo", alias="X-User-Id")):
     """명령으로 설정집 수정 — '주인공 이름을 이홍위로 바꿔' 한 줄이면 된다."""
+    if LAUNCH_MODE:
+        return _LAUNCH_OFF
     directive = body.directive.strip()
     if not directive:
         return {"ok": False, "error": "무엇을 고칠지 알려주세요."}
@@ -1198,6 +1214,8 @@ def _generate_full_chapter(w: dict, no: int, beat: dict, prev: list, directive: 
 @router.post("/works/{work_id}/chapters")
 def write_chapter(work_id: int, body: ChapterBody,
                   user: str = Header(default="solo", alias="X-User-Id")):
+    if LAUNCH_MODE:
+        return _LAUNCH_OFF
     with db.connect() as c:
         w = _load_work(c, work_id, user)
         if not w:
@@ -1271,6 +1289,8 @@ def _continue_prompt(w: dict, no: int, beat: dict, body_so_far: str, directive: 
 @router.post("/chapters/{chapter_id}/regenerate")
 def regen_chapter(chapter_id: int, body: ChapterBody,
                   user: str = Header(default="solo", alias="X-User-Id")):
+    if LAUNCH_MODE:
+        return _LAUNCH_OFF
     with db.connect() as c:
         r = c.execute(
             "SELECT ch.no, ch.work_id FROM chapters ch JOIN works w ON w.id = ch.work_id "
