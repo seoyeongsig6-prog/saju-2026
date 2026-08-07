@@ -25,10 +25,13 @@ let LAUNCH = true, TIER = "free", LIMITS = null, TIERS_INFO = null, EXPIRES = nu
     LAUNCH = !!(cfg && cfg.launch_mode);
     if (cfg && cfg.writing_enabled) document.body.classList.remove("launch");
     if (cfg) { TIER = cfg.tier || "free"; LIMITS = cfg.limits; TIERS_INFO = cfg.tiers; EXPIRES = cfg.expires_at; }
-    renderPlanBar();
     Ads.refresh();
   } catch (e) { /* 실패 시 런치 기본 유지 */ }
 })();
+
+/* ---------- 설정 화면 ---------- */
+function showSettings() { view("w-settings"); renderSettingsPlan(); renderThemeSeg(); }
+$("#btn-settings").onclick = showSettings;
 
 /* 설정 — 데이터 내보내기 / 계정 삭제 (스토어 정책상 앱 내 필수) */
 $("#btn-export").onclick = async () => {
@@ -50,9 +53,9 @@ $("#btn-delacc").onclick = async () => {
   showHome();
 };
 
-/* 요금제 바 (홈) — 현재 플랜 + 상한 표시 + 미리보기 전환(추후 애플 IAP로 대체) */
-function renderPlanBar() {
-  const bar = $("#plan-bar");
+/* 요금제 (설정 화면) — 현재 플랜 + 상한 + 업그레이드(런치) / 미리보기 전환(개발) */
+function renderSettingsPlan() {
+  const bar = $("#settings-plan");
   if (!bar || !LIMITS || !TIERS_INFO) return;
   const L = LIMITS;
   const works = L.max_works >= 100000 ? "무제한" : L.max_works + "개";
@@ -70,7 +73,7 @@ function renderPlanBar() {
   bar.querySelectorAll(".plan-switch button").forEach((b) => {
     b.onclick = async () => {
       const r = await api("/api/writer/tier", { method: "POST", body: JSON.stringify({ tier: b.dataset.tier }) });
-      if (r.ok) { TIER = r.tier; LIMITS = r.limits; renderPlanBar(); Ads.refresh(); }
+      if (r.ok) { TIER = r.tier; LIMITS = r.limits; renderSettingsPlan(); Ads.refresh(); }
       else notice(r.error || "변경할 수 없어요.");
     };
   });
@@ -107,19 +110,24 @@ const Ads = {
 };
 $("#ad-upsell").onclick = () => { showHome(); notice("라이트·프로 요금제로 올리면 광고가 사라지고 더 많은 회차·인물을 생성할 수 있어요."); };
 
-/* ---------- 테마 (밝게/어둡게 — 기본 밝게) ---------- */
+/* ---------- 테마 (밝게/어둡게 — 기본 밝게, 설정 화면에서 전환) ---------- */
 function applyTheme(t) {
   document.body.dataset.theme = t;
   localStorage.setItem("thelife_theme", t);
-  const b = $("#theme-toggle");
-  if (b) b.textContent = t === "dark" ? "☀️" : "🌙";
+  renderThemeSeg();
+}
+function renderThemeSeg() {
+  const seg = $("#theme-seg");
+  if (!seg) return;
+  const cur = document.body.dataset.theme || "light";
+  seg.innerHTML = [["light", "밝게"], ["dark", "어둡게"]]
+    .map(([v, l]) => `<button data-th="${v}" class="${cur === v ? "on" : ""}">${l}</button>`).join("");
+  seg.querySelectorAll("button").forEach((b) => { b.onclick = () => applyTheme(b.dataset.th); });
 }
 applyTheme(localStorage.getItem("thelife_theme") || "light");
-$("#theme-toggle").onclick = () =>
-  applyTheme(document.body.dataset.theme === "dark" ? "light" : "dark");
 
 function view(id) {
-  ["w-home", "w-build", "w-work", "w-editor"].forEach((v) =>
+  ["w-home", "w-settings", "w-build", "w-work", "w-editor"].forEach((v) =>
     $(`#${v}`).classList.toggle("hidden", v !== id));
 }
 function notice(t) {
@@ -149,7 +157,9 @@ async function showHome() {
   const d = await api("/api/writer/works");
   const box = $("#w-list");
   box.innerHTML = "";
-  (d.works || []).forEach((w) => {
+  const works = d.works || [];
+  $("#w-empty").classList.toggle("hidden", works.length > 0);
+  works.forEach((w) => {
     const el = document.createElement("button");
     el.className = "w-item";
     el.innerHTML = `<span class="del" data-id="${w.id}">✕</span><b>${w.title}</b>

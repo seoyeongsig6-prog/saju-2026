@@ -8,26 +8,34 @@
 <link rel="stylesheet" href="/static/writer.css">
 </head>
 <body class="writer launch">
-<button id="theme-toggle" class="theme-toggle" title="화면 색 바꾸기" aria-label="테마 전환">🌙</button>
 
-<!-- 작품 목록 -->
+<!-- 홈 (내 작품) -->
 <div id="w-home" class="wview">
-  <div class="w-hero">
-    <h1>The Novelist</h1>
-    <p class="tagline">결말을 정하라. 이야기는 그곳으로 흐른다.</p>
+  <div class="app-bar">
+    <div class="app-brand">The Novelist</div>
+    <button id="btn-settings" class="icon-btn" aria-label="설정" title="설정">⚙</button>
   </div>
-  <div id="plan-bar" class="plan-bar"></div>
   <div id="w-list" class="w-list"></div>
-  <button id="w-new" class="primary big">＋ 새 작품 설계</button>
-  <div class="home-foot">
-    <button id="btn-export" class="linkish">데이터 내보내기</button>
-    <span class="foot-sep">·</span>
-    <button id="btn-delacc" class="linkish danger">계정 삭제</button>
-    <span class="foot-sep">·</span>
-    <a href="/privacy" target="_blank" rel="noopener">개인정보처리방침</a>
-    <span class="foot-sep">·</span>
-    <a href="/terms" target="_blank" rel="noopener">이용약관</a>
+  <div id="w-empty" class="w-empty hidden">
+    <p>아직 작품이 없어요.</p>
+    <small>아래 버튼으로 첫 작품을 설계해 보세요.</small>
   </div>
+  <button id="w-new" class="primary big">＋ 새 작품 설계</button>
+</div>
+
+<!-- 설정 -->
+<div id="w-settings" class="wview hidden">
+  <div class="w-top"><button class="ghost small" onclick="showHome()">← 뒤로</button><b>설정</b></div>
+  <div class="story-h">요금제</div>
+  <div id="settings-plan"></div>
+  <div class="story-h">화면</div>
+  <div id="theme-seg" class="theme-seg"></div>
+  <div class="story-h">데이터</div>
+  <button id="btn-export" class="set-item">데이터 내보내기<small>내 작품 전체를 파일로 저장</small></button>
+  <button id="btn-delacc" class="set-item danger">계정 삭제<small>모든 데이터를 영구 삭제합니다</small></button>
+  <div class="story-h">정보</div>
+  <a class="set-item" href="/privacy" target="_blank" rel="noopener">개인정보처리방침</a>
+  <a class="set-item" href="/terms" target="_blank" rel="noopener">이용약관</a>
 </div>
 
 <!-- 작품설명서 상세 빌더 (새 작품 = 바로 이 페이지) -->
