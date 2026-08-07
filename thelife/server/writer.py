@@ -32,11 +32,14 @@ _LAUNCH_OFF = {"ok": False, "error": "이 버전에서는 제공하지 않는 �
 # 요금제 — 무료/라이트/프로. 질(회차 수·화당 줄거리 깊이·인물 수)로 차등한다.
 TIERS = {
     "free":  {"label": "무료", "max_chapters": 3,  "syn_chars": 100,
-              "max_characters": 3,  "max_works": 1,      "style_learning": False, "ads": True},
+              "max_characters": 3,  "max_works": 1,      "style_learning": False, "ads": True,
+              "price": "무료", "period": "", "tagline": "가볍게 시작하기", "badge": ""},
     "light": {"label": "라이트", "max_chapters": 20, "syn_chars": 250,
-              "max_characters": 7,  "max_works": 10,     "style_learning": False, "ads": False},
+              "max_characters": 7,  "max_works": 10,     "style_learning": False, "ads": False,
+              "price": "₩4,900", "period": "/월", "tagline": "본격 연재 기획", "badge": "인기"},
     "pro":   {"label": "프로", "max_chapters": 70, "syn_chars": 450,
-              "max_characters": 10, "max_works": 100000, "style_learning": True,  "ads": False},
+              "max_characters": 10, "max_works": 100000, "style_learning": True,  "ads": False,
+              "price": "₩9,900", "period": "/월", "tagline": "프로 작가용", "badge": "추천"},
 }
 
 

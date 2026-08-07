@@ -53,32 +53,86 @@ $("#btn-delacc").onclick = async () => {
   showHome();
 };
 
-/* 요금제 (설정 화면) — 현재 플랜 + 상한 + 업그레이드(런치) / 미리보기 전환(개발) */
+/* 요금제 (설정 화면) — 현재 플랜 요약 + '구독 플랜 보기·변경' 진입 */
 function renderSettingsPlan() {
   const bar = $("#settings-plan");
   if (!bar || !LIMITS || !TIERS_INFO) return;
   const L = LIMITS;
   const works = L.max_works >= 100000 ? "무제한" : L.max_works + "개";
-  const limLine = `AI 회차 ${L.max_chapters}화 · 화당 ${L.syn_chars}자 · 인물 ${L.max_characters}명 · 작품 ${works}${L.style_learning ? " · 문체학습" : ""}`;
-  // 판매(런치) 빌드: 개발용 티어 전환 버튼을 숨기고, 상위 플랜 안내만 보여준다.
-  const switcher = LAUNCH
-    ? (TIER === "pro" ? "" : `<button class="plan-upgrade" id="plan-up">더 많은 회차·인물 → 업그레이드</button>`)
-    : `<div class="plan-switch"><span class="dim">미리보기:</span>
-        ${["free", "light", "pro"].map((t) =>
-          `<button data-tier="${t}" class="${t === TIER ? "on" : ""}">${TIERS_INFO[t].label}</button>`).join("")}</div>`;
-  const expTxt = (LAUNCH && EXPIRES) ? ` <span class="plan-exp">~${String(EXPIRES).slice(0, 10)}까지</span>` : "";
+  const expTxt = EXPIRES ? ` <span class="plan-exp">~${String(EXPIRES).slice(0, 10)}까지</span>` : "";
   bar.innerHTML = `
-    <div class="plan-now">현재 플랜 <b>${L.label}</b>${expTxt}<span class="plan-lim">${limLine}</span></div>
-    ${switcher}`;
-  bar.querySelectorAll(".plan-switch button").forEach((b) => {
-    b.onclick = async () => {
-      const r = await api("/api/writer/tier", { method: "POST", body: JSON.stringify({ tier: b.dataset.tier }) });
-      if (r.ok) { TIER = r.tier; LIMITS = r.limits; renderSettingsPlan(); Ads.refresh(); }
-      else notice(r.error || "변경할 수 없어요.");
-    };
+    <div class="plan-now">현재 플랜 <b>${L.label}</b>${expTxt}
+      <span class="plan-lim">AI 회차 ${L.max_chapters}화 · 화당 ${L.syn_chars}자 · 인물 ${L.max_characters}명 · 작품 ${works}${L.style_learning ? " · 문체학습" : ""}</span></div>
+    <button class="plan-upgrade" id="see-plans">구독 플랜 보기 · 변경</button>`;
+  $("#see-plans").onclick = showPlans;
+}
+
+/* ---------- 구독 플랜 비교 화면 ---------- */
+const PLAN_ORDER = ["free", "light", "pro"];
+const EMBLEM = {
+  free: '<svg viewBox="0 0 48 48"><path d="M24 12c-9 0-15 6-15 15 9 0 15-6 15-15z"/><path d="M24 27v14" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/></svg>',
+  light: '<svg viewBox="0 0 48 48"><path d="M27 6L13 27h9l-3 15 16-21h-9z"/></svg>',
+  pro: '<svg viewBox="0 0 48 48"><path d="M8 34l-3-17 10 7 9-13 9 13 10-7-3 17z"/></svg>',
+};
+const EMBLEM_BG = {
+  free: "linear-gradient(135deg,#aeaacd,#8b88ad)",
+  light: "linear-gradient(135deg,#5aa0ea,#3f7fd0)",
+  pro: "var(--grad)",
+};
+const IC = {
+  book: '<svg viewBox="0 0 24 24"><path d="M4 5h6a2 2 0 0 1 2 2v13a2 2 0 0 0-2-2H4z"/><path d="M20 5h-6a2 2 0 0 0-2 2v13a2 2 0 0 1 2-2h6z"/></svg>',
+  pen: '<svg viewBox="0 0 24 24"><path d="M14 4l6 6M4.5 19.5l1-4L16 5l3 3L8.5 18.5z"/></svg>',
+  users: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path d="M16 5.6a3 3 0 0 1 0 5.8"/><path d="M20.5 20a5.5 5.5 0 0 0-3.4-5.1"/></svg>',
+  stack: '<svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg>',
+  spark: '<svg viewBox="0 0 24 24"><path d="M12 3l2.2 6L20 11l-5.8 2L12 19l-2.2-6L4 11l5.8-2z"/></svg>',
+  ban: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/></svg>',
+};
+function _feat(icon, label, val, off) {
+  return `<li class="${off ? "off" : ""}">${icon}<span>${label}</span><b>${val}</b></li>`;
+}
+function showPlans() { view("w-plans"); renderPlans(); }
+function renderPlans() {
+  const box = $("#plans-list");
+  if (!box || !TIERS_INFO) return;
+  box.innerHTML = PLAN_ORDER.map((t) => {
+    const P = TIERS_INFO[t];
+    const works = P.max_works >= 100000 ? "무제한" : P.max_works + "개";
+    const cur = t === TIER;
+    const feats = [
+      _feat(IC.book, "AI 회차 줄거리", P.max_chapters + "화"),
+      _feat(IC.pen, "화당 줄거리", P.syn_chars + "자"),
+      _feat(IC.users, "AI 인물 생성", P.max_characters + "명"),
+      _feat(IC.stack, "작품 수", works),
+      _feat(IC.spark, "문체 학습", P.style_learning ? "✓" : "—", !P.style_learning),
+      _feat(IC.ban, "광고 제거", P.ads ? "—" : "✓", P.ads),
+    ].join("");
+    const cta = cur
+      ? '<button class="plan-cta current" disabled>현재 플랜</button>'
+      : `<button class="plan-cta buy" data-tier="${t}">${t === "free" ? "무료로 전환" : P.label + " 선택"}</button>`;
+    return `<div class="plan-card ${t === "pro" ? "rec" : ""}">
+      ${P.badge ? `<span class="plan-badge">${P.badge}</span>` : ""}
+      <div class="plan-head">
+        <div class="plan-emblem" style="background:${EMBLEM_BG[t]}">${EMBLEM[t]}</div>
+        <div class="plan-title"><b>${P.label}</b><small>${P.tagline}</small></div>
+        <div class="plan-price">${P.price}<span>${P.period}</span></div>
+      </div>
+      <ul class="plan-feats">${feats}</ul>
+      ${cta}</div>`;
+  }).join("");
+  box.querySelectorAll(".plan-cta.buy").forEach((b) => { b.onclick = () => choosePlan(b.dataset.tier); });
+}
+function choosePlan(t) {
+  if (LAUNCH) {
+    notice("곧 앱에서 구독을 구매할 수 있어요.\n(App Store · Google Play 결제 연결 예정)");
+    return;
+  }
+  api("/api/writer/tier", { method: "POST", body: JSON.stringify({ tier: t }) }).then((r) => {
+    if (r.ok) {
+      TIER = r.tier; LIMITS = r.limits;
+      renderPlans(); renderSettingsPlan(); Ads.refresh();
+      notice(`${TIERS_INFO[t].label} 플랜으로 전환했어요.`);
+    } else notice(r.error || "변경할 수 없어요.");
   });
-  const up = $("#plan-up");
-  if (up) up.onclick = () => notice("라이트·프로로 올리면 더 많은 회차·인물을 생성하고 광고가 사라져요.\n(요금제 구매는 곧 앱에서 제공됩니다.)");
 }
 
 /* 광고 — 무료 요금제에서만. 실제 AdMob은 네이티브 래핑 단계에서 이 함수 안을 교체한다. */
@@ -127,7 +181,7 @@ function renderThemeSeg() {
 applyTheme(localStorage.getItem("thelife_theme") || "light");
 
 function view(id) {
-  ["w-home", "w-settings", "w-build", "w-work", "w-editor"].forEach((v) =>
+  ["w-home", "w-settings", "w-plans", "w-build", "w-work", "w-editor"].forEach((v) =>
     $(`#${v}`).classList.toggle("hidden", v !== id));
 }
 function notice(t) {
