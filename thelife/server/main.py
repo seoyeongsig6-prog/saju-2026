@@ -22,11 +22,14 @@ WEB = Path(__file__).resolve().parent.parent / "web"
 
 @app.exception_handler(Exception)
 async def debug_errors(request, exc):
-    """프로토타입 디버그 — 500 대신 원인을 그대로 보여준다 (베타 전 제거)."""
+    """오류 처리 — 판매(런치) 빌드에서는 내부 정보를 감추고, 개발 서버에서만 원인을 보여준다."""
     import traceback
     from fastapi.responses import JSONResponse
     tb = traceback.format_exc()
-    print(tb, flush=True)
+    print(tb, flush=True)  # 서버 로그에는 항상 남긴다
+    if writer.LAUNCH_MODE:  # 고객용 — 일반 메시지만
+        return JSONResponse(status_code=500, content={
+            "ok": False, "error": "잠시 문제가 생겼어요. 잠시 후 다시 시도해 주세요."})
     return JSONResponse(status_code=500, content={
         "ok": False,
         "error": "서버 오류 (아래 내용을 캡처해서 알려주세요)",

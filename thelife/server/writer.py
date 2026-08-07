@@ -6,6 +6,7 @@
 - 관계도: 인물 쌍마다 관계 유형과 긴장도
 작가가 지시하고, 고치고, 다시 쓴다 — 여기서는 조작이 전부다.
 """
+import datetime
 import io
 import json
 import os
@@ -48,6 +49,40 @@ def _limits(name: str) -> dict:
     return TIERS.get(name, TIERS["free"])
 
 
+# 하루 AI 호출 상한 — 비용 폭탄/남용 방지 안전망 (정상 사용엔 넉넉).
+AI_DAILY_CAP = {"free": 40, "light": 250, "pro": 800}
+
+
+def _ai_gate(c, user: str):
+    """AI 생성 1회를 차감·검사한다. (남은 게 없으면 False)"""
+    tier = _tier_name(c, user)
+    cap = AI_DAILY_CAP.get(tier, 40)
+    day = datetime.date.today().isoformat()
+    key = f"aiq:{user}:{day}"
+    used = int(db.kv_get(c, key, "0") or "0")
+    if used >= cap:
+        return False, cap
+    db.kv_set(c, key, str(used + 1))
+    return True, cap
+
+
+_AI_BUSY = {"ok": False, "error": "오늘 AI 생성 횟수를 다 썼어요. 내일 다시 시도하거나 요금제를 올려 주세요."}
+
+
+def _clamp(s: str, n: int) -> str:
+    return (s or "")[:n]
+
+
+def _cap_build(b: "BuildBody") -> None:
+    """과도한 입력으로 프롬프트가 비대해지는 걸 막는다 (비용·DoS 방지)."""
+    b.characters = (b.characters or [])[:30]
+    b.canon = (b.canon or [])[:60]
+    b.outline = (b.outline or [])[:210]
+    for f in ("logline", "intent", "world_setting", "world_rules", "taboos",
+              "style", "style_sample", "ending", "genre", "title", "keywords"):
+        setattr(b, f, _clamp(getattr(b, f, ""), 6000 if f in ("style_sample",) else 3000))
+
+
 @router.get("/config")
 def writer_config(user: str = Header(default="solo", alias="X-User-Id")):
     """앱이 시작할 때 기능·요금제 상태를 알려준다."""
@@ -63,7 +98,10 @@ class TierBody(BaseModel):
 
 @router.post("/tier")
 def set_tier(body: TierBody, user: str = Header(default="solo", alias="X-User-Id")):
-    """요금제 설정 — 지금은 미리보기/테스트용. 나중에 애플 IAP 영수증으로 대체된다."""
+    """요금제 설정 — 개발/미리보기 전용. 판매(런치) 빌드에서는 막혀 있고,
+    실제 요금제는 애플/구글 IAP 영수증 검증을 통해서만 부여된다."""
+    if LAUNCH_MODE:
+        return {"ok": False, "error": "요금제는 앱 내 구매로만 변경할 수 있어요."}
     t = body.tier if body.tier in TIERS else "free"
     with db.connect() as c:
         db.kv_set(c, f"tier:{user}", t)
@@ -549,18 +587,22 @@ def _assemble_brief(b: BuildBody) -> str:
 @router.post("/works/build")
 def build_work(b: BuildBody, user: str = Header(default="solo", alias="X-User-Id")):
     """상세 빌더로 만든 작품설명서로 설계도를 만들고 작품을 생성한다."""
+    _cap_build(b)
     brief = _assemble_brief(b)
     if not (b.logline.strip() or b.ending.strip()):
         return {"ok": False, "error": "최소한 로그라인이나 결말 중 하나는 있어야 이야기가 방향을 잡아요."}
     if len(brief) < 200:
         return {"ok": False, "error": "설명서 내용이 아직 짧아요. 세계관·주인공·결말 등을 더 채워주세요 (최소 200자)."}
-    with db.connect() as c:  # 요금제 작품 수 상한
+    with db.connect() as c:  # 요금제 작품 수 상한 + 하루 AI 상한
         lim = _limits(_tier_name(c, user))
         made = c.execute("SELECT COUNT(*) AS n FROM works WHERE user_id=?", (user,)).fetchone()["n"]
-    if made >= lim["max_works"]:
-        return {"ok": False,
-                "error": f"{lim['label']} 요금제에서는 작품을 {lim['max_works']}개까지 만들 수 있어요.",
-                "detail": "기존 작품을 지우거나 상위 요금제로 올려 주세요.", "limit": "works"}
+        if made >= lim["max_works"]:
+            return {"ok": False,
+                    "error": f"{lim['label']} 요금제에서는 작품을 {lim['max_works']}개까지 만들 수 있어요.",
+                    "detail": "기존 작품을 지우거나 상위 요금제로 올려 주세요.", "limit": "works"}
+        ok, _cap = _ai_gate(c, user)
+        if not ok:
+            return _AI_BUSY
     if llm.is_mock:
         return {"ok": False, "error": "AI가 연결되어 있지 않아 설계도를 만들 수 없어요.",
                 "detail": "API 키가 없거나 사용량 한도/잔액이 소진됐을 수 있어요 "
@@ -629,7 +671,11 @@ def draft_brief(b: BuildBody, user: str = Header(default="solo", alias="X-User-I
                 "detail": "API 키/사용량 한도를 확인해 주세요."}
     if not (b.logline.strip() or b.genre.strip() or b.keywords.strip()):
         return {"ok": False, "error": "장르·로그라인·키워드 중 하나는 알려주세요. 거기서 상세 기획을 지어드릴게요."}
+    _cap_build(b)
     with db.connect() as c:
+        ok, _cap = _ai_gate(c, user)
+        if not ok:
+            return _AI_BUSY
         maxc = _limits(_tier_name(c, user))["max_characters"]
     filled = _assemble_brief(b)
     schema = {
@@ -689,7 +735,11 @@ def draft_outline(b: BuildBody, user: str = Header(default="solo", alias="X-User
                 "detail": "API 키/사용량 한도를 확인해 주세요."}
     if not (b.logline.strip() or b.ending.strip() or b.world_setting.strip()):
         return {"ok": False, "error": "회차 전개를 짜려면 최소한 로그라인·세계관·결말 중 하나는 채워주세요."}
+    _cap_build(b)
     with db.connect() as c:
+        ok, _cap = _ai_gate(c, user)
+        if not ok:
+            return _AI_BUSY
         lim = _limits(_tier_name(c, user))
     requested = max(1, min(b.total_chapters, 200))
     total = min(requested, lim["max_chapters"])   # 요금제 상한까지만 생성

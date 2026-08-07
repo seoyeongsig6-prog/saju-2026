@@ -36,19 +36,25 @@ function renderPlanBar() {
   if (!bar || !LIMITS || !TIERS_INFO) return;
   const L = LIMITS;
   const works = L.max_works >= 100000 ? "무제한" : L.max_works + "개";
+  const limLine = `AI 회차 ${L.max_chapters}화 · 화당 ${L.syn_chars}자 · 인물 ${L.max_characters}명 · 작품 ${works}${L.style_learning ? " · 문체학습" : ""}`;
+  // 판매(런치) 빌드: 개발용 티어 전환 버튼을 숨기고, 상위 플랜 안내만 보여준다.
+  const switcher = LAUNCH
+    ? (TIER === "pro" ? "" : `<button class="plan-upgrade" id="plan-up">더 많은 회차·인물 → 업그레이드</button>`)
+    : `<div class="plan-switch"><span class="dim">미리보기:</span>
+        ${["free", "light", "pro"].map((t) =>
+          `<button data-tier="${t}" class="${t === TIER ? "on" : ""}">${TIERS_INFO[t].label}</button>`).join("")}</div>`;
   bar.innerHTML = `
-    <div class="plan-now">현재 플랜 <b>${L.label}</b>
-      <span class="plan-lim">AI 회차 ${L.max_chapters}화 · 화당 ${L.syn_chars}자 · 인물 ${L.max_characters}명 · 작품 ${works}${L.style_learning ? " · 문체학습" : ""}</span></div>
-    <div class="plan-switch"><span class="dim">미리보기:</span>
-      ${["free", "light", "pro"].map((t) =>
-        `<button data-tier="${t}" class="${t === TIER ? "on" : ""}">${TIERS_INFO[t].label}</button>`).join("")}
-    </div>`;
+    <div class="plan-now">현재 플랜 <b>${L.label}</b><span class="plan-lim">${limLine}</span></div>
+    ${switcher}`;
   bar.querySelectorAll(".plan-switch button").forEach((b) => {
     b.onclick = async () => {
       const r = await api("/api/writer/tier", { method: "POST", body: JSON.stringify({ tier: b.dataset.tier }) });
       if (r.ok) { TIER = r.tier; LIMITS = r.limits; renderPlanBar(); Ads.refresh(); }
+      else notice(r.error || "변경할 수 없어요.");
     };
   });
+  const up = $("#plan-up");
+  if (up) up.onclick = () => notice("라이트·프로로 올리면 더 많은 회차·인물을 생성하고 광고가 사라져요.\n(요금제 구매는 곧 앱에서 제공됩니다.)");
 }
 
 /* 광고 — 무료 요금제에서만. 실제 AdMob은 네이티브 래핑 단계에서 이 함수 안을 교체한다. */
