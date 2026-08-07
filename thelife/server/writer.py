@@ -27,10 +27,46 @@ LAUNCH_MODE = os.environ.get("WRITER_LAUNCH_MODE", "1") != "0"
 _LAUNCH_OFF = {"ok": False, "error": "이 버전에서는 제공하지 않는 기능이에요."}
 
 
+# 요금제 — 무료/라이트/프로. 질(회차 수·화당 줄거리 깊이·인물 수)로 차등한다.
+TIERS = {
+    "free":  {"label": "무료", "max_chapters": 3,  "syn_chars": 100,
+              "max_characters": 3,  "max_works": 1,      "style_learning": False, "ads": True},
+    "light": {"label": "라이트", "max_chapters": 20, "syn_chars": 250,
+              "max_characters": 7,  "max_works": 10,     "style_learning": False, "ads": False},
+    "pro":   {"label": "프로", "max_chapters": 70, "syn_chars": 450,
+              "max_characters": 10, "max_works": 100000, "style_learning": True,  "ads": False},
+}
+
+
+def _tier_name(c, user: str) -> str:
+    t = db.kv_get(c, f"tier:{user}", "free")
+    return t if t in TIERS else "free"
+
+
+def _limits(name: str) -> dict:
+    return TIERS.get(name, TIERS["free"])
+
+
 @router.get("/config")
-def writer_config():
-    """앱이 시작할 때 어떤 기능이 켜져 있는지 알려준다."""
-    return {"launch_mode": LAUNCH_MODE, "writing_enabled": not LAUNCH_MODE}
+def writer_config(user: str = Header(default="solo", alias="X-User-Id")):
+    """앱이 시작할 때 기능·요금제 상태를 알려준다."""
+    with db.connect() as c:
+        t = _tier_name(c, user)
+    return {"launch_mode": LAUNCH_MODE, "writing_enabled": not LAUNCH_MODE,
+            "tier": t, "limits": TIERS[t], "tiers": TIERS}
+
+
+class TierBody(BaseModel):
+    tier: str
+
+
+@router.post("/tier")
+def set_tier(body: TierBody, user: str = Header(default="solo", alias="X-User-Id")):
+    """요금제 설정 — 지금은 미리보기/테스트용. 나중에 애플 IAP 영수증으로 대체된다."""
+    t = body.tier if body.tier in TIERS else "free"
+    with db.connect() as c:
+        db.kv_set(c, f"tier:{user}", t)
+    return {"ok": True, "tier": t, "limits": TIERS[t]}
 
 BEATS = [
     "오프닝 이미지", "주제 제시", "설정", "계기(촉발 사건)", "고민",
@@ -104,6 +140,8 @@ def learn_style(work_id: int, body: StyleBody,
     if len(sample) < 300:
         return {"ok": False, "error": "문체를 배우려면 표본이 300자는 넘어야 해요. 더 길게 붙여넣어 주세요."}
     with db.connect() as c:
+        if not _limits(_tier_name(c, user))["style_learning"]:
+            return {"ok": False, "error": "문체 학습은 프로 요금제에서 쓸 수 있어요.", "limit": "style"}
         w = _load_work(c, work_id, user)
         if not w:
             return {"ok": False, "error": "작품을 찾을 수 없어요."}
@@ -515,6 +553,13 @@ def build_work(b: BuildBody, user: str = Header(default="solo", alias="X-User-Id
         return {"ok": False, "error": "최소한 로그라인이나 결말 중 하나는 있어야 이야기가 방향을 잡아요."}
     if len(brief) < 200:
         return {"ok": False, "error": "설명서 내용이 아직 짧아요. 세계관·주인공·결말 등을 더 채워주세요 (최소 200자)."}
+    with db.connect() as c:  # 요금제 작품 수 상한
+        lim = _limits(_tier_name(c, user))
+        made = c.execute("SELECT COUNT(*) AS n FROM works WHERE user_id=?", (user,)).fetchone()["n"]
+    if made >= lim["max_works"]:
+        return {"ok": False,
+                "error": f"{lim['label']} 요금제에서는 작품을 {lim['max_works']}개까지 만들 수 있어요.",
+                "detail": "기존 작품을 지우거나 상위 요금제로 올려 주세요.", "limit": "works"}
     if llm.is_mock:
         return {"ok": False, "error": "AI가 연결되어 있지 않아 설계도를 만들 수 없어요.",
                 "detail": "API 키가 없거나 사용량 한도/잔액이 소진됐을 수 있어요 "
@@ -537,6 +582,9 @@ def build_work(b: BuildBody, user: str = Header(default="solo", alias="X-User-Id
     by_idx = {int(x.get("idx", i)): x for i, x in enumerate(beats) if isinstance(x, dict)}
     beats = [{"idx": i, "name": n, "summary": (by_idx.get(i) or {}).get("summary", "")}
              for i, n in enumerate(BEATS)]
+
+    if isinstance(plan.get("characters"), list):  # 요금제 인물 수 상한
+        plan["characters"] = plan["characters"][:lim["max_characters"]]
 
     # 회차별 전개 — 작가가 빌더에서 짠 것이 절대 기준. 없으면 조립 텍스트에서 추출.
     outline = [{"no": o.no, "title": o.title.strip(), "content": o.content.strip()}
@@ -571,14 +619,17 @@ def build_work(b: BuildBody, user: str = Header(default="solo", alias="X-User-Id
 
 
 @router.post("/brief/draft")
-def draft_brief(b: BuildBody):
+def draft_brief(b: BuildBody, user: str = Header(default="solo", alias="X-User-Id")):
     """지금까지 작가가 채운 내용을 존중하며, 빈 칸을 일관되게 채운 상세 기획을 짓는다.
-    작가가 칸을 비우고 다시 누르면 그 칸만 새로 생성된다 (새로고침)."""
+    작가가 칸을 비우고 다시 누르면 그 칸만 새로 생성된다 (새로고침).
+    요금제에 따라 자동 생성하는 인물 수가 달라진다."""
     if llm.is_mock:
         return {"ok": False, "error": "AI가 연결되어 있지 않아요.",
                 "detail": "API 키/사용량 한도를 확인해 주세요."}
     if not (b.logline.strip() or b.genre.strip() or b.keywords.strip()):
         return {"ok": False, "error": "장르·로그라인·키워드 중 하나는 알려주세요. 거기서 상세 기획을 지어드릴게요."}
+    with db.connect() as c:
+        maxc = _limits(_tier_name(c, user))["max_characters"]
     filled = _assemble_brief(b)
     schema = {
         "title": "제목 (없으면 창작)",
@@ -611,8 +662,8 @@ JSON 스키마 (다른 텍스트 없이 압축 JSON만):
 - **작가가 이미 쓴 항목은 그 의도와 표현을 최대한 존중하라.** 로그라인·세계관·주인공·
   결말 등 작가가 채운 값은 그대로 옮기고(사소한 다듬기만 허용), 임의로 뒤집지 마라.
 - **비어 있는 항목만 새로 지어라.** 채운 내용과 모순 없이, 구체적이고 일관되게.
-- characters는 5~7명(작가가 넣은 인물은 유지). 적대자·조력자·애정상대 등 원형을 고루,
-  각 인물의 want와 need는 어긋나게(입체성), 관계(relation)를 분명히.
+- characters는 **정확히 {maxc}명**(작가가 넣은 인물을 우선 포함). 적대자·조력자·애정상대 등
+  원형을 고루, 각 인물의 want와 need는 어긋나게(입체성), 관계(relation)를 분명히.
 - world_rules는 이 작품만의 독창적 설정을 구체적으로.
 - canon은 표기가 흔들리면 안 되는 고유명사 3~6개.
 - ending은 하나의 도달점으로 고정(열린 결말 금지).
@@ -623,18 +674,25 @@ JSON 스키마 (다른 텍스트 없이 압축 JSON만):
     if not isinstance(data, dict):
         return {"ok": False, "error": "기획 초안 생성에 실패했어요. 한 번 더 시도해 주세요.",
                 "detail": (llm.last_error or (raw[:150] or "빈 응답"))}
-    return {"ok": True, "draft": data}
+    if isinstance(data.get("characters"), list):  # 요금제 상한까지만
+        data["characters"] = data["characters"][:maxc]
+    return {"ok": True, "draft": data, "max_characters": maxc}
 
 
 @router.post("/brief/outline")
-def draft_outline(b: BuildBody):
-    """지금까지 채운 설정을 바탕으로 회차별 전개(1화~N화)를 통째로 생성한다."""
+def draft_outline(b: BuildBody, user: str = Header(default="solo", alias="X-User-Id")):
+    """지금까지 채운 설정을 바탕으로 회차별 전개(1화~N화)를 통째로 생성한다.
+    요금제에 따라 '몇 화까지'와 '화당 줄거리 깊이(글자수)'가 달라진다."""
     if llm.is_mock:
         return {"ok": False, "error": "AI가 연결되어 있지 않아요.",
                 "detail": "API 키/사용량 한도를 확인해 주세요."}
     if not (b.logline.strip() or b.ending.strip() or b.world_setting.strip()):
         return {"ok": False, "error": "회차 전개를 짜려면 최소한 로그라인·세계관·결말 중 하나는 채워주세요."}
-    total = max(5, min(b.total_chapters, 200))
+    with db.connect() as c:
+        lim = _limits(_tier_name(c, user))
+    requested = max(1, min(b.total_chapters, 200))
+    total = min(requested, lim["max_chapters"])   # 요금제 상한까지만 생성
+    syn = lim["syn_chars"]                          # 화당 줄거리 목표 글자수
     context = _assemble_brief(b)
     beats_guide = "\n".join(
         f"- {int(edge*100)}%까지: {name}" for name, edge in zip(BEATS, BEAT_EDGES))
@@ -648,10 +706,11 @@ Save the Cat 15비트를 회차 진행률에 맞춰 배치하고, 반드시 고�
 {beats_guide}
 
 출력: 아래 형식의 JSON 하나만 (1화부터 {total}화까지 '전부', 빠짐없이):
-{{"outline":[{{"no":1,"title":"이 화 제목","content":"이 화의 핵심 사건 2~3문장. 누가 무엇을 하고 무엇이 바뀌는지 구체적으로"}}]}}
+{{"outline":[{{"no":1,"title":"이 화 제목","content":"이 화의 핵심 사건"}}]}}
 
 규칙:
 - no는 1부터 {total}까지 연속. 한 화도 빠뜨리지 마라.
+- **각 화 content는 약 {syn}자 분량으로.** ({'핵심 사건만 간결하게' if syn <= 120 else ('사건과 전개를 담아' if syn <= 300 else '사건·전개·감정선·복선까지 상세하게')})
 - 각 화는 갈등이 전진하거나 반전이 있어야 한다. 사이다-고구마 리듬을 지켜라.
 - 초반 3화 안에 후킹(주인공의 문제·목표·세계 규칙)을 확실히.
 - 마지막 화들은 고정된 결말을 실현한다.
@@ -671,11 +730,12 @@ Save the Cat 15비트를 회차 진행률에 맞춰 배치하고, 반드시 고�
             no = int(it.get("no"))
         except (TypeError, ValueError):
             continue
-        if 1 <= no <= 200:
+        if 1 <= no <= total:                       # 상한 넘는 회차는 버린다
             outline.append({"no": no, "title": str(it.get("title", "")).strip(),
                             "content": str(it.get("content", "")).strip()})
     outline.sort(key=lambda o: o["no"])
-    return {"ok": True, "outline": outline}
+    return {"ok": True, "outline": outline,
+            "capped": requested > total, "tier_max": lim["max_chapters"]}
 
 
 @router.post("/works")

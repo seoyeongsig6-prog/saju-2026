@@ -16,6 +16,7 @@
     <h1>The Novelist</h1>
     <p class="tagline">결말을 정하라. 이야기는 그곳으로 흐른다.</p>
   </div>
+  <div id="plan-bar" class="plan-bar"></div>
   <div id="w-list" class="w-list"></div>
   <button id="w-new" class="primary big">＋ 새 작품 설계</button>
 </div>
@@ -59,7 +60,7 @@
       <div class="row2">
         <label class="bd-field"><span>총 회차</span>
           <input id="bd-total" type="number" value="25" min="5" max="200"></label>
-        <label class="bd-field"><span>회당 글자수</span>
+        <label class="bd-field" id="bd-cpc-field"><span>회당 글자수</span>
           <select id="bd-cpc">
             <option value="1000">1000자</option>
             <option value="2000">2000자</option>
@@ -237,7 +238,7 @@
       <div class="row2">
         <label class="bd-field"><span>총 회차</span>
           <input id="bible-total" type="number" min="5" max="200"></label>
-        <label class="bd-field"><span>회당 글자수</span>
+        <label class="bd-field" id="bible-cpc-field"><span>회당 글자수</span>
           <select id="bible-cpc">
             <option value="1000">1000자</option><option value="2000">2000자</option>
             <option value="3000">3000자</option><option value="4000">4000자</option>

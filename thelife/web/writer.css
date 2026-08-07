@@ -176,11 +176,25 @@ textarea { width: 100%; font-family: inherit; resize: vertical; line-height: 1.6
 .ch-item small { margin-left: auto; color: var(--dim); font-size: 11.5px; }
 .write-box { display: flex; flex-direction: column; gap: 9px; margin-top: 16px; }
 
-/* 판매용 런치 버전 — 본문 집필 관련 UI 숨김 */
+/* 판매용 런치 버전 — 본문 집필 관련 UI 숨김 (회당 글자수는 본문용이라 함께 숨김) */
 body.launch #ch-write-box,
 body.launch #btn-rewrite-all,
 body.launch #revise-box,
-body.launch #rename-box { display: none !important; }
+body.launch #rename-box,
+body.launch #bd-cpc-field,
+body.launch #bible-cpc-field { display: none !important; }
+
+/* 요금제 바 */
+.plan-bar { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 12px 14px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 9px; }
+.plan-now { font-size: 13px; }
+.plan-now b { color: var(--accent); }
+.plan-lim { display: block; color: var(--dim); font-size: 11.5px; margin-top: 3px; }
+.plan-switch { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.plan-switch .dim { font-size: 11.5px; }
+.plan-switch button { padding: 5px 12px; font-size: 12.5px; border-radius: 20px;
+  background: var(--panel2); border: 1px solid var(--line); color: var(--dim); }
+.plan-switch button.on { background: var(--grad); color: #fff; border-color: transparent; font-weight: 700; }
 
 .ch-toolbar { display: flex; gap: 8px; margin-bottom: 10px; }
 .ch-toolbar button { flex: 1; }

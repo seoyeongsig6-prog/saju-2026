@@ -18,14 +18,37 @@ let WORK = null, CHAPTER = null;
 
 /* 판매용 런치 버전 여부 — 서버 플래그. 기본은 런치(본문 집필 숨김)로 시작하고,
    전체 기능(WRITER_LAUNCH_MODE=0)이면 서버 확인 후 본문 UI를 되살린다. */
-let LAUNCH = true;
+let LAUNCH = true, TIER = "free", LIMITS = null, TIERS_INFO = null;
 (async () => {
   try {
     const cfg = await api("/api/writer/config");
     LAUNCH = !!(cfg && cfg.launch_mode);
     if (cfg && cfg.writing_enabled) document.body.classList.remove("launch");
+    if (cfg) { TIER = cfg.tier || "free"; LIMITS = cfg.limits; TIERS_INFO = cfg.tiers; }
+    renderPlanBar();
   } catch (e) { /* 실패 시 런치 기본 유지 */ }
 })();
+
+/* 요금제 바 (홈) — 현재 플랜 + 상한 표시 + 미리보기 전환(추후 애플 IAP로 대체) */
+function renderPlanBar() {
+  const bar = $("#plan-bar");
+  if (!bar || !LIMITS || !TIERS_INFO) return;
+  const L = LIMITS;
+  const works = L.max_works >= 100000 ? "무제한" : L.max_works + "개";
+  bar.innerHTML = `
+    <div class="plan-now">현재 플랜 <b>${L.label}</b>
+      <span class="plan-lim">AI 회차 ${L.max_chapters}화 · 화당 ${L.syn_chars}자 · 인물 ${L.max_characters}명 · 작품 ${works}${L.style_learning ? " · 문체학습" : ""}</span></div>
+    <div class="plan-switch"><span class="dim">미리보기:</span>
+      ${["free", "light", "pro"].map((t) =>
+        `<button data-tier="${t}" class="${t === TIER ? "on" : ""}">${TIERS_INFO[t].label}</button>`).join("")}
+    </div>`;
+  bar.querySelectorAll(".plan-switch button").forEach((b) => {
+    b.onclick = async () => {
+      const r = await api("/api/writer/tier", { method: "POST", body: JSON.stringify({ tier: b.dataset.tier }) });
+      if (r.ok) { TIER = r.tier; LIMITS = r.limits; renderPlanBar(); }
+    };
+  });
+}
 
 /* ---------- 테마 (밝게/어둡게 — 기본 밝게) ---------- */
 function applyTheme(t) {
@@ -336,7 +359,10 @@ $("#bd-ai-outline").onclick = async () => {
   if (!r.ok) { notice((r.error || "실패했어요") + (r.detail ? `\n\n[원인] ${r.detail}` : "")); return; }
   $("#bd-outline").innerHTML = "";
   (r.outline || []).forEach(bdAddOutline);
-  notice(`${(r.outline || []).length}개 회차 전개를 채웠어요. 각 칸을 자유롭게 고치세요.`);
+  const base = `${(r.outline || []).length}개 회차 전개를 채웠어요.`;
+  notice(r.capped
+    ? `${base}\n\n현재 플랜은 ${r.tier_max}화까지만 자동 생성돼요. 더 많은 화는 상위 플랜에서 (또는 직접 작성).`
+    : `${base} 각 칸을 자유롭게 고치세요.`);
 };
 
 $("#bd-go").onclick = async () => {
