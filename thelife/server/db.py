@@ -7,6 +7,7 @@ import datetime
 import json
 import os
 import sqlite3
+import time
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -158,31 +159,34 @@ CREATE TABLE IF NOT EXISTS chapters (
 """
 
 
-_pg_failed = False  # 연결이 한 번 실패하면 SQLite로 전환해 서버는 계속 산다
+# Postgres 연결이 실패하면 잠깐(쿨다운) SQLite로 견디다 '다시 시도'한다.
+# 영구 전환하지 않는 게 핵심 — Neon이 잠들었다 깨는 사이 한 번 실패했다고
+# 서버 재배포 때까지 빈 SQLite만 쓰면, 살아있는 데이터가 안 보이고 새 글도 유실된다.
+_pg_retry_at = 0.0
 
 
 class Conn:
     """sqlite3/psycopg 겸용 커넥션 — 코드는 sqlite 문법으로 쓰고 여기서 번역한다."""
 
     def __init__(self):
-        global _pg_failed
+        global _pg_retry_at
         self.is_pg = False
-        if IS_PG and not _pg_failed:
+        if IS_PG and time.time() >= _pg_retry_at:
             try:
                 import psycopg
                 from psycopg.rows import dict_row
                 self.raw = psycopg.connect(DATABASE_URL, autocommit=True,
-                                           row_factory=dict_row, connect_timeout=10)
+                                           row_factory=dict_row, connect_timeout=20)
                 self.is_pg = True
+                _pg_retry_at = 0.0
                 return
             except Exception as e:
-                _pg_failed = True
-                print(f"[db] DATABASE_URL 연결 실패 — SQLite 임시 저장으로 전환합니다: {e}",
-                      flush=True)
+                _pg_retry_at = time.time() + 30  # 30초 뒤 다시 Postgres 시도 (영구 전환 아님)
+                print(f"[db] Postgres 연결 실패 — 30초간 임시 SQLite 후 재시도: {e}", flush=True)
         DB_PATH.parent.mkdir(parents=True, exist_ok=True)
         self.raw = sqlite3.connect(DB_PATH)
         self.raw.row_factory = sqlite3.Row
-        if _pg_failed:  # 폴백 시 SQLite 스키마도 준비돼 있어야 한다
+        if IS_PG:  # Postgres 설정인데 폴백된 상태 — 임시 SQLite에도 스키마 준비
             _ensure_sqlite_schema(self)
 
     def _tx(self, sql: str) -> str:
@@ -229,8 +233,7 @@ def connect() -> Conn:
 
 def status() -> dict:
     """저장소 상태 — Postgres(영구)로 붙었는지, SQLite(휘발성)로 떨어졌는지 확인용."""
-    info = {"database_url_set": bool(DATABASE_URL), "configured": "postgres" if IS_PG else "sqlite",
-            "pg_failed": _pg_failed}
+    info = {"database_url_set": bool(DATABASE_URL), "configured": "postgres" if IS_PG else "sqlite"}
     try:
         with connect() as c:
             info["using"] = "postgres" if c.is_pg else "sqlite"

@@ -22,8 +22,9 @@ from .llm import llm
 router = APIRouter(prefix="/api/writer")
 
 # 판매용 런치 버전 — 소설 '본문 집필'과 거기 딸린 기능을 끈다.
-# 환경변수 WRITER_LAUNCH_MODE=0 이면 전체 기능(본문 집필 포함)이 다시 켜진다.
-LAUNCH_MODE = os.environ.get("WRITER_LAUNCH_MODE", "1") != "0"
+# 기본은 '꺼짐'(전체 기능). 판매용 서버에서만 WRITER_LAUNCH_MODE=1 로 켠다.
+# (기본값이 켜짐이면 개인 집필 서버가 코드 배포만으로 기능을 잃어 위험하다.)
+LAUNCH_MODE = os.environ.get("WRITER_LAUNCH_MODE", "0") == "1"
 _LAUNCH_OFF = {"ok": False, "error": "이 버전에서는 제공하지 않는 기능이에요."}
 
 
