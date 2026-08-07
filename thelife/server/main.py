@@ -95,6 +95,16 @@ def writer_page():
     return FileResponse(WEB / "writer.html")
 
 
+@app.get("/privacy")
+def privacy_page():
+    return FileResponse(WEB / "privacy.html")
+
+
+@app.get("/terms")
+def terms_page():
+    return FileResponse(WEB / "terms.html")
+
+
 @app.get("/api/health")
 def health():
     """진단 — 어떤 AI 공급자·모델이 실제로 연결됐는지 확인."""

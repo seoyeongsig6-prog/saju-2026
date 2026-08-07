@@ -18,17 +18,37 @@ let WORK = null, CHAPTER = null;
 
 /* 판매용 런치 버전 여부 — 서버 플래그. 기본은 런치(본문 집필 숨김)로 시작하고,
    전체 기능(WRITER_LAUNCH_MODE=0)이면 서버 확인 후 본문 UI를 되살린다. */
-let LAUNCH = true, TIER = "free", LIMITS = null, TIERS_INFO = null;
+let LAUNCH = true, TIER = "free", LIMITS = null, TIERS_INFO = null, EXPIRES = null;
 (async () => {
   try {
     const cfg = await api("/api/writer/config");
     LAUNCH = !!(cfg && cfg.launch_mode);
     if (cfg && cfg.writing_enabled) document.body.classList.remove("launch");
-    if (cfg) { TIER = cfg.tier || "free"; LIMITS = cfg.limits; TIERS_INFO = cfg.tiers; }
+    if (cfg) { TIER = cfg.tier || "free"; LIMITS = cfg.limits; TIERS_INFO = cfg.tiers; EXPIRES = cfg.expires_at; }
     renderPlanBar();
     Ads.refresh();
   } catch (e) { /* 실패 시 런치 기본 유지 */ }
 })();
+
+/* 설정 — 데이터 내보내기 / 계정 삭제 (스토어 정책상 앱 내 필수) */
+$("#btn-export").onclick = async () => {
+  const d = await api("/api/writer/account/export");
+  if (!d || !d.ok) { notice("내보내기에 실패했어요. 잠시 후 다시 시도해 주세요."); return; }
+  const blob = new Blob([JSON.stringify(d, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "the-novelist-내데이터.json";
+  a.click();
+  notice(`내 데이터(작품 ${(d.works || []).length}개)를 내려받았어요.`);
+};
+$("#btn-delacc").onclick = async () => {
+  if (!confirm("정말 모든 작품과 데이터를 영구 삭제할까요?\n되돌릴 수 없습니다.")) return;
+  if (!confirm("마지막 확인 — 정말 삭제합니다.")) return;
+  const r = await api("/api/writer/account", { method: "DELETE" });
+  if (!r || !r.ok) { notice("삭제에 실패했어요. 잠시 후 다시 시도해 주세요."); return; }
+  notice("모든 데이터를 삭제했어요.");
+  showHome();
+};
 
 /* 요금제 바 (홈) — 현재 플랜 + 상한 표시 + 미리보기 전환(추후 애플 IAP로 대체) */
 function renderPlanBar() {
@@ -43,8 +63,9 @@ function renderPlanBar() {
     : `<div class="plan-switch"><span class="dim">미리보기:</span>
         ${["free", "light", "pro"].map((t) =>
           `<button data-tier="${t}" class="${t === TIER ? "on" : ""}">${TIERS_INFO[t].label}</button>`).join("")}</div>`;
+  const expTxt = (LAUNCH && EXPIRES) ? ` <span class="plan-exp">~${String(EXPIRES).slice(0, 10)}까지</span>` : "";
   bar.innerHTML = `
-    <div class="plan-now">현재 플랜 <b>${L.label}</b><span class="plan-lim">${limLine}</span></div>
+    <div class="plan-now">현재 플랜 <b>${L.label}</b>${expTxt}<span class="plan-lim">${limLine}</span></div>
     ${switcher}`;
   bar.querySelectorAll(".plan-switch button").forEach((b) => {
     b.onclick = async () => {

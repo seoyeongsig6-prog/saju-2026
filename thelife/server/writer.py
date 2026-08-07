@@ -40,8 +40,39 @@ TIERS = {
 }
 
 
+# 스토어 상품 ID → 등급. (앱 커넥트/플레이 콘솔에서 만든 구독 상품 ID와 맞춘다)
+PRODUCT_TIER = {
+    "novelist.light.monthly": "light", "novelist.light.yearly": "light",
+    "novelist.pro.monthly": "pro", "novelist.pro.yearly": "pro",
+}
+
+
+def _entitlement(c, user: str):
+    """유효한 '구매 등급' — 만료됐으면 무료로 떨어진다. 없으면 None."""
+    raw = db.kv_get(c, f"ent:{user}", "")
+    if not raw:
+        return None
+    try:
+        e = json.loads(raw)
+    except Exception:
+        return None
+    exp = e.get("expires_at")
+    if exp:
+        try:
+            if datetime.datetime.fromisoformat(str(exp).replace("Z", "+00:00")) < \
+               datetime.datetime.now(datetime.timezone.utc):
+                return None  # 구독 만료 → 무료로
+        except Exception:
+            pass
+    t = e.get("tier")
+    return t if t in TIERS else None
+
+
 def _tier_name(c, user: str) -> str:
-    t = db.kv_get(c, f"tier:{user}", "free")
+    ent = _entitlement(c, user)                 # 실제 구매 등급이 최우선
+    if ent:
+        return ent
+    t = db.kv_get(c, f"tier:{user}", "free")    # 개발용 오버라이드 (런치 빌드에선 안 쓰임)
     return t if t in TIERS else "free"
 
 
@@ -57,7 +88,7 @@ def _ai_gate(c, user: str):
     """AI 생성 1회를 차감·검사한다. (남은 게 없으면 False)"""
     tier = _tier_name(c, user)
     cap = AI_DAILY_CAP.get(tier, 40)
-    day = datetime.date.today().isoformat()
+    day = db.real_now().date().isoformat()   # 한국시간 자정에 리셋
     key = f"aiq:{user}:{day}"
     used = int(db.kv_get(c, key, "0") or "0")
     if used >= cap:
@@ -88,8 +119,15 @@ def writer_config(user: str = Header(default="solo", alias="X-User-Id")):
     """앱이 시작할 때 기능·요금제 상태를 알려준다."""
     with db.connect() as c:
         t = _tier_name(c, user)
+        ent = None
+        raw = db.kv_get(c, f"ent:{user}", "")
+        if raw and _entitlement(c, user):
+            try:
+                ent = json.loads(raw).get("expires_at")
+            except Exception:
+                ent = None
     return {"launch_mode": LAUNCH_MODE, "writing_enabled": not LAUNCH_MODE,
-            "tier": t, "limits": TIERS[t], "tiers": TIERS}
+            "tier": t, "limits": TIERS[t], "tiers": TIERS, "expires_at": ent}
 
 
 class TierBody(BaseModel):
@@ -106,6 +144,98 @@ def set_tier(body: TierBody, user: str = Header(default="solo", alias="X-User-Id
     with db.connect() as c:
         db.kv_set(c, f"tier:{user}", t)
     return {"ok": True, "tier": t, "limits": TIERS[t]}
+
+
+def _verify_purchase(platform: str, product_id: str, transaction: str):
+    """구매 검증 자리 — 반드시 '서버가' 스토어에 직접 확인해야 한다 (클라 주장은 못 믿음).
+      · iOS: App Store Server API로 StoreKit2 JWS 서명 검증 → productId·expiresDate 추출
+      · Android: Google Play Developer API purchases.subscriptions.get 로 확인
+    검증이 연결되기 전에는 안전하게 '거부'(fail-closed)한다.
+    반환 예: {"tier": "pro", "expires_at": "2026-09-01T00:00:00+00:00"} 또는 None."""
+    # TODO: 실제 스토어 검증 연결. (지금은 미설정 → None 반환 = 부여 안 함)
+    return None
+
+
+class EntitlementBody(BaseModel):
+    platform: str = "ios"      # ios | android
+    product_id: str = ""
+    transaction: str = ""      # StoreKit2 JWS 또는 영수증
+
+
+@router.post("/entitlement")
+def set_entitlement(body: EntitlementBody, user: str = Header(default="solo", alias="X-User-Id")):
+    """앱 내 구매 후 네이티브가 영수증을 보내면, 서버가 검증해 등급을 부여한다."""
+    v = _verify_purchase(body.platform, body.product_id, body.transaction)
+    if not v or v.get("tier") not in TIERS:
+        return {"ok": False, "error": "결제 검증을 아직 사용할 수 없어요.",
+                "detail": "서버에 애플/구글 결제 검증이 연결되면 자동으로 적용됩니다."}
+    ent = {"tier": v["tier"], "product_id": body.product_id, "platform": body.platform,
+           "expires_at": v.get("expires_at"),
+           "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+    with db.connect() as c:
+        db.kv_set(c, f"ent:{user}", json.dumps(ent, ensure_ascii=False))
+    return {"ok": True, "tier": v["tier"], "limits": TIERS[v["tier"]], "expires_at": v.get("expires_at")}
+
+
+ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "")
+
+
+class GrantBody(BaseModel):
+    user_id: str
+    tier: str
+    days: int = 31
+
+
+@router.post("/admin/grant")
+def admin_grant(body: GrantBody, secret: str = Header(default="", alias="X-Admin-Secret")):
+    """운영자 수동 등급 부여 (테스트·보상용). 서버의 ADMIN_SECRET 환경변수와 헤더가 일치해야 한다."""
+    if not ADMIN_SECRET or secret != ADMIN_SECRET:
+        return {"ok": False, "error": "권한이 없어요."}
+    if body.tier not in TIERS:
+        return {"ok": False, "error": "알 수 없는 등급이에요."}
+    exp = (datetime.datetime.now(datetime.timezone.utc)
+           + datetime.timedelta(days=max(1, body.days))).isoformat()
+    ent = {"tier": body.tier, "product_id": "admin_grant", "platform": "admin",
+           "expires_at": exp, "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+    with db.connect() as c:
+        db.kv_set(c, f"ent:{body.user_id}", json.dumps(ent, ensure_ascii=False))
+    return {"ok": True, "tier": body.tier, "expires_at": exp}
+
+
+@router.get("/account/export")
+def export_account(user: str = Header(default="solo", alias="X-User-Id")):
+    """내 데이터 전부 내보내기 (데이터 이동권)."""
+    with db.connect() as c:
+        works = [dict(r) for r in c.execute(
+            "SELECT * FROM works WHERE user_id=? ORDER BY id", (user,)).fetchall()]
+        for w in works:
+            w["chapters"] = [dict(x) for x in c.execute(
+                "SELECT * FROM chapters WHERE work_id=? ORDER BY no", (w["id"],)).fetchall()]
+    return {"ok": True, "exported_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "works": works}
+
+
+@router.delete("/account")
+def delete_account(user: str = Header(default="solo", alias="X-User-Id")):
+    """계정(이 사용자)의 모든 데이터 영구 삭제 — 애플/구글 정책상 앱 내 제공 필수."""
+    with db.connect() as c:
+        wids = [r["id"] for r in c.execute(
+            "SELECT id FROM works WHERE user_id=?", (user,)).fetchall()]
+        for wid in wids:
+            c.execute("DELETE FROM chapters WHERE work_id=?", (wid,))
+        c.execute("DELETE FROM works WHERE user_id=?", (user,))
+        c.execute("DELETE FROM kv WHERE k=?", (f"tier:{user}",))
+        c.execute("DELETE FROM kv WHERE k=?", (f"ent:{user}",))
+        c.execute("DELETE FROM kv WHERE k LIKE ?", (f"aiq:{user}:%",))
+        c.execute("DELETE FROM kv WHERE k=?", (f"active_avatar:{user}",))
+        for r in c.execute("SELECT k, v FROM kv WHERE k LIKE 'trash:%'").fetchall():
+            try:
+                if json.loads(r["v"]).get("user") == user:
+                    c.execute("DELETE FROM kv WHERE k=?", (r["k"],))
+            except Exception:
+                pass
+    return {"ok": True, "deleted_works": len(wids)}
+
 
 BEATS = [
     "오프닝 이미지", "주제 제시", "설정", "계기(촉발 사건)", "고민",
