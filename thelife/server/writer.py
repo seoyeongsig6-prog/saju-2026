@@ -1335,6 +1335,29 @@ def _later_chapters_block(later: list, budget: int = 120000) -> str:
     return "\n".join(out)
 
 
+def _overused_expressions(prev: list, top: int = 18) -> list:
+    """앞 회차들에서 '이미 두 번 이상 쓴' 문장·구절을 뽑아낸다.
+    이걸 프롬프트에 '재사용 금지 목록'으로 넣어 같은 묘사·표현 반복을 막는다."""
+    if not prev:
+        return []
+    text = "\n".join((p.get("body") or "") for p in prev)
+    counts = {}
+    for u in re.split(r"[\n.!?…]+|[,]\s", text):
+        u = u.strip(" \t\"'“”‘’—-·…")
+        if 6 <= len(u) <= 40:               # 너무 짧은 상투구/너무 긴 문장은 제외
+            counts[u] = counts.get(u, 0) + 1
+    reps = sorted((u for u, n in counts.items() if n >= 2),
+                  key=lambda u: (-counts[u], -len(u)))
+    out = []
+    for u in reps:                          # 다른 항목에 포함되는 조각은 버린다
+        if any(u != v and u in v for v in out):
+            continue
+        out.append(u)
+        if len(out) >= top:
+            break
+    return out
+
+
 def _target_chars(w: dict) -> int:
     """이 작품의 회당 목표 글자수 (작가가 빌더에서 고른 값). 기본 5,000."""
     try:
@@ -1361,6 +1384,9 @@ def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str,
     prior = _prior_chapters_block(prev)
     later_block = _later_chapters_block(later) if later else ""
     rewriting = bool(later_block)
+    overused = _overused_expressions(prev)
+    overused_block = ("\n━━━ 이미 여러 번 쓴 표현 — 그대로도 비슷하게도 재사용 금지 (새 표현으로 바꿔라) ━━━\n"
+                      + "\n".join(f"- {u}" for u in overused) + "\n") if overused else ""
 
     return f"""당신은 정상급 웹소설 작가다. 아래 작품의 {no}화를 {'다시 ' if rewriting else ''}써라.
 당신은 앞의 모든 화를 이미 다 읽었다. 앞에서 벌어진 사건·설정·수치·인물의 말투를
@@ -1394,22 +1420,28 @@ def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str,
 ━━━━━━ 이 화 '다음'에 이미 연재된 내용 (여기와도 모순되면 안 된다) ━━━━━━
 {later_block}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━''' if rewriting else ''}
-
+{overused_block}
 {f'[작가의 지시 — 최우선으로 따르라] {directive}' if directive else ''}
 
 집필 규칙:
+- **먼저 위 '지금까지 연재된 내용'을 처음부터 끝까지 다시 읽고 시작하라.** 그 위에 이어 쓰는 것이다.
 - **앞 회차 절대 준수**: 위에 이미 쓰인 내용과 모순되면 안 된다.
   · 이미 일어난 사건을 다시 처음 일어난 것처럼 쓰지 마라 (예: 이미 치른 재회·고백·죽음·각성·승부의 결말).
   · 능력치·수치(포인트, 금액, 시청자 수, 날짜 등)는 앞 회차의 마지막 값에서 이어가라.
   · 인물의 말투·성격·호칭은 앞 회차에서 확립된 그대로 유지하라.
   · 앞에서 밝혀진 비밀·정보를 인물이 다시 모르는 상태로 되돌리지 마라.
+- **표현 중복 절대 금지 (가장 중요)**: 앞 회차에서 쓴 묘사·비유·문장·대사를 그대로도, 비슷하게도 다시 쓰지 마라.
+  같은 상황·감정·행동도 매번 '다른 표현'으로 써라. 특히 반복되기 쉬운 것 —
+  · 감정 상투구('심장이 쿵 내려앉았다', '눈이 크게 흔들렸다', '숨을 삼켰다'),
+  · 외양·표정 묘사, 배경·분위기 묘사, 행동 묘사('주먹을 꽉 쥐었다'), 장면 전환 문구.
+  · 위 '이미 여러 번 쓴 표현' 목록에 있는 것은 무슨 일이 있어도 재사용하지 마라.
 - **분량: 공백 포함 {target:,}자 이상 ({target:,}~{int(target * 1.2):,}자).** 여러 장면으로 구성하라.
 {DESCRIPTION_RULES}
 - **심경 변화**는 반드시 이번 화의 사건이 원인이어야 하고, 몸짓과 대사로 단계적으로 보여라.
 - **시간 일관성**: 앞 화가 끝난 시점 이후에서 시작하고, 낮/밤·이동시간·계절이 맞아야 한다.
 - 역사물이면 인명·연호·관직·물건의 고증을 지켜라.
 - 이번 화는 지정된 전개를 수행하되, 결말을 향해 한 걸음 전진해야 한다.
-- 대화 비중 높게, 문단은 짧게. 앞 회차에서 이미 쓴 인상적 표현·비유·대사를 반복하지 마라.
+- 대화 비중 높게, 문단은 짧게.
 - 마지막 문장은 절단신공으로 끝내라.
 
 출력 형식 (정확히 지켜라):
