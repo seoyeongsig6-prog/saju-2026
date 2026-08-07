@@ -26,6 +26,7 @@ let LAUNCH = true, TIER = "free", LIMITS = null, TIERS_INFO = null;
     if (cfg && cfg.writing_enabled) document.body.classList.remove("launch");
     if (cfg) { TIER = cfg.tier || "free"; LIMITS = cfg.limits; TIERS_INFO = cfg.tiers; }
     renderPlanBar();
+    Ads.refresh();
   } catch (e) { /* 실패 시 런치 기본 유지 */ }
 })();
 
@@ -45,10 +46,39 @@ function renderPlanBar() {
   bar.querySelectorAll(".plan-switch button").forEach((b) => {
     b.onclick = async () => {
       const r = await api("/api/writer/tier", { method: "POST", body: JSON.stringify({ tier: b.dataset.tier }) });
-      if (r.ok) { TIER = r.tier; LIMITS = r.limits; renderPlanBar(); }
+      if (r.ok) { TIER = r.tier; LIMITS = r.limits; renderPlanBar(); Ads.refresh(); }
     };
   });
 }
+
+/* 광고 — 무료 요금제에서만. 실제 AdMob은 네이티브 래핑 단계에서 이 함수 안을 교체한다. */
+const Ads = {
+  on() { return !!(LIMITS && LIMITS.ads); },   // 무료 티어 = 광고 대상
+  refresh() {
+    const show = this.on();
+    $("#ad-banner").classList.toggle("hidden", !show);
+    document.body.classList.toggle("has-ad", show);
+    // 네이티브: show ? AdMob.showBanner() : AdMob.hideBanner();
+  },
+  _last: 0,
+  maybeInterstitial() {                          // 무거운 동작 뒤, 쿨다운 두고 한 번
+    if (!this.on()) return;
+    const now = Date.now();
+    if (now - this._last < 90000) return;
+    this._last = now;
+    const m = $("#ad-interstitial"), btn = $("#ad-close");
+    m.classList.remove("hidden");
+    let n = 3; btn.disabled = true; btn.textContent = `닫기 (${n})`;
+    const t = setInterval(() => {
+      n -= 1;
+      if (n <= 0) { clearInterval(t); btn.disabled = false; btn.textContent = "닫기"; }
+      else btn.textContent = `닫기 (${n})`;
+    }, 1000);
+    btn.onclick = () => { if (!btn.disabled) m.classList.add("hidden"); };
+    // 네이티브: AdMob.showInterstitial();
+  },
+};
+$("#ad-upsell").onclick = () => { showHome(); notice("라이트·프로 요금제로 올리면 광고가 사라지고 더 많은 회차·인물을 생성할 수 있어요."); };
 
 /* ---------- 테마 (밝게/어둡게 — 기본 밝게) ---------- */
 function applyTheme(t) {
@@ -379,7 +409,8 @@ $("#bd-go").onclick = async () => {
   if (r.outline_chapters >= 3) {
     notice(`${r.outline_chapters}개 회차의 지정 내용이 저장됐어요.\n각 회차는 이 전개 그대로 집필됩니다.`);
   }
-  openWork(r.id);
+  await openWork(r.id);
+  Ads.maybeInterstitial();   // 무료: 작품 생성 뒤 전면 광고 (쿨다운)
 };
 
 /* ---------- 작품 화면 ---------- */

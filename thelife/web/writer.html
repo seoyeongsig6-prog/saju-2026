@@ -310,6 +310,20 @@
   </div>
 </div>
 
+<!-- 광고 (무료 요금제만) — 네이티브 래핑 시 이 자리를 AdMob 배너/전면으로 교체 -->
+<div id="ad-banner" class="ad-banner hidden">
+  <span class="ad-tag">AD</span>
+  <span class="ad-text">광고 · 라이트/프로로 올리면 사라져요</span>
+  <button id="ad-upsell" class="ad-up">업그레이드</button>
+</div>
+<div id="ad-interstitial" class="modal hidden">
+  <div class="modal-card ad-inter">
+    <span class="ad-tag">AD</span>
+    <div class="ad-fake">전면 광고 자리<br><small>네이티브 앱에서 실제 광고가 표시됩니다 · 라이트·프로는 광고 없음</small></div>
+    <button id="ad-close" class="ghost" disabled>닫기</button>
+  </div>
+</div>
+
 <script src="/static/writer.js"></script>
 </body>
 </html>
