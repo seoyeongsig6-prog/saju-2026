@@ -227,6 +227,22 @@ def connect() -> Conn:
     return Conn()
 
 
+def status() -> dict:
+    """저장소 상태 — Postgres(영구)로 붙었는지, SQLite(휘발성)로 떨어졌는지 확인용."""
+    info = {"database_url_set": bool(DATABASE_URL), "configured": "postgres" if IS_PG else "sqlite",
+            "pg_failed": _pg_failed}
+    try:
+        with connect() as c:
+            info["using"] = "postgres" if c.is_pg else "sqlite"
+            if not c.is_pg:
+                info["sqlite_path"] = str(DB_PATH)
+                info["warning"] = "SQLite는 Render 무료 서버에서 재배포·수면 시 초기화됩니다. DATABASE_URL(Neon 등)을 붙이세요."
+    except Exception as e:
+        info["using"] = "error"
+        info["error"] = f"{type(e).__name__}: {e}"
+    return info
+
+
 def _apply_schema(c: "Conn") -> None:
     for stmt in SCHEMA.split(";"):
         stmt = stmt.strip()

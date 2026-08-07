@@ -106,6 +106,8 @@ def health():
         "gemini_model": getattr(llm, "gemini_model", None),
         "last_error": llm.last_error,
         "ping": ping[:80],
+        "db": db.status(),
+        "launch_mode": writer.LAUNCH_MODE,
     }
 
 
