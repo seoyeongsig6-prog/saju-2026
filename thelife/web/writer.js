@@ -113,9 +113,11 @@ function renderPlans() {
       ${P.badge ? `<span class="plan-badge">${P.badge}</span>` : ""}
       <div class="plan-head">
         <div class="plan-emblem" style="background:${EMBLEM_BG[t]}">${EMBLEM[t]}</div>
-        <div class="plan-title"><b>${P.label}</b><small>${P.tagline}</small></div>
+        <div class="plan-title"><b>${P.label}</b>${P.best_for ? `<span class="plan-bestfor">${P.best_for}</span>` : ""}<small>${P.tagline}</small></div>
         <div class="plan-price">${P.price}<span>${P.period}</span></div>
       </div>
+      ${P.pitch ? `<p class="plan-pitch">${P.pitch}</p>` : ""}
+      ${P.highlight ? `<div class="plan-highlight">${IC.spark}<span>${P.highlight}</span></div>` : ""}
       <ul class="plan-feats">${feats}</ul>
       ${cta}</div>`;
   }).join("");

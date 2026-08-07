@@ -33,13 +33,22 @@ _LAUNCH_OFF = {"ok": False, "error": "이 버전에서는 제공하지 않는 �
 TIERS = {
     "free":  {"label": "무료", "max_chapters": 3,  "syn_chars": 100,
               "max_characters": 3,  "max_works": 1,      "style_learning": False, "ads": True,
-              "price": "무료", "period": "", "tagline": "가볍게 시작하기", "badge": ""},
+              "price": "무료", "period": "", "tagline": "가볍게 시작하기", "badge": "",
+              "best_for": "웹소설 입문",
+              "pitch": "아이디어 한 줄이면 인물·플롯·회차 줄거리까지 AI가 잡아줘요. 부담 없이 먼저 맛보세요.",
+              "highlight": "무료로 전 과정 체험"},
     "light": {"label": "라이트", "max_chapters": 20, "syn_chars": 250,
               "max_characters": 7,  "max_works": 10,     "style_learning": False, "ads": False,
-              "price": "₩4,900", "period": "/월", "tagline": "본격 연재 기획", "badge": "인기"},
+              "price": "₩4,900", "period": "/월", "tagline": "본격 연재 기획", "badge": "인기",
+              "best_for": "연재 준비 작가",
+              "pitch": "20화까지 상세 줄거리를 한 번에. 광고 없이, 작품 10개를 나란히 굴리며 연재를 준비하세요.",
+              "highlight": "무료 대비 회차 6배 · 광고 없음"},
     "pro":   {"label": "프로", "max_chapters": 70, "syn_chars": 450,
               "max_characters": 10, "max_works": 100000, "style_learning": True,  "ads": False,
-              "price": "₩9,900", "period": "/월", "tagline": "프로 작가용", "badge": "추천"},
+              "price": "₩9,900", "period": "/월", "tagline": "프로 작가용", "badge": "추천",
+              "best_for": "전업·다작 작가",
+              "pitch": "70화 대작을 통째로 설계하고, 내 문체까지 학습시켜 나만의 결로. 작품 수 제한 없이 프로처럼.",
+              "highlight": "문체 학습 · 회차 70 · 작품 무제한"},
 }
 
 
