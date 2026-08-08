@@ -11,9 +11,12 @@ import io
 import json
 import os
 import re
+import urllib.error
+import urllib.parse
+import urllib.request
 import uuid
 
-from fastapi import APIRouter, File, Form, Header, UploadFile
+from fastapi import APIRouter, File, Form, Header, Request, UploadFile
 from pydantic import BaseModel
 
 from . import db
@@ -158,35 +161,103 @@ def set_tier(body: TierBody, user: str = Header(default="solo", alias="X-User-Id
     return {"ok": True, "tier": t, "limits": TIERS[t]}
 
 
-def _verify_purchase(platform: str, product_id: str, transaction: str):
-    """구매 검증 자리 — 반드시 '서버가' 스토어에 직접 확인해야 한다 (클라 주장은 못 믿음).
-      · iOS: App Store Server API로 StoreKit2 JWS 서명 검증 → productId·expiresDate 추출
-      · Android: Google Play Developer API purchases.subscriptions.get 로 확인
-    검증이 연결되기 전에는 안전하게 '거부'(fail-closed)한다.
-    반환 예: {"tier": "pro", "expires_at": "2026-09-01T00:00:00+00:00"} 또는 None."""
-    # TODO: 실제 스토어 검증 연결. (지금은 미설정 → None 반환 = 부여 안 함)
+# ─────────────────────────── 인앱 결제(구독) 검증 ───────────────────────────
+# 결제는 RevenueCat을 소스 오브 트루스로 쓴다. 앱(네이티브)의 RevenueCat SDK가
+# App Store·Google Play 결제를 처리하고, 서버는 RevenueCat REST API로 '서버가 직접'
+# 구독 상태를 확인한다(클라이언트 주장은 절대 신뢰하지 않음 = fail-closed).
+#
+#   · RevenueCat 대시보드에 Entitlement를 tier 이름 그대로 만든다: "light", "pro"
+#   · 앱은 RevenueCat appUserID = 우리의 X-User-Id(기기 UUID)로 로그인시킨다
+#   · 구매 성공 후 앱이 POST /entitlement 를 부르면, 서버가 아래로 재확인해 등급 부여
+#   · 갱신·해지·환불은 RevenueCat 웹훅(POST /rc-webhook)이 서버 상태를 자동 갱신
+#
+# 환경변수(둘 다 Render 대시보드에서 설정):
+#   REVENUECAT_SECRET        RevenueCat v1 시크릿 API 키 (Bearer)
+#   REVENUECAT_WEBHOOK_AUTH  웹훅 Authorization 헤더로 받을 공유 비밀(임의 문자열)
+REVENUECAT_SECRET = os.environ.get("REVENUECAT_SECRET", "")
+REVENUECAT_WEBHOOK_AUTH = os.environ.get("REVENUECAT_WEBHOOK_AUTH", "")
+# 높은 등급이 우선. RevenueCat entitlement 식별자 → 우리 tier 이름(동일하게 맞춘다).
+_RC_TIER_PRIORITY = ["pro", "light"]
+
+
+def _rc_lookup(app_user_id: str):
+    """RevenueCat에 '이 사용자'의 활성 구독을 서버가 직접 물어본다.
+    반환: {"tier": "...", "expires_at": "...|None"} 또는 None(활성 구독 없음/미설정)."""
+    if not REVENUECAT_SECRET or not app_user_id:
+        return None
+    url = "https://api.revenuecat.com/v1/subscribers/" + urllib.parse.quote(app_user_id, safe="")
+    req = urllib.request.Request(url, headers={
+        "Authorization": "Bearer " + REVENUECAT_SECRET,
+        "Accept": "application/json",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError):
+        return None
+    ents = ((data or {}).get("subscriber") or {}).get("entitlements") or {}
+    now = datetime.datetime.now(datetime.timezone.utc)
+    for tier in _RC_TIER_PRIORITY:            # 높은 등급부터
+        e = ents.get(tier)
+        if not e:
+            continue
+        exp = e.get("expires_date")           # ISO8601 또는 None(영구)
+        if exp:
+            try:
+                if datetime.datetime.fromisoformat(str(exp).replace("Z", "+00:00")) < now:
+                    continue                  # 이미 만료
+            except ValueError:
+                continue
+        if tier in TIERS:
+            return {"tier": tier, "expires_at": exp}
     return None
 
 
+def _grant_from_rc(user: str) -> dict:
+    """RevenueCat 확인 결과로 ent를 갱신(활성 없으면 무료로 내림). 결과 dict 반환."""
+    v = _rc_lookup(user)
+    with db.connect() as c:
+        if v:
+            ent = {"tier": v["tier"], "platform": "revenuecat",
+                   "expires_at": v.get("expires_at"),
+                   "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+            db.kv_set(c, f"ent:{user}", json.dumps(ent, ensure_ascii=False))
+            return {"ok": True, "tier": v["tier"], "limits": TIERS[v["tier"]],
+                    "expires_at": v.get("expires_at")}
+        db.kv_set(c, f"ent:{user}", "")        # 활성 구독 없음 → 무료
+        return {"ok": True, "tier": "free", "limits": TIERS["free"], "expires_at": None}
+
+
 class EntitlementBody(BaseModel):
-    platform: str = "ios"      # ios | android
+    platform: str = "ios"      # ios | android (참고용 — 검증은 RevenueCat이 한다)
     product_id: str = ""
-    transaction: str = ""      # StoreKit2 JWS 또는 영수증
 
 
 @router.post("/entitlement")
 def set_entitlement(body: EntitlementBody, user: str = Header(default="solo", alias="X-User-Id")):
-    """앱 내 구매 후 네이티브가 영수증을 보내면, 서버가 검증해 등급을 부여한다."""
-    v = _verify_purchase(body.platform, body.product_id, body.transaction)
-    if not v or v.get("tier") not in TIERS:
+    """앱에서 구매·복원 직후 호출. 서버가 RevenueCat로 재확인해 등급을 부여한다."""
+    if not REVENUECAT_SECRET:
         return {"ok": False, "error": "결제 검증을 아직 사용할 수 없어요.",
-                "detail": "서버에 애플/구글 결제 검증이 연결되면 자동으로 적용됩니다."}
-    ent = {"tier": v["tier"], "product_id": body.product_id, "platform": body.platform,
-           "expires_at": v.get("expires_at"),
-           "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
-    with db.connect() as c:
-        db.kv_set(c, f"ent:{user}", json.dumps(ent, ensure_ascii=False))
-    return {"ok": True, "tier": v["tier"], "limits": TIERS[v["tier"]], "expires_at": v.get("expires_at")}
+                "detail": "서버에 RevenueCat(REVENUECAT_SECRET)이 연결되면 자동으로 적용됩니다."}
+    return _grant_from_rc(user)
+
+
+@router.post("/rc-webhook")
+async def rc_webhook(request: Request):
+    """RevenueCat 웹훅 — 갱신/해지/환불/만료 시 해당 사용자 등급을 자동 재동기화.
+    RevenueCat 대시보드의 Webhook Authorization 헤더 값과 대조해 인증한다."""
+    if not REVENUECAT_WEBHOOK_AUTH or \
+       request.headers.get("authorization", "") != REVENUECAT_WEBHOOK_AUTH:
+        return {"ok": False}                   # 인증 실패 — 조용히 무시
+    try:
+        payload = await request.json()
+    except Exception:
+        return {"ok": False}
+    ev = (payload or {}).get("event") or {}
+    uid = ev.get("app_user_id") or ev.get("original_app_user_id")
+    if uid:
+        _grant_from_rc(uid)                    # RevenueCat에 다시 물어 최신 상태로
+    return {"ok": True}
 
 
 ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "")

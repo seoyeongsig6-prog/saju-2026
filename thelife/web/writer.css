@@ -244,6 +244,10 @@ body.launch #revise-box,
 body.launch #bd-cpc-field,
 body.launch #bible-cpc-field { display: none !important; }
 
+/* '구매 복원'은 네이티브 앱에서만 의미가 있다 (웹에선 숨김) */
+#btn-restore { display: none; }
+body.native #btn-restore { display: block; }
+
 /* 광고 (무료 요금제만) */
 .ad-banner {
   position: fixed; left: 50%; transform: translateX(-50%); bottom: 0; z-index: 15;

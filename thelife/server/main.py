@@ -6,6 +6,7 @@ GEMINI_API_KEY 환경변수가 있으면 실제 LLM으로, 없으면 목업 텍�
 import json
 
 from fastapi import FastAPI, Header
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -16,6 +17,17 @@ from .engine import conflicts, intervention, narrative, schedule, season as seas
 from .llm import llm
 
 app = FastAPI(title="The Life")
+# 네이티브 앱(Capacitor)은 웹뷰 안에서 로컬 오리진으로 뜨고 API는 이 서버로 부른다.
+# 그 오리진들에서의 호출을 허용한다. (브라우저 = 동일 오리진이라 CORS 무관)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "capacitor://localhost", "ionic://localhost",
+        "http://localhost", "https://localhost",
+    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(writer.router)
 WEB = Path(__file__).resolve().parent.parent / "web"
 

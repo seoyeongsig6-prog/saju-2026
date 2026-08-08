@@ -8,3 +8,12 @@ services:
     envVars:
       - key: GEMINI_API_KEY
         sync: false
+      # 데이터 영구 보관(재배포·수면에도 유지) — Neon 등 PostgreSQL 연결 문자열.
+      # 이게 있어야 업데이트/재배포 시 이용자 데이터가 사라지지 않는다.
+      - key: DATABASE_URL
+        sync: false
+      # 인앱 결제(RevenueCat) — 앱을 팔기 시작할 때만 필요. 없으면 결제는 fail-closed.
+      - key: REVENUECAT_SECRET        # RevenueCat v1 시크릿 API 키
+        sync: false
+      - key: REVENUECAT_WEBHOOK_AUTH  # 웹훅 Authorization 헤더로 받을 임의 비밀문자열
+        sync: false

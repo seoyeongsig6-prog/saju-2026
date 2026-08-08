@@ -1,0 +1,27 @@
+{
+  "name": "novelist-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "더 노벨리스트 — App Store / Google Play 네이티브 래퍼 (Capacitor)",
+  "scripts": {
+    "build:web": "node build.mjs",
+    "sync": "node build.mjs && npx cap sync",
+    "add:ios": "npx cap add ios",
+    "add:android": "npx cap add android",
+    "open:ios": "npx cap open ios",
+    "open:android": "npx cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/app": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/ios": "^7.0.0",
+    "@capacitor/splash-screen": "^7.0.0",
+    "@capacitor/status-bar": "^7.0.0",
+    "@revenuecat/purchases-capacitor": "^10.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.0.0",
+    "esbuild": "^0.23.0"
+  }
+}

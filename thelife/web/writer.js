@@ -6,8 +6,16 @@ if (!UID) {
   UID = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now());
   localStorage.setItem("thelife_uid", UID);
 }
+/* 네이티브 앱(Capacitor)에서는 UI가 로컬에 번들되어 뜨므로 API는 배포 서버 절대주소로 부른다.
+   웹(브라우저)에서는 같은 오리진이라 빈 문자열(상대경로) 그대로 쓴다.
+   앱 빌드는 www/app-config.js 에서 window.NOVELIST_API_BASE 를 주입한다. */
+const IS_NATIVE = !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === "function"
+  && window.Capacitor.isNativePlatform());
+const API_BASE = (window.NOVELIST_API_BASE || "").replace(/\/$/, "");
+if (IS_NATIVE) document.body.classList.add("native");
 const api = async (path, opts = {}) => {
-  const r = await fetch(path, {
+  const url = (API_BASE && path.startsWith("/")) ? API_BASE + path : path;
+  const r = await fetch(url, {
     ...opts,
     headers: { "Content-Type": "application/json", "X-User-Id": UID, ...(opts.headers || {}) },
   });
@@ -123,18 +131,60 @@ function renderPlans() {
   }).join("");
   box.querySelectorAll(".plan-cta.buy").forEach((b) => { b.onclick = () => choosePlan(b.dataset.tier); });
 }
-function choosePlan(t) {
-  if (LAUNCH) {
+/* 결제 후 서버(RevenueCat 검증)로 등급을 재동기화하고 화면을 갱신한다. */
+async function syncEntitlement() {
+  const r = await api("/api/writer/entitlement", {
+    method: "POST", body: JSON.stringify({ platform: IS_NATIVE ? "native" : "web" }),
+  });
+  if (r && r.ok) {
+    TIER = r.tier; LIMITS = r.limits; EXPIRES = r.expires_at || null;
+    renderPlans(); renderSettingsPlan(); Ads.refresh();
+  }
+  return r;
+}
+
+async function choosePlan(t) {
+  if (t === "free") {
+    notice("무료는 구독을 해지하면 자동으로 적용돼요.\n구독 관리는 기기의 앱스토어 · Google Play 계정에서 할 수 있어요.");
+    return;
+  }
+  // 개발용 웹(비런치)에서는 서버 오버라이드로 미리보기 전환.
+  if (!LAUNCH && !window.NovelistIAP) {
+    const r = await api("/api/writer/tier", { method: "POST", body: JSON.stringify({ tier: t }) });
+    if (r.ok) { TIER = r.tier; LIMITS = r.limits; renderPlans(); renderSettingsPlan(); Ads.refresh();
+      notice(`${TIERS_INFO[t].label} 플랜으로 전환했어요. (미리보기)`); }
+    else notice(r.error || "변경할 수 없어요.");
+    return;
+  }
+  // 실제 앱 — 네이티브 인앱 결제(RevenueCat) 브리지로 구매.
+  if (!window.NovelistIAP) {
     notice("곧 앱에서 구독을 구매할 수 있어요.\n(App Store · Google Play 결제 연결 예정)");
     return;
   }
-  api("/api/writer/tier", { method: "POST", body: JSON.stringify({ tier: t }) }).then((r) => {
-    if (r.ok) {
-      TIER = r.tier; LIMITS = r.limits;
-      renderPlans(); renderSettingsPlan(); Ads.refresh();
-      notice(`${TIERS_INFO[t].label} 플랜으로 전환했어요.`);
-    } else notice(r.error || "변경할 수 없어요.");
-  });
+  try {
+    busy("결제를 준비하는 중…");
+    const res = await window.NovelistIAP.purchase(t);   // {ok, cancelled?, error?}
+    if (res && res.cancelled) { unbusy(); return; }
+    if (!res || !res.ok) { unbusy(); notice(res && res.error ? res.error : "결제를 완료하지 못했어요."); return; }
+    const sync = await syncEntitlement();
+    unbusy();
+    if (sync && sync.ok && sync.tier === t) notice(`${TIERS_INFO[t].label} 플랜이 시작됐어요. 감사합니다!`);
+    else notice("결제는 됐어요. 반영까지 잠시 걸릴 수 있어요.");
+  } catch (e) { unbusy(); notice("결제 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요."); }
+}
+
+/* 구매 복원 — 기기 변경·재설치 후 이전 구독을 되살린다 (스토어 심사 필수 기능). */
+async function restorePurchases() {
+  if (!window.NovelistIAP) { notice("앱에서만 사용할 수 있어요."); return; }
+  try {
+    busy("구매 내역을 확인하는 중…");
+    await window.NovelistIAP.restore();
+    const sync = await syncEntitlement();
+    unbusy();
+    notice(sync && sync.ok && sync.tier !== "free"
+      ? `${TIERS_INFO[sync.tier].label} 구독을 되살렸어요.`
+      : "되살릴 활성 구독이 없어요.");
+  } catch (e) { unbusy(); notice("구매 복원 중 문제가 생겼어요."); }
 }
 
 /* 광고 — 무료 요금제에서만. 실제 AdMob은 네이티브 래핑 단계에서 이 함수 안을 교체한다. */
