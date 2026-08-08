@@ -1623,6 +1623,74 @@ def _recurring_motifs(prev: list, w: dict, top: int = 16) -> list:
     return [bg for bg, _ in cands[:top]]
 
 
+# 소설에서 자연스럽게 자주 나오는 흔한 단어 — 반복이라 볼 수 없으니 '과다 단어'에서 제외한다.
+# (여기 없는 '고유한 단어'가 자꾸 나오는 게 진짜 문제 — 예: 삼나무·피맛·보랏빛)
+_COMMON_WORDS = set((
+    "나 너 그 저 이 우리 당신 그녀 그들 자신 서로 스스로 누구 무엇 무언가 어디 언제 "
+    "이것 그것 저것 여기 저기 거기 이곳 그곳 것 수 때 곳 점 뿐 채 만큼 정도 무렵 "
+    "사람 남자 여자 사이 동안 하나 둘 셋 모두 전부 세상 세계 자리 모습 상황 경우 "
+    "순간 시간 하루 오늘 내일 어제 지금 이제 방금 아침 저녁 밤 낮 새벽 하늘 바닥 벽 "
+    "눈 손 말 얼굴 목소리 마음 생각 시선 표정 공기 소리 숨 가슴 머리 몸 눈빛 목 입 "
+    "발 등 어깨 고개 손끝 눈앞 입술 팔 다리 피부 심장 이마 뺨 턱 코 귀 뒤통수 "
+    "안 앞 뒤 위 아래 옆 속 밖 방 문 창 빛 어둠 그림자 공간 주변 사방 "
+    "그리고 그러나 하지만 그래서 그런데 그러자 그러니 이내 결국 마침내 다시 이제 "
+    "아주 조금 정말 그저 마치 문득 이미 아직 여전히 천천히 그때 곧 잠시 어느 "
+    "무슨 어떤 이런 그런 저런 모든 그만 더욱 훨씬 가장 매우 계속 함께 그대로 "
+    "이렇게 그렇게 저렇게 왜 어떻게 얼마나 대답 질문 대화 웃음 눈물 걸음 발걸음 "
+    "동시 순식간 한동안 방향 소년 소녀 목적 이유 방법 사실 진실 존재 자체 부분 전체 "
+).split())
+
+
+# 흔한 조사·어미 — 단어 뒤에 붙는 걸 떼어내 '삼나무/삼나무의/삼나무가'를 한 단어로 본다.
+_JOSA = ("으로써 으로서 으로부터 에게서 에서도 에게도 이라도 이라는 이라고 이나마 "
+         "으로 에게 한테 에서 부터 까지 보다 처럼 마저 조차 이라 이며 이나 라도 라고 라는 "
+         "은 는 이 가 을 를 에 의 도 로 와 과 만 께 나 며 고 라 야 서").split()
+
+
+def _norm_word(wd: str) -> str:
+    """단어 뒤에 붙은 조사 하나를 떼어 표제어에 가깝게 만든다 (한글만, 최소 2자 유지)."""
+    if not wd or not ("가" <= wd[0] <= "힣"):
+        return wd
+    for j in _JOSA:                              # 긴 조사부터 시도
+        if wd.endswith(j) and len(wd) - len(j) >= 2:
+            return wd[:-len(j)]
+    return wd
+
+
+def _word_counts(text: str):
+    """본문 속 '내용어'의 등장 횟수 (조사 정규화 후, 한 회차 안에서)."""
+    d = {}
+    for wd in _content_words(text):
+        n = _norm_word(wd)
+        d[n] = d.get(n, 0) + 1
+    return d
+
+
+def _overused_words(prev: list, w: dict, top: int = 14) -> list:
+    """여러 회차에 '단어 하나'가 너무 자주 나오는 것을 뽑는다 (길이 제한 없음).
+    인물명·고유명사(조사 붙은 형태 포함)·흔한 서술어는 빼고, 고유한데 반복되는 단어만 남긴다.
+    반환: 반복 많은 순 단어 리스트 (삼나무·피맛·보랏빛 같은 것)."""
+    if not prev:
+        return []
+    names = [n for n in _story_names(w) if len(n) >= 2]
+    total, docf = {}, {}
+    for p in prev:
+        seen = set()
+        for wd in _content_words(p.get("body") or ""):
+            n = _norm_word(wd)
+            if len(n) < 2 or n in _COMMON_WORDS or any(n.startswith(nm) for nm in names):
+                continue                          # 인물명+조사(민우는 등)도 함께 제외
+            total[n] = total.get(n, 0) + 1
+            seen.add(n)
+        for n in seen:
+            docf[n] = docf.get(n, 0) + 1
+    need = max(4, len(prev))                     # 총 4회 이상 & 평균 회당 1회 이상
+    cands = [(n, c) for n, c in total.items()
+             if c >= need and docf.get(n, 0) >= 2]   # 여러 회차에 걸쳐 반복될 때
+    cands.sort(key=lambda x: (-x[1], -len(x[0])))
+    return [n for n, _ in cands[:top]]
+
+
 def _target_chars(w: dict) -> int:
     """이 작품의 회당 목표 글자수 (작가가 빌더에서 고른 값). 기본 5,000."""
     try:
@@ -1656,6 +1724,10 @@ def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str,
     scenes_block = ("\n━━━ 이미 여러 화에서 반복된 장면·행동·연출 — 이번 화에서 '재현' 금지 ━━━\n"
                     "아래 상황을 또 만들지 마라. 인물의 성격·관계는 매번 '다른 사건·다른 행동'으로 드러내라:\n"
                     + "\n".join(f"- {a} … {b}" for a, b in motifs) + "\n") if motifs else ""
+    words = _overused_words(prev, w)
+    words_block = ("\n━━━ 이미 너무 자주 쓴 단어 — 이번 화에서 쓰지 마라 (다른 감각·다른 소재로 바꿔라) ━━━\n"
+                   "특정 냄새·색·맛·사물에 계속 기대지 마라. 아래 단어는 이번 화에서 거의/전혀 쓰지 말고 새로운 표현을 찾아라:\n"
+                   + ", ".join(words) + "\n") if words else ""
 
     return f"""당신은 정상급 웹소설 작가다. 아래 작품의 {no}화를 {'다시 ' if rewriting else ''}써라.
 당신은 앞의 모든 화를 이미 다 읽었다. 앞에서 벌어진 사건·설정·수치·인물의 말투를
@@ -1689,7 +1761,7 @@ def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str,
 ━━━━━━ 이 화 '다음'에 이미 연재된 내용 (여기와도 모순되면 안 된다) ━━━━━━
 {later_block}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━''' if rewriting else ''}
-{overused_block}{scenes_block}
+{overused_block}{scenes_block}{words_block}
 {f'[작가의 지시 — 최우선으로 따르라] {directive}' if directive else ''}
 
 집필 규칙:
@@ -1709,6 +1781,9 @@ def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str,
 - **표현 중복 금지**: 앞 회차에서 쓴 묘사·비유·문장·대사를 그대로도 비슷하게도 다시 쓰지 마라.
   감정 상투구('심장이 쿵 내려앉았다', '눈이 크게 흔들렸다'), 외양·표정·배경 묘사, 장면 전환 문구를 반복하지 말고,
   위 '이미 여러 번 쓴 표현' 목록은 무슨 일이 있어도 재사용하지 마라.
+- **단어 반복 금지**: 특정 냄새·색·맛·사물 단어(예: 나무 이름·'피맛'·'보랏빛' 같은 것)를 회차마다 반복해 인장처럼 쓰지 마라.
+  같은 인물·장소·분위기라도 매번 '다른 감각(청각·촉각·후각 등)과 다른 소재'로 묘사하라.
+  위 '이미 너무 자주 쓴 단어' 목록은 이번 화에서 거의/전혀 쓰지 마라.
 - **분량: 공백 포함 {target:,}자 이상 ({target:,}~{int(target * 1.2):,}자).** 여러 장면으로 구성하라.
 {DESCRIPTION_RULES}
 - **심경 변화**는 반드시 이번 화의 사건이 원인이어야 하고, 몸짓과 대사로 단계적으로 보여라.
@@ -1760,26 +1835,39 @@ def _generate_full_chapter(w: dict, no: int, beat: dict, prev: list, directive: 
             summary = s2
         tries += 1
 
-    # ── 장면 반복 감시 ──
-    # 이번 화가 '이미 여러 화에서 반복된 장면'을 또 되풀이하면, 그 장면들을 지목해
-    # 새로운 사건으로 대체하도록 딱 한 번 다시 쓰게 한다 (반복이 실제로 준 경우에만 채택).
+    # ── 반복 감시 (장면 + 단어) ──
+    # 이번 화가 '이미 반복된 장면'이나 '이미 과하게 쓴 단어'를 또 되풀이하면, 그것들을 지목해
+    # 새로운 사건·다른 표현으로 대체하도록 딱 한 번 다시 쓰게 한다 (반복이 실제로 준 경우에만 채택).
     if not llm.is_mock:
         motifs = _recurring_motifs(prev, w)
-        if motifs:
-            hit = [m for m in motifs if m in _chapter_bigrams(text)]
-            if len(hit) >= 6:
-                names = ", ".join(f"'{a} {b}'" for a, b in hit[:10])
-                redir = (f"[반드시 지켜라] 다음 장면·행동이 앞 회차들과 똑같이 또 반복됐다: {names}. "
-                         "이 상황들을 삭제하고, 인물의 관계·감정은 '완전히 다른 새로운 사건과 행동'으로 대체해 "
-                         "이번 화를 다시 써라. " + (directive or "")).strip()
-                raw2 = llm.write(_chapter_prompt(w, no, beat, prev, redir, later),
-                                 mock_text="", max_tokens=16000)
-                if not llm.last_error and raw2.strip():
-                    t2, x2, s2 = _parse_chapter(raw2, no)
-                    hit2 = [m for m in motifs if m in _chapter_bigrams(x2)]
-                    if x2.strip() and len(x2) >= min_chars and len(hit2) < len(hit):
-                        title, text = t2 or title, x2      # 반복이 줄었을 때만 교체
-                        summary = s2 or summary
+        banned = _overused_words(prev, w)
+
+        def _rep(t):
+            wc = _word_counts(t)
+            scene = [m for m in motifs if m in _chapter_bigrams(t)]
+            word = [b for b in banned if wc.get(b, 0) >= 3]      # 이미 과한 단어를 또 3회+ 사용
+            return scene, word
+
+        scene_hit, word_hit = _rep(text)
+        if len(scene_hit) >= 6 or len(word_hit) >= 2:
+            parts = []
+            if len(scene_hit) >= 6:
+                parts.append("장면·행동: " + ", ".join(f"'{a} {b}'" for a, b in scene_hit[:8])
+                             + " — 이 상황들을 삭제하고 완전히 다른 새로운 사건으로 대체하라")
+            if word_hit:
+                parts.append("반복 단어: " + ", ".join(word_hit[:10])
+                             + " — 이 단어들을 이번 화에서 거의/전혀 쓰지 말고 다른 감각·소재로 바꿔라")
+            redir = ("[반드시 지켜라] 앞 회차와 똑같은 반복이 또 나왔다. " + " / ".join(parts)
+                     + ". 이번 화를 그렇게 다시 써라. " + (directive or "")).strip()
+            raw2 = llm.write(_chapter_prompt(w, no, beat, prev, redir, later),
+                             mock_text="", max_tokens=16000)
+            if not llm.last_error and raw2.strip():
+                t2, x2, s2 = _parse_chapter(raw2, no)
+                s2_scene, s2_word = _rep(x2)
+                if x2.strip() and len(x2) >= min_chars and \
+                   (len(s2_scene) + len(s2_word)) < (len(scene_hit) + len(word_hit)):
+                    title, text = t2 or title, x2      # 반복이 실제로 줄었을 때만 교체
+                    summary = s2 or summary
     return title, text, summary, None
 
 
