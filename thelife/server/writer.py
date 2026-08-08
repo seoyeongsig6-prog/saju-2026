@@ -1108,50 +1108,11 @@ def edit_outline(work_id: int, body: OutlineBody,
     return {"ok": True, "outline_count": len(outline)}
 
 
-class RenameBody(BaseModel):
-    old: str
-    new: str
-
-
-@router.post("/works/{work_id}/rename")
-def rename_term(work_id: int, body: RenameBody,
-                user: str = Header(default="solo", alias="X-User-Id")):
-    """이름·고유명사 일괄 변경 — 설정집은 물론 '이미 쓴 모든 회차 본문'까지 그대로 반영한다.
-    이야기를 흔드는 고유명사(인명·지명·조직명 등)는 앞 내용까지 함께 바뀌어야 하므로 전역 치환한다."""
-    if LAUNCH_MODE:
-        return _LAUNCH_OFF
-    old, new = body.old.strip(), body.new.strip()
-    if not old or not new:
-        return {"ok": False, "error": "바꿀 이름과 새 이름을 모두 입력해 주세요."}
-    if old == new:
-        return {"ok": True, "chapters": 0}
-    if any(ch in (old + new) for ch in ('"', "\\")):
-        return {"ok": False, "error": "이름에 따옴표(\")나 역슬래시(\\)는 쓸 수 없어요."}
-    rep = lambda s: (s or "").replace(old, new)
-    with db.connect() as c:
-        w = _load_work(c, work_id, user)
-        if not w:
-            return {"ok": False, "error": "작품을 찾을 수 없어요."}
-        # 작품 설정 전반 (JSON 문자열째로 치환 — 값 안의 이름까지 모두 바뀐다)
-        c.execute(
-            "UPDATE works SET title=?, premise=?, ending=?, brief=?, style=?, "
-            "characters_json=?, relations_json=?, beats_json=?, outline_json=?, canon_json=? "
-            "WHERE id=?",
-            (rep(w["title"]), rep(w.get("premise")), rep(w.get("ending")), rep(w.get("brief")),
-             rep(w.get("style")), rep(w.get("characters_json")), rep(w.get("relations_json")),
-             rep(w.get("beats_json")), rep(w.get("outline_json")), rep(w.get("canon_json")),
-             work_id),
-        )
-        # 이미 쓴 모든 회차 본문·제목·요약
-        rows = c.execute("SELECT id, title, body, summary FROM chapters WHERE work_id=?",
-                         (work_id,)).fetchall()
-        n = 0
-        for r in rows:
-            if old in (r["title"] or "") or old in (r["body"] or "") or old in (r["summary"] or ""):
-                c.execute("UPDATE chapters SET title=?, body=?, summary=?, updated_at=datetime('now') "
-                          "WHERE id=?", (rep(r["title"]), rep(r["body"]), rep(r["summary"]), r["id"]))
-                n += 1
-    return {"ok": True, "chapters": n}
+# NOTE: 예전의 '이름 일괄 변경(/rename)' 기능은 제거되었다.
+# 그 기능은 이미 쓴 모든 회차 본문을 전역 문자열 치환해서, 짧은 이름 하나만 바꿔도
+# 본문이 통째로 훼손되는 데이터 손실 사고를 냈다. 표기를 바꾸고 싶으면 아래
+# '고유명사 사전(canon)'에 등록하라 — 이미 쓴 글은 절대 건드리지 않고, 다음 회차부터만
+# 반영된다. (원칙: 어떤 수정도 기존 본문을 자동으로 다시 쓰지 않는다.)
 
 
 class CanonBody(BaseModel):
@@ -1598,10 +1559,16 @@ def regen_chapter(chapter_id: int, body: ChapterBody,
         if err:
             return {"ok": False, "error": "다시 쓰기에 실패했어요. 기존 회차는 그대로 유지됩니다.",
                     "detail": f"AI 호출 오류 — {err}. 크레딧/사용량 한도를 확인하세요."}
+        # 덮어쓰기 전에 이전 본문을 휴지통에 보관한다 — 다시 쓰기도 언제든 되돌릴 수 있게.
+        old_row = c.execute(
+            "SELECT title, body, summary, state_json, directive FROM chapters WHERE id=?",
+            (chapter_id,)).fetchone()
+        undo = _stash(c, "chapter_prev", user,
+                      {"chapter_id": chapter_id, "prev": dict(old_row) if old_row else {}})
         c.execute("UPDATE chapters SET title=?, body=?, summary=?, state_json=?, directive=?, "
                   "updated_at=datetime('now') WHERE id=?",
                   (title, text, summary, "", body.directive.strip(), chapter_id))
-    return {"ok": True}
+    return {"ok": True, "undo": undo}
 
 
 @router.put("/chapters/{chapter_id}")
@@ -1680,7 +1647,21 @@ def restore_trash(token: str, user: str = Header(default="solo", alias="X-User-I
         data = json.loads(raw)
         if data.get("user") != user:
             return {"ok": False, "error": "권한이 없어요."}
-        if data["kind"] == "chapter":
+        if data["kind"] == "chapter_prev":
+            # '다시 쓰기'로 덮어쓴 회차를 이전 본문으로 되돌린다 (같은 회차 제자리 복원).
+            cid = data.get("chapter_id")
+            own = c.execute(
+                "SELECT ch.work_id FROM chapters ch JOIN works w ON w.id = ch.work_id "
+                "WHERE ch.id=? AND w.user_id=?", (cid, user)).fetchone()
+            if not own:
+                return {"ok": False, "error": "되돌릴 회차가 사라졌어요."}
+            p = data.get("prev") or {}
+            c.execute("UPDATE chapters SET title=?, body=?, summary=?, state_json=?, directive=?, "
+                      "updated_at=datetime('now') WHERE id=?",
+                      (p.get("title", ""), p.get("body", ""), p.get("summary", ""),
+                       p.get("state_json", ""), p.get("directive", ""), cid))
+            out = {"ok": True, "kind": "chapter_prev", "work_id": own["work_id"]}
+        elif data["kind"] == "chapter":
             ch = data["chapter"]
             if not c.execute("SELECT id FROM works WHERE id=? AND user_id=?",
                              (ch.get("work_id"), user)).fetchone():

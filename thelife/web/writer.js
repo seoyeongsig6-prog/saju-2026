@@ -950,23 +950,6 @@ $("#btn-rewrite-all").onclick = async () => {
   notice("모든 회차를 다시 썼어요.");
 };
 
-/* ---------- 이름·고유명사 일괄 변경 (기존 회차까지 반영) ---------- */
-$("#rename-go").onclick = async () => {
-  const oldN = $("#rename-old").value.trim(), newN = $("#rename-new").value.trim();
-  if (!oldN || !newN) { notice("바꿀 이름과 새 이름을 모두 입력해 주세요."); return; }
-  if (!confirm(`'${oldN}' → '${newN}' 로 바꿉니다.\n설정집과 이미 쓴 모든 회차 본문에서 이 표기가 전부 바뀝니다. 진행할까요?`)) return;
-  busy("모든 회차에 반영하는 중…");
-  const r = await api(`/api/writer/works/${WORK.id}/rename`, {
-    method: "POST", body: JSON.stringify({ old: oldN, new: newN }),
-  });
-  unbusy();
-  if (!r.ok) { notice(r.error || "실패했어요"); return; }
-  $("#rename-old").value = ""; $("#rename-new").value = "";
-  await openWork(WORK.id);
-  wtab("bible");
-  notice(`바꿨어요. 회차 ${r.chapters}개 본문에 반영됐어요.`);
-};
-
 /* ---------- 회차 쓰기 ---------- */
 $("#btn-write").onclick = async () => {
   const cpc = (WORK.chars_per_chapter || 5000).toLocaleString();
@@ -1028,12 +1011,21 @@ $("#ed-regen").onclick = async () => {
   const directive = prompt("다시 쓸 때의 지시 (비워도 됩니다):", CHAPTER.directive || "");
   if (directive === null) return;
   busy("다시 쓰는 중…");
-  const r = await api(`/api/writer/chapters/${CHAPTER.id}/regenerate`, {
+  const cid = CHAPTER.id;
+  const r = await api(`/api/writer/chapters/${cid}/regenerate`, {
     method: "POST", body: JSON.stringify({ directive }),
   });
   unbusy();
   if (!r.ok) { notice(r.error); return; }
-  openChapter(CHAPTER.id);
+  await openChapter(cid);
+  if (r.undo) {
+    noticeUndo("다시 썼어요. 이전 글로 되돌릴 수 있어요.", async () => {
+      const rr = await api(`/api/writer/trash/${r.undo}/restore`, { method: "POST" });
+      if (!rr.ok) { notice(rr.error || "되돌리기 실패"); return; }
+      await openChapter(cid);
+      notice("이전 글로 되돌렸어요.");
+    });
+  }
 };
 $("#ed-del").onclick = async () => {
   if (!confirm("이 회차를 삭제할까요?")) return;

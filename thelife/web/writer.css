@@ -241,7 +241,6 @@ textarea { width: 100%; font-family: inherit; resize: vertical; line-height: 1.6
 body.launch #ch-write-box,
 body.launch #btn-rewrite-all,
 body.launch #revise-box,
-body.launch #rename-box,
 body.launch #bd-cpc-field,
 body.launch #bible-cpc-field { display: none !important; }
 
