@@ -48,11 +48,16 @@ TIERS = {
               "highlight": "무료 대비 회차 6배 · 광고 없음"},
     "pro":   {"label": "프로", "max_chapters": 70, "syn_chars": 450,
               "max_characters": 10, "max_works": 100000, "style_learning": True,  "ads": False,
+              "monthly_pens": 5, "body_writing": True,
               "price": "₩9,900", "period": "/월", "tagline": "프로 작가용", "badge": "추천",
               "best_for": "전업·다작 작가",
-              "pitch": "70화 대작을 통째로 설계하고, 내 문체까지 학습시켜 나만의 결로. 작품 수 제한 없이 프로처럼.",
-              "highlight": "문체 학습 · 회차 70 · 작품 무제한"},
+              "pitch": "70화 대작을 통째로 설계하고, 내 문체까지 학습시켜 나만의 결로. 매달 펜 5개로 본문까지 직접 씁니다.",
+              "highlight": "문체 학습 · 본문 쓰기 · 매달 펜 5개"},
 }
+# 기본값 채우기 — 아래 등급은 본문 쓰기/월 펜 없음.
+for _t in TIERS.values():
+    _t.setdefault("monthly_pens", 0)
+    _t.setdefault("body_writing", False)
 
 
 # 스토어 상품 ID → 등급. (앱 커넥트/플레이 콘솔에서 만든 구독 상품 ID와 맞춘다)
@@ -60,6 +65,21 @@ PRODUCT_TIER = {
     "novelist.light.monthly": "light", "novelist.light.yearly": "light",
     "novelist.pro.monthly": "pro", "novelist.pro.yearly": "pro",
 }
+
+# 소모성 '펜' 상품 ID → 지급 개수. 펜 1개 = 본문 1편(≤5,000자).
+PEN_PRODUCTS = {
+    "novelist.pen.1": 1,
+    "novelist.pens.10": 10,
+    "novelist.pens.50": 50,
+    "novelist.pens.100": 100,
+}
+# 스토어 표시 정보 (플랜 화면 '펜 충전'에 쓰인다). count·price·per(개당).
+PEN_PACKS = [
+    {"product": "novelist.pen.1",   "count": 1,   "price": "₩990",    "per": "₩990"},
+    {"product": "novelist.pens.10", "count": 10,  "price": "₩8,000",  "per": "개당 ₩800"},
+    {"product": "novelist.pens.50", "count": 50,  "price": "₩35,000", "per": "개당 ₩700", "badge": "인기"},
+    {"product": "novelist.pens.100","count": 100, "price": "₩60,000", "per": "개당 ₩600", "badge": "최저가"},
+]
 
 
 def _entitlement(c, user: str):
@@ -93,6 +113,75 @@ def _tier_name(c, user: str) -> str:
 
 def _limits(name: str) -> dict:
     return TIERS.get(name, TIERS["free"])
+
+
+# ─────────────────────────── 펜(소모성 재화) ───────────────────────────
+# 펜 1개 = 본문 1편(≤5,000자). 서버가 잔액의 유일한 소스 오브 트루스다.
+#  · 프로 구독자는 매달 monthly_pens 개를 자동 지급받는다.
+#  · 스토어에서 펜을 사면 RevenueCat 웹훅(NON_RENEWING_PURCHASE)이 잔액을 올린다.
+def _pen_balance(c, user: str) -> int:
+    try:
+        return max(0, int(db.kv_get(c, f"pens:{user}", "0") or "0"))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _pen_add(c, user: str, n: int) -> int:
+    bal = _pen_balance(c, user) + max(0, int(n))
+    db.kv_set(c, f"pens:{user}", str(bal))
+    return bal
+
+
+def _pen_spend(c, user: str, n: int = 1) -> bool:
+    bal = _pen_balance(c, user)
+    if bal < n:
+        return False
+    db.kv_set(c, f"pens:{user}", str(bal - n))
+    return True
+
+
+def _maybe_grant_monthly_pens(c, user: str) -> None:
+    """프로 구독자에게 이번 달 펜을 아직 안 줬으면 지급한다 (한국시간 기준 월 1회)."""
+    tier = _tier_name(c, user)
+    give = _limits(tier).get("monthly_pens", 0)
+    if give <= 0:
+        return
+    month = db.real_now().strftime("%Y-%m")   # 한국시간 월
+    if db.kv_get(c, f"penmonth:{user}", "") == month:
+        return
+    db.kv_set(c, f"penmonth:{user}", month)
+    _pen_add(c, user, give)
+
+
+def _credit_pen_tx(c, user: str, product_id: str, tx_id: str) -> bool:
+    """스토어 결제 1건으로 펜을 지급한다 — 거래 ID로 중복 지급을 막는다(멱등)."""
+    n = PEN_PRODUCTS.get(product_id, 0)
+    if n <= 0 or not user:
+        return False
+    mark = f"pentx:{tx_id}" if tx_id else ""
+    if mark and db.kv_get(c, mark, ""):
+        return False                          # 이미 지급된 거래
+    _pen_add(c, user, n)
+    if mark:
+        db.kv_set(c, mark, "1")
+    return True
+
+
+def _body_gate(c, user: str):
+    """본문 쓰기 권한을 확인한다.
+      · 개인 집필 서버(WRITER_LAUNCH_MODE=0): 항상 허용, 펜 소모 없음.
+      · 판매 빌드(=1): 프로 구독 + 펜 1개 필요. 성공 시 호출부에서 펜을 차감한다.
+    반환: (ok, consume, error_dict|None)"""
+    if not LAUNCH_MODE:
+        return True, False, None
+    tier = _tier_name(c, user)
+    if not _limits(tier).get("body_writing"):
+        return False, False, {"ok": False, "need": "pro",
+                              "error": "본문 쓰기는 프로 구독에서만 이용할 수 있어요."}
+    if _pen_balance(c, user) <= 0:
+        return False, False, {"ok": False, "need": "pens",
+                              "error": "펜이 부족해요. 펜을 충전하면 본문 1편(≤5,000자)을 쓸 수 있어요."}
+    return True, True, None
 
 
 # 하루 AI 호출 상한 — 비용 폭탄/남용 방지 안전망 (정상 사용엔 넉넉).
@@ -134,6 +223,8 @@ def writer_config(user: str = Header(default="solo", alias="X-User-Id")):
     """앱이 시작할 때 기능·요금제 상태를 알려준다."""
     with db.connect() as c:
         t = _tier_name(c, user)
+        _maybe_grant_monthly_pens(c, user)     # 프로면 이번 달 펜 지급
+        pens = _pen_balance(c, user)
         ent = None
         raw = db.kv_get(c, f"ent:{user}", "")
         if raw and _entitlement(c, user):
@@ -141,8 +232,11 @@ def writer_config(user: str = Header(default="solo", alias="X-User-Id")):
                 ent = json.loads(raw).get("expires_at")
             except Exception:
                 ent = None
-    return {"launch_mode": LAUNCH_MODE, "writing_enabled": not LAUNCH_MODE,
-            "tier": t, "limits": TIERS[t], "tiers": TIERS, "expires_at": ent}
+    # 본문 쓰기 노출 여부: 개인 서버는 항상, 판매 빌드는 프로(body_writing)만.
+    body_ok = (not LAUNCH_MODE) or bool(TIERS[t].get("body_writing"))
+    return {"launch_mode": LAUNCH_MODE, "writing_enabled": body_ok,
+            "tier": t, "limits": TIERS[t], "tiers": TIERS, "expires_at": ent,
+            "pens": pens, "pen_needed": LAUNCH_MODE, "pen_packs": PEN_PACKS}
 
 
 class TierBody(BaseModel):
@@ -180,9 +274,8 @@ REVENUECAT_WEBHOOK_AUTH = os.environ.get("REVENUECAT_WEBHOOK_AUTH", "")
 _RC_TIER_PRIORITY = ["pro", "light"]
 
 
-def _rc_lookup(app_user_id: str):
-    """RevenueCat에 '이 사용자'의 활성 구독을 서버가 직접 물어본다.
-    반환: {"tier": "...", "expires_at": "...|None"} 또는 None(활성 구독 없음/미설정)."""
+def _rc_subscriber(app_user_id: str):
+    """RevenueCat에서 이 사용자의 subscriber 객체를 가져온다 (없으면 None)."""
     if not REVENUECAT_SECRET or not app_user_id:
         return None
     url = "https://api.revenuecat.com/v1/subscribers/" + urllib.parse.quote(app_user_id, safe="")
@@ -195,7 +288,34 @@ def _rc_lookup(app_user_id: str):
             data = json.loads(resp.read().decode("utf-8"))
     except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError):
         return None
-    ents = ((data or {}).get("subscriber") or {}).get("entitlements") or {}
+    return (data or {}).get("subscriber") or None
+
+
+def _rc_has_nonsub(app_user_id: str, product_id: str, tx_id: str = "") -> str:
+    """이 사용자가 해당 소모성 상품을 실제로 샀는지 RevenueCat로 확인한다.
+    반환: 스토어 거래 ID(멱등 키)로 쓸 문자열, 없으면 ""."""
+    sub = _rc_subscriber(app_user_id)
+    if not sub:
+        return ""
+    txs = (sub.get("non_subscriptions") or {}).get(product_id) or []
+    if not txs:
+        return ""
+    if tx_id:                                   # 특정 거래를 지정했으면 그것만 인정
+        for t in txs:
+            if tx_id in (t.get("store_transaction_id"), t.get("id")):
+                return t.get("store_transaction_id") or t.get("id") or tx_id
+        return ""
+    last = txs[-1]                              # 지정 안 했으면 가장 최근 거래
+    return last.get("store_transaction_id") or last.get("id") or ""
+
+
+def _rc_lookup(app_user_id: str):
+    """RevenueCat에 '이 사용자'의 활성 구독을 서버가 직접 물어본다.
+    반환: {"tier": "...", "expires_at": "...|None"} 또는 None(활성 구독 없음/미설정)."""
+    sub = _rc_subscriber(app_user_id)
+    if not sub:
+        return None
+    ents = sub.get("entitlements") or {}
     now = datetime.datetime.now(datetime.timezone.utc)
     for tier in _RC_TIER_PRIORITY:            # 높은 등급부터
         e = ents.get(tier)
@@ -255,9 +375,48 @@ async def rc_webhook(request: Request):
         return {"ok": False}
     ev = (payload or {}).get("event") or {}
     uid = ev.get("app_user_id") or ev.get("original_app_user_id")
-    if uid:
-        _grant_from_rc(uid)                    # RevenueCat에 다시 물어 최신 상태로
+    if not uid:
+        return {"ok": True}
+    product = ev.get("product_id") or ""
+    if product in PEN_PRODUCTS:                 # 소모성 '펜' 구매 → 잔액 적립(멱등)
+        tx = str(ev.get("transaction_id") or ev.get("id") or "")
+        with db.connect() as c:
+            _credit_pen_tx(c, uid, product, tx)
+    else:                                       # 구독 이벤트 → 등급 재동기화
+        _grant_from_rc(uid)
     return {"ok": True}
+
+
+@router.get("/pens")
+def get_pens(user: str = Header(default="solo", alias="X-User-Id")):
+    """현재 펜 잔액 (프로면 이번 달 지급분 포함)."""
+    with db.connect() as c:
+        _maybe_grant_monthly_pens(c, user)
+        return {"ok": True, "pens": _pen_balance(c, user), "packs": PEN_PACKS}
+
+
+class PenPurchaseBody(BaseModel):
+    product_id: str = ""
+    transaction_id: str = ""
+
+
+@router.post("/pens/purchase")
+def pens_purchase(body: PenPurchaseBody, user: str = Header(default="solo", alias="X-User-Id")):
+    """앱이 소모성 결제 직후 호출 — 서버가 RevenueCat로 확인해 펜을 적립한다(멱등).
+    웹훅이 먼저 처리했다면 여기선 중복 없이 현재 잔액만 돌려준다."""
+    if not LAUNCH_MODE:                         # 개인 서버는 결제가 필요 없다
+        return {"ok": False, "error": "이 서버에서는 펜 구매가 필요 없어요."}
+    if body.product_id not in PEN_PRODUCTS:
+        return {"ok": False, "error": "알 수 없는 상품이에요."}
+    if not REVENUECAT_SECRET:
+        return {"ok": False, "error": "결제 검증을 아직 사용할 수 없어요."}
+    # RevenueCat에 이 사용자의 비구독(소모성) 거래가 실제로 있는지 확인한 뒤 적립.
+    # 반환된 스토어 거래 ID를 멱등 키로 써서 웹훅과 중복 지급을 막는다.
+    verified_tx = _rc_has_nonsub(user, body.product_id, body.transaction_id)
+    with db.connect() as c:
+        if verified_tx:
+            _credit_pen_tx(c, user, body.product_id, verified_tx)
+        return {"ok": True, "pens": _pen_balance(c, user)}
 
 
 ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "")
@@ -285,6 +444,21 @@ def admin_grant(body: GrantBody, secret: str = Header(default="", alias="X-Admin
     return {"ok": True, "tier": body.tier, "expires_at": exp}
 
 
+class PenGrantBody(BaseModel):
+    user_id: str
+    pens: int = 5
+
+
+@router.post("/admin/pens")
+def admin_pens(body: PenGrantBody, secret: str = Header(default="", alias="X-Admin-Secret")):
+    """운영자 수동 펜 지급 (테스트·보상용)."""
+    if not ADMIN_SECRET or secret != ADMIN_SECRET:
+        return {"ok": False, "error": "권한이 없어요."}
+    with db.connect() as c:
+        bal = _pen_add(c, body.user_id, max(0, body.pens))
+    return {"ok": True, "pens": bal}
+
+
 @router.get("/account/export")
 def export_account(user: str = Header(default="solo", alias="X-User-Id")):
     """내 데이터 전부 내보내기 (데이터 이동권)."""
@@ -309,6 +483,8 @@ def delete_account(user: str = Header(default="solo", alias="X-User-Id")):
         c.execute("DELETE FROM works WHERE user_id=?", (user,))
         c.execute("DELETE FROM kv WHERE k=?", (f"tier:{user}",))
         c.execute("DELETE FROM kv WHERE k=?", (f"ent:{user}",))
+        c.execute("DELETE FROM kv WHERE k=?", (f"pens:{user}",))
+        c.execute("DELETE FROM kv WHERE k=?", (f"penmonth:{user}",))
         c.execute("DELETE FROM kv WHERE k LIKE ?", (f"aiq:{user}:%",))
         c.execute("DELETE FROM kv WHERE k=?", (f"active_avatar:{user}",))
         for r in c.execute("SELECT k, v FROM kv WHERE k LIKE 'trash:%'").fetchall():
@@ -1531,9 +1707,10 @@ def _generate_full_chapter(w: dict, no: int, beat: dict, prev: list, directive: 
 @router.post("/works/{work_id}/chapters")
 def write_chapter(work_id: int, body: ChapterBody,
                   user: str = Header(default="solo", alias="X-User-Id")):
-    if LAUNCH_MODE:
-        return _LAUNCH_OFF
     with db.connect() as c:
+        ok, consume, err = _body_gate(c, user)
+        if not ok:
+            return err
         w = _load_work(c, work_id, user)
         if not w:
             return {"ok": False, "error": "작품을 찾을 수 없어요."}
@@ -1556,7 +1733,10 @@ def write_chapter(work_id: int, body: ChapterBody,
             (work_id, no, title, text, summary, "", body.directive.strip(),
              beat_for(no, w["total_chapters"])),
         )
-        return {"ok": True, "id": ch_id, "no": no, "chars": len(text)}
+        if consume:
+            _pen_spend(c, user, 1)
+        return {"ok": True, "id": ch_id, "no": no, "chars": len(text),
+                "pens": _pen_balance(c, user)}
 
 
 def _parse_chapter(raw: str, no: int):
@@ -1606,9 +1786,10 @@ def _continue_prompt(w: dict, no: int, beat: dict, body_so_far: str, directive: 
 @router.post("/chapters/{chapter_id}/regenerate")
 def regen_chapter(chapter_id: int, body: ChapterBody,
                   user: str = Header(default="solo", alias="X-User-Id")):
-    if LAUNCH_MODE:
-        return _LAUNCH_OFF
     with db.connect() as c:
+        ok, consume, gerr = _body_gate(c, user)   # 다시 쓰기도 본문 생성 → 프로+펜
+        if not ok:
+            return gerr
         r = c.execute(
             "SELECT ch.no, ch.work_id FROM chapters ch JOIN works w ON w.id = ch.work_id "
             "WHERE ch.id=? AND w.user_id=?", (chapter_id, user)).fetchone()
@@ -1639,7 +1820,10 @@ def regen_chapter(chapter_id: int, body: ChapterBody,
         c.execute("UPDATE chapters SET title=?, body=?, summary=?, state_json=?, directive=?, "
                   "updated_at=datetime('now') WHERE id=?",
                   (title, text, summary, "", body.directive.strip(), chapter_id))
-    return {"ok": True, "undo": undo}
+        if consume:
+            _pen_spend(c, user, 1)
+        pens = _pen_balance(c, user)
+    return {"ok": True, "undo": undo, "pens": pens}
 
 
 @router.put("/chapters/{chapter_id}")

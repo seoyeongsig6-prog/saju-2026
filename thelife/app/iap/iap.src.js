@@ -33,9 +33,8 @@ async function offerings() {
   return _offerings;
 }
 
-// tier 에 해당하는 RevenueCat 패키지를 찾는다 (상품 식별자로 매칭).
-async function packageFor(tier) {
-  const wanted = PRODUCT[tier];
+// 상품 식별자로 RevenueCat 패키지를 찾는다.
+async function packageByProduct(productId) {
   const offs = await offerings();
   const pools = [];
   if (offs.current) pools.push(offs.current);
@@ -43,28 +42,37 @@ async function packageFor(tier) {
   for (const off of pools) {
     for (const p of (off.availablePackages || [])) {
       const pid = p.product && p.product.identifier;
-      if (!wanted || pid === wanted) return p;   // 지정 상품 우선, 없으면 첫 패키지
+      if (!productId || pid === productId) return p;   // 지정 상품 우선, 없으면 첫 패키지
     }
   }
   return null;
+}
+
+async function buyPackage(pkg) {
+  if (!pkg) return { ok: false, error: "상품을 찾을 수 없어요. 잠시 후 다시 시도해 주세요." };
+  try {
+    await Purchases.purchasePackage({ aPackage: pkg });
+    return { ok: true };
+  } catch (e) {
+    if (e && (e.code === PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR ||
+              e.userCancelled)) return { cancelled: true };
+    return { ok: false, error: (e && e.message) || "결제에 실패했어요." };
+  }
 }
 
 const ready = init().catch((e) => { console.warn("[IAP] init 실패", e); return false; });
 
 window.NovelistIAP = {
   ready,
+  // 구독(라이트·프로) — tier 이름으로 구매.
   async purchase(tier) {
     if (!(await ready)) return { ok: false, error: "결제를 사용할 수 없어요." };
-    const pkg = await packageFor(tier);
-    if (!pkg) return { ok: false, error: "상품을 찾을 수 없어요. 잠시 후 다시 시도해 주세요." };
-    try {
-      await Purchases.purchasePackage({ aPackage: pkg });
-      return { ok: true };
-    } catch (e) {
-      if (e && (e.code === PURCHASES_ERROR_CODE.PURCHASE_CANCELLED_ERROR ||
-                e.userCancelled)) return { cancelled: true };
-      return { ok: false, error: (e && e.message) || "결제에 실패했어요." };
-    }
+    return buyPackage(await packageByProduct(PRODUCT[tier]));
+  },
+  // 소모성(펜) — 스토어 상품 식별자로 구매.
+  async purchaseProduct(productId) {
+    if (!(await ready)) return { ok: false, error: "결제를 사용할 수 없어요." };
+    return buyPackage(await packageByProduct(productId));
   },
   async restore() {
     if (!(await ready)) return { ok: false };

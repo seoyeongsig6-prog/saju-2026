@@ -24,18 +24,42 @@ const api = async (path, opts = {}) => {
 
 let WORK = null, CHAPTER = null;
 
-/* 판매용 런치 버전 여부 — 서버 플래그. 기본은 런치(본문 집필 숨김)로 시작하고,
-   전체 기능(WRITER_LAUNCH_MODE=0)이면 서버 확인 후 본문 UI를 되살린다. */
+/* 판매용 런치 버전 여부 — 서버 플래그.
+   body.launch = 판매 빌드(자연어 설정 수정·회당글자수 등 제외 항목 숨김).
+   body.nobody = 본문 쓰기 권한 없음(무료·라이트) → 본문 집필 UI 숨김.
+   프로 구독자는 nobody가 풀려 본문 쓰기가 보이고, 펜으로 쓴다. */
 let LAUNCH = true, TIER = "free", LIMITS = null, TIERS_INFO = null, EXPIRES = null;
+let PENS = 0, PEN_NEEDED = false, PEN_PACKS = [];
 (async () => {
   try {
     const cfg = await api("/api/writer/config");
     LAUNCH = !!(cfg && cfg.launch_mode);
-    if (cfg && cfg.writing_enabled) document.body.classList.remove("launch");
-    if (cfg) { TIER = cfg.tier || "free"; LIMITS = cfg.limits; TIERS_INFO = cfg.tiers; EXPIRES = cfg.expires_at; }
+    document.body.classList.toggle("launch", LAUNCH);
+    document.body.classList.toggle("nobody", !(cfg && cfg.writing_enabled));
+    if (cfg) {
+      TIER = cfg.tier || "free"; LIMITS = cfg.limits; TIERS_INFO = cfg.tiers; EXPIRES = cfg.expires_at;
+      PENS = cfg.pens || 0; PEN_NEEDED = !!cfg.pen_needed; PEN_PACKS = cfg.pen_packs || [];
+    }
     Ads.refresh();
+    renderPenBar();
   } catch (e) { /* 실패 시 런치 기본 유지 */ }
 })();
+
+/* 본문 쓰기 응답의 need(프로/펜)에 맞춰 안내하고 요금제/충전으로 보낸다. */
+function handleBodyNeed(r) {
+  if (r && r.need === "pro") {
+    notice("본문 쓰기는 프로 구독에서만 이용할 수 있어요.\n구독 플랜에서 프로로 올려 주세요.");
+    showPlans();
+    return true;
+  }
+  if (r && r.need === "pens") {
+    notice("펜이 부족해요. 펜을 충전하면 본문 1편(≤5,000자)을 쓸 수 있어요.");
+    showPens();
+    return true;
+  }
+  return false;
+}
+function setPens(n) { if (typeof n === "number") { PENS = n; renderPenBar(); } }
 
 /* ---------- 설정 화면 ---------- */
 function showSettings() { view("w-settings"); renderSettingsPlan(); renderThemeSeg(); }
@@ -233,8 +257,55 @@ function renderThemeSeg() {
 applyTheme(localStorage.getItem("thelife_theme") || "light");
 
 function view(id) {
-  ["w-home", "w-settings", "w-plans", "w-build", "w-work", "w-editor"].forEach((v) =>
+  ["w-home", "w-settings", "w-plans", "w-pens", "w-build", "w-work", "w-editor"].forEach((v) =>
     $(`#${v}`).classList.toggle("hidden", v !== id));
+}
+
+/* ---------- 펜 충전 화면 ---------- */
+function showPens() { view("w-pens"); renderPens(); }
+function showBack() { if (WORK) openWork(WORK.id); else showSettings(); }
+function renderPenBar() {
+  const bar = $("#pen-bar");
+  if (!bar) return;
+  bar.classList.toggle("hidden", !PEN_NEEDED);   // 개인 서버(펜 불필요)에선 숨김
+  if (!PEN_NEEDED) return;
+  bar.innerHTML = `<span class="pen-ic">🖊️</span> 남은 펜 <b>${PENS}</b>
+    <span class="pen-sub">본문 1편 = 펜 1개</span>
+    <button class="pen-charge" onclick="showPens()">＋ 충전</button>`;
+  const pc = $("#pen-count"); if (pc) pc.textContent = PENS;
+}
+function renderPens() {
+  const pc = $("#pen-count"); if (pc) pc.textContent = PENS;
+  const box = $("#pen-packs");
+  if (!box) return;
+  box.innerHTML = (PEN_PACKS || []).map((p) => `
+    <div class="pen-pack">
+      ${p.badge ? `<span class="pen-badge">${p.badge}</span>` : ""}
+      <div class="pen-pack-top"><b>펜 ${p.count}개</b><span class="pen-per">${p.per || ""}</span></div>
+      <button class="pen-buy" data-product="${p.product}" data-count="${p.count}">${p.price} 구매</button>
+    </div>`).join("");
+  box.querySelectorAll(".pen-buy").forEach((b) => {
+    b.onclick = () => buyPens(b.dataset.product, +b.dataset.count);
+  });
+}
+async function buyPens(productId, count) {
+  if (!window.NovelistIAP) {
+    notice("곧 앱에서 펜을 구매할 수 있어요.\n(App Store · Google Play 결제 연결 예정)");
+    return;
+  }
+  try {
+    busy("결제를 준비하는 중…");
+    const res = await window.NovelistIAP.purchaseProduct(productId);   // {ok, cancelled?, error?}
+    if (res && res.cancelled) { unbusy(); return; }
+    if (!res || !res.ok) { unbusy(); notice(res && res.error ? res.error : "결제를 완료하지 못했어요."); return; }
+    const cr = await api("/api/writer/pens/purchase", {
+      method: "POST", body: JSON.stringify({ product_id: productId }),
+    });
+    unbusy();
+    if (cr && cr.ok) { setPens(cr.pens); renderPens();
+      notice(`펜 ${count}개를 충전했어요. 이제 본문을 쓸 수 있어요!`); }
+    else notice((cr && cr.error) || "충전 반영이 지연되고 있어요. 잠시 후 다시 확인해 주세요.");
+  } catch (e) { unbusy(); notice("결제 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요."); }
 }
 function notice(t) {
   $("#notice-text").textContent = t;
@@ -567,6 +638,7 @@ async function openWork(id) {
   $("#wk-progress").textContent = `${d.chapters.length}/${WORK.total_chapters}화`;
   renderChapters();
   renderBible();
+  renderPenBar();
   wtab("chapters");
 }
 
@@ -980,9 +1052,10 @@ $("#btn-plot").onclick = () => {
 $("#btn-rewrite-all").onclick = async () => {
   const chs = WORK.chapters;
   if (!chs.length) { notice("아직 쓴 회차가 없어요."); return; }
+  const penNote = PEN_NEEDED ? `\n회차마다 펜 1개가 들어요 (총 ${chs.length}개 필요, 보유 ${PENS}개).` : "";
   if (!confirm(`이미 쓴 ${chs.length}개 회차를 1화부터 순서대로 모두 다시 씁니다.\n` +
     `제목·인물 이름·결말·설명서 등 기본 설정은 절대 바뀌지 않아요.\n` +
-    `시간이 오래 걸리고 AI 사용량이 많이 듭니다. 진행할까요?`)) return;
+    `시간이 오래 걸리고 AI 사용량이 많이 듭니다.${penNote}\n진행할까요?`)) return;
   for (let i = 0; i < chs.length; i++) {
     busy(`모든 회차 다시 쓰는 중… (${i + 1}/${chs.length}화)`);
     const r = await api(`/api/writer/chapters/${chs[i].id}/regenerate`, {
@@ -990,10 +1063,12 @@ $("#btn-rewrite-all").onclick = async () => {
     });
     if (!r.ok) {
       unbusy();
+      if (handleBodyNeed(r)) { await openWork(WORK.id); return; }
       notice(`${chs[i].no}화에서 멈췄어요.\n\n${r.error || ""}${r.detail ? "\n" + r.detail : ""}`);
       await openWork(WORK.id);
       return;
     }
+    setPens(r.pens);
   }
   unbusy();
   await openWork(WORK.id);
@@ -1009,10 +1084,12 @@ $("#btn-write").onclick = async () => {
   });
   unbusy();
   if (!r.ok) {
+    if (handleBodyNeed(r)) return;             // 프로/펜 필요 → 안내·이동
     notice((r.error || "실패했어요") + (r.detail ? `\n\n[원인] ${r.detail}` : "") +
       (r.trace ? `\n${r.trace.join("\n")}` : ""));
     return;
   }
+  setPens(r.pens);
   $("#directive").value = "";
   await openWork(WORK.id);
   openChapter(r.id);
@@ -1066,7 +1143,8 @@ $("#ed-regen").onclick = async () => {
     method: "POST", body: JSON.stringify({ directive }),
   });
   unbusy();
-  if (!r.ok) { notice(r.error); return; }
+  if (!r.ok) { if (handleBodyNeed(r)) return; notice(r.error); return; }
+  setPens(r.pens);
   await openChapter(cid);
   if (r.undo) {
     noticeUndo("다시 썼어요. 이전 글로 되돌릴 수 있어요.", async () => {

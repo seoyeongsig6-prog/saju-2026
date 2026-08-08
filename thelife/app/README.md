@@ -76,9 +76,12 @@ npx capacitor-assets generate
    `RC_ANDROID_KEY` 에 넣는다.
 3. **Entitlements** 를 서버 tier 이름과 **똑같이** 만든다: `light`, `pro`.
    (서버가 이 이름으로 등급을 판단합니다 — 철자 반드시 일치)
-4. **Products** 에 위 상품 ID(`novelist.light.monthly`, `novelist.pro.monthly`)를 등록하고
-   각각 `light` / `pro` entitlement 에 연결.
-5. **Offerings** → 기본(current) offering 에 두 상품을 패키지로 넣는다.
+4. **Products** 에 상품을 등록:
+   - 구독 2개: `novelist.light.monthly` → `light`, `novelist.pro.monthly` → `pro` entitlement 에 연결.
+   - **펜(소모성) 4개**: `novelist.pen.1`, `novelist.pens.10`, `novelist.pens.50`,
+     `novelist.pens.100` — entitlement 연결 없이 등록만 (서버가 개수를 지급).
+5. **Offerings** → 기본(current) offering 에 위 상품들을 **패키지로 모두** 넣는다.
+   (앱은 상품 ID로 패키지를 찾아 구매하므로, 펜 상품도 offering 안에 있어야 함)
 6. **Webhooks** → URL 을 `https://당신-백엔드/api/writer/rc-webhook` 로,
    Authorization 헤더 값을 아무 긴 임의문자열로 정한다 → 그 값을 서버 환경변수
    `REVENUECAT_WEBHOOK_AUTH` 에 동일하게 넣는다.
@@ -90,13 +93,20 @@ npx capacitor-assets generate
 
 두 스토어 모두 RevenueCat 에 등록한 **상품 ID와 똑같이** 만들어야 합니다.
 
-- **App Store Connect** → 앱 → 구독 → 그룹 생성 → 자동 갱신 구독 2개
-  (`novelist.light.monthly` ₩4,900/월, `novelist.pro.monthly` ₩9,900/월).
-  구독 화면에 **약관(EULA)·개인정보처리방침 링크**와 가격/기간이 보여야 심사 통과.
-- **Google Play Console** → 수익 창출 → 구독 → 동일 ID 2개 생성.
+- **App Store Connect**
+  - 구독(자동 갱신) 2개: `novelist.light.monthly` ₩4,900/월, `novelist.pro.monthly` ₩9,900/월.
+  - **소모성(consumable) 4개**: `novelist.pen.1` ₩990, `novelist.pens.10` ₩8,000,
+    `novelist.pens.50` ₩35,000, `novelist.pens.100` ₩60,000.
+  - 구독 화면에 **약관(EULA)·개인정보처리방침 링크**와 가격/기간이 보여야 심사 통과.
+- **Google Play Console** → 수익 창출 → 구독 2개 + 인앱 상품(소모성) 4개, 동일 ID로 생성.
+
+> **펜 = 본문 쓰기용 재화.** 펜 1개로 본문 1편(≤5,000자)을 씁니다. 본문 쓰기는 **프로 구독자만**
+> 가능하고, 프로는 매달 펜 5개를 자동으로 받습니다(서버가 지급). 펜 구매는 RevenueCat
+> 웹훅(NON_RENEWING_PURCHASE)이 서버 잔액에 반영하며, 거래 ID로 중복 지급을 막습니다.
 
 앱 안에는 이미 다음이 들어 있습니다(심사 필수 항목):
 - 플랜 화면의 가격·기간·자동갱신 고지, **구매 복원** 버튼, 약관/개인정보 링크
+- 펜 충전 화면(가격·개당 단가·소모성 고지), 본문 쓰기 프로+펜 게이트
 - 계정 데이터 **내보내기 / 삭제**(설정 화면)
 
 ---

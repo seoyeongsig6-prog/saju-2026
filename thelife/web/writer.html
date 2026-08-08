@@ -51,6 +51,19 @@
      <a href="privacy.html">개인정보처리방침</a> · <a href="terms.html">이용약관</a></p>
 </div>
 
+<!-- 펜 충전 (본문 쓰기용 소모성 재화) -->
+<div id="w-pens" class="wview hidden">
+  <div class="w-top"><button class="ghost small" onclick="showBack()">← 뒤로</button><b>펜 충전</b></div>
+  <p class="hint">펜 1개로 <b>본문 1편(최대 5,000자)</b>을 씁니다. 프로 구독자는 매달 5펜을 자동으로 받아요.</p>
+  <div class="pen-now">현재 보유 <b id="pen-count">0</b>펜</div>
+  <div id="pen-packs" class="pen-packs"></div>
+  <button id="btn-restore-pens" class="ghost small" style="width:100%;margin:4px 0 10px"
+          onclick="restorePurchases()">구매 복원</button>
+  <p class="plans-fine">펜은 소모성 상품이라 사용하면 차감되고 환불되지 않아요.
+     결제는 App Store · Google Play 계정으로 이뤄집니다.
+     <a href="privacy.html">개인정보처리방침</a> · <a href="terms.html">이용약관</a></p>
+</div>
+
 <!-- 작품설명서 상세 빌더 (새 작품 = 바로 이 페이지) -->
 <div id="w-build" class="wview hidden">
   <button class="ghost small" onclick="showHome()">← 작품 목록</button>
@@ -234,6 +247,7 @@
     </div>
     <div id="plot-panel" class="plot-panel hidden"></div>
     <div id="ch-list" class="ch-list"></div>
+    <div id="pen-bar" class="pen-bar hidden"></div>
     <div id="ch-write-box" class="write-box">
       <input id="directive" placeholder="작가의 지시 (선택 — 예: 이번 화에서 멘토의 비밀이 드러난다)">
       <button id="btn-write" class="primary">다음 회차 쓰기 ✍</button>
