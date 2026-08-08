@@ -658,54 +658,21 @@ function renderChapters() {
   box.innerHTML = "";
   const written = WORK.chapters.length;
   if (!written) {
-    box.innerHTML = LAUNCH
-      ? `<p class="hint">각 화 줄거리를 아래 '예정 회차'에서 직접 짜거나,<br>
-         설정집의 'AI 회차 전개 생성'으로 1화부터 한 번에 만들 수 있어요.</p>`
-      : `<p class="hint">아직 첫 회차가 없어요. 아래 '다음 회차 쓰기'로 1화를 시작하세요.<br>
-         아래 '예정 회차'의 계획을 눌러 미리 각 화 줄거리를 짜둘 수 있어요.</p>`;
+    box.innerHTML = `<p class="hint">아직 쓴 회차가 없어요. 전체 플롯은 위 '전체 플롯 보기'에서 보고 다듬을 수 있어요.<br>
+      ${LAUNCH ? "" : "아래 '다음 회차 쓰기'로 1화를 시작하세요."}</p>`;
   }
+  // 이미 쓴 회차만 목록에 보여준다 (예정 회차·비트 라벨은 표시하지 않음).
   WORK.chapters.forEach((ch) => {
     const el = document.createElement("button");
     el.className = "ch-item";
-    const o = (WORK.outline || []).find((x) => x.no === ch.no);
-    const beat = WORK.beats[ch.beat_idx] || {};
-    el.innerHTML = `<span class="ch-no">${ch.no}화</span> ${escapeHtml(ch.title) || ""}
-      <small>${o ? "📋 계획" : (beat.name || "")}</small>`;
+    el.innerHTML = `<span class="ch-no">${ch.no}화</span> ${escapeHtml(ch.title) || ""}`;
     el.onclick = () => openChapter(ch.id);
-    box.appendChild(el);
-  });
-
-  // 예정 회차 — 아직 안 쓴 회차를 계획대로 보여주고 매화 편집
-  const total = WORK.total_chapters || 0;
-  const byNo = {};
-  (WORK.outline || []).forEach((o) => { byNo[o.no] = o; });
-  const nos = [];
-  for (let n = written + 1; n <= total; n++) nos.push(n);
-  (WORK.outline || []).forEach((o) => {
-    if (o.no > written && !nos.includes(o.no)) nos.push(o.no);
-  });
-  nos.sort((a, b) => a - b);
-  if (!nos.length) return;
-
-  const sep = document.createElement("div");
-  sep.className = "ch-plan-sep";
-  sep.innerHTML = `예정 회차 <small>· 계획을 눌러 각 화 줄거리를 수정하세요 (지정한 내용대로 집필됩니다)</small>`;
-  box.appendChild(sep);
-  nos.forEach((n) => {
-    const o = byNo[n];
-    const el = document.createElement("div");
-    el.className = "ch-item planned";
-    el.innerHTML = `<span class="ch-no">${n}화</span>
-      <span class="plan-body">
-        ${o && o.title ? `<b>${escapeHtml(o.title)}</b>` : `<span class="dim">계획 미정 — 눌러서 작성</span>`}
-        ${o && o.content ? `<small>${escapeHtml(o.content).slice(0, 70)}</small>` : ""}
-      </span><span class="plan-edit">✎</span>`;
-    el.onclick = () => editOutline(n, el);
     box.appendChild(el);
   });
 }
 
-function editOutline(n, el) {
+function editOutline(n, el, after) {
+  const redraw = after || renderChapters;
   const o = (WORK.outline || []).find((x) => x.no === n) || { title: "", content: "" };
   el.onclick = null;
   el.classList.add("editing");
@@ -718,7 +685,7 @@ function editOutline(n, el) {
     </div>`;
   el.querySelector(".pe-title").value = o.title || "";
   el.querySelector(".pe-content").value = o.content || "";
-  el.querySelector(".pe-cancel").onclick = () => renderChapters();
+  el.querySelector(".pe-cancel").onclick = () => redraw();
   el.querySelector(".pe-save").onclick = async () => {
     const title = el.querySelector(".pe-title").value.trim();
     const content = el.querySelector(".pe-content").value.trim();
@@ -730,7 +697,7 @@ function editOutline(n, el) {
     });
     if (!r.ok) { notice(r.error || "저장 실패"); return; }
     WORK.outline = list;
-    renderChapters();
+    redraw();
   };
 }
 
@@ -1022,31 +989,38 @@ $("#bible-revise").onclick = async () => {
   notice("설정집을 고쳤어요. 이후 회차부터 반영됩니다.\n(이미 쓴 회차는 편집기에서 직접 고치거나 '다시 쓰기' 하세요)");
 };
 
-/* ---------- 전체 플롯 보기 ---------- */
+/* ---------- 전체 플롯 보기 (열고/닫기 · 예정 회차는 눌러서 계획 수정) ---------- */
 $("#btn-plot").onclick = () => {
   const p = $("#plot-panel");
   if (!p.classList.contains("hidden")) { p.classList.add("hidden"); return; }
+  renderPlot();
+  p.classList.remove("hidden");
+};
+function renderPlot() {
+  const p = $("#plot-panel");
   const byNo = {};
   (WORK.outline || []).forEach((o) => { byNo[o.no] = o; });
   const written = {};
   WORK.chapters.forEach((ch) => { written[ch.no] = ch; });
   const total = Math.max(WORK.total_chapters || 0, WORK.chapters.length,
     ...(WORK.outline || []).map((o) => o.no), 0);
-  let rows = "";
+  p.innerHTML = `<div class="plot-h">${escapeHtml(WORK.title)} — 전체 플롯</div>
+    <div class="plot-goal">목표: ${escapeHtml(WORK.ending || "")}</div>
+    <p class="hint" style="margin:0 0 8px">아직 안 쓴 회차는 눌러서 줄거리를 미리 짤 수 있어요 (지정한 대로 집필됩니다).</p>`;
   for (let n = 1; n <= total; n++) {
     const ch = written[n], o = byNo[n];
     const done = !!ch;
     const title = (ch && ch.title) || (o && o.title) || "";
-    const text = done ? (ch.summary || "(요약 없음)") : (o && o.content ? o.content : "계획 미정");
-    rows += `<div class="plot-row ${done ? "done" : "plan"}">
-      <div class="plot-no">${n}화 <span>${done ? "✍ 집필됨" : "· 계획"}</span></div>
+    const text = done ? (ch.summary || "(요약 없음)") : (o && o.content ? o.content : "계획 미정 — 눌러서 작성");
+    const row = document.createElement("div");
+    row.className = `plot-row ${done ? "done" : "plan"}`;
+    row.innerHTML = `<div class="plot-no">${n}화 <span>${done ? "✍ 집필됨" : "✎ 계획"}</span></div>
       ${title ? `<b>${escapeHtml(title)}</b>` : ""}
-      <p>${escapeHtml(text)}</p></div>`;
+      <p>${escapeHtml(text)}</p>`;
+    if (!done) row.onclick = () => editOutline(n, row, renderPlot);   // 예정 회차 계획 수정
+    p.appendChild(row);
   }
-  p.innerHTML = `<div class="plot-h">${escapeHtml(WORK.title)} — 전체 플롯</div>
-    <div class="plot-goal">목표: ${escapeHtml(WORK.ending || "")}</div>${rows || "<p class='hint'>아직 없어요.</p>"}`;
-  p.classList.remove("hidden");
-};
+}
 
 /* ---------- 모든 회차 다시 쓰기 (앞→뒤 순차, 설정·이름·결말 고정) ---------- */
 $("#btn-rewrite-all").onclick = async () => {
