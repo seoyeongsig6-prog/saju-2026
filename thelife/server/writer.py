@@ -1575,6 +1575,54 @@ def _overused_expressions(prev: list, top: int = 18) -> list:
     return out
 
 
+# 자주 나오는 조사/접속어 — 장면 검출에서 잡음이 되므로 이음말 계산에서 뺀다.
+_MOTIF_STOP = set("그리고 그러나 하지만 그래서 그때 그러자 그런데 이내 결국 마침내 순간 "
+                  "다시 이제 여기 저기 이것 그것 무엇 자신 서로 모든 함께 정도 때문 "
+                  "것이다 것을 수는 수가 채로".split())
+
+
+def _content_words(text: str) -> list:
+    """본문을 '내용어' 토큰으로 쪼갠다 (2글자 이상, 흔한 접속어 제외)."""
+    ws = re.findall(r"[가-힣A-Za-z0-9]+", text or "")
+    return [w for w in ws if len(w) >= 2 and w not in _MOTIF_STOP]
+
+
+def _chapter_bigrams(body: str) -> set:
+    """한 회차 안에서 붙어 나오는 내용어 쌍(이음말)의 집합."""
+    ws = _content_words(body)
+    return set(zip(ws, ws[1:]))
+
+
+def _story_names(w: dict) -> set:
+    """인물명·고유명사 — 매 회차 반복돼도 정상이므로 장면 검출에서 제외한다."""
+    ns = set()
+    for ch in (w.get("characters") or []):
+        n = (ch.get("name") or "").strip()
+        if n:
+            ns.add(n)
+    for k in (_work_canon(w) or {}):
+        ns.add(k)
+    return ns
+
+
+def _recurring_motifs(prev: list, w: dict, top: int = 16) -> list:
+    """여러 '회차에 걸쳐' 반복되는 이음말을 뽑는다 = 반복되는 장면·행동의 신호.
+    (한 회차 안 반복이 아니라, 서로 다른 회차에서 같은 상황이 되풀이되는 것을 잡는다.)
+    반환: [(a, b), ...] 반복 강한 순."""
+    if not prev or len(prev) < 2:
+        return []
+    names = _story_names(w)
+    df = {}
+    for p in prev:                              # 회차별로 '있다/없다'만 센다(문서빈도)
+        for bg in _chapter_bigrams(p.get("body") or ""):
+            df[bg] = df.get(bg, 0) + 1
+    need = max(2, round(len(prev) * 0.34))      # 전체 회차의 1/3 이상에서 반복될 때
+    cands = [(bg, n) for bg, n in df.items()
+             if n >= need and not (bg[0] in names and bg[1] in names)]
+    cands.sort(key=lambda x: (-x[1], -(len(x[0][0]) + len(x[0][1]))))
+    return [bg for bg, _ in cands[:top]]
+
+
 def _target_chars(w: dict) -> int:
     """이 작품의 회당 목표 글자수 (작가가 빌더에서 고른 값). 기본 5,000."""
     try:
@@ -1604,6 +1652,10 @@ def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str,
     overused = _overused_expressions(prev)
     overused_block = ("\n━━━ 이미 여러 번 쓴 표현 — 그대로도 비슷하게도 재사용 금지 (새 표현으로 바꿔라) ━━━\n"
                       + "\n".join(f"- {u}" for u in overused) + "\n") if overused else ""
+    motifs = _recurring_motifs(prev, w)
+    scenes_block = ("\n━━━ 이미 여러 화에서 반복된 장면·행동·연출 — 이번 화에서 '재현' 금지 ━━━\n"
+                    "아래 상황을 또 만들지 마라. 인물의 성격·관계는 매번 '다른 사건·다른 행동'으로 드러내라:\n"
+                    + "\n".join(f"- {a} … {b}" for a, b in motifs) + "\n") if motifs else ""
 
     return f"""당신은 정상급 웹소설 작가다. 아래 작품의 {no}화를 {'다시 ' if rewriting else ''}써라.
 당신은 앞의 모든 화를 이미 다 읽었다. 앞에서 벌어진 사건·설정·수치·인물의 말투를
@@ -1637,7 +1689,7 @@ def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str,
 ━━━━━━ 이 화 '다음'에 이미 연재된 내용 (여기와도 모순되면 안 된다) ━━━━━━
 {later_block}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━''' if rewriting else ''}
-{overused_block}
+{overused_block}{scenes_block}
 {f'[작가의 지시 — 최우선으로 따르라] {directive}' if directive else ''}
 
 집필 규칙:
@@ -1647,17 +1699,23 @@ def _chapter_prompt(w: dict, no: int, beat: dict, prev: list, directive: str,
   · 능력치·수치(포인트, 금액, 시청자 수, 날짜 등)는 앞 회차의 마지막 값에서 이어가라.
   · 인물의 말투·성격·호칭은 앞 회차에서 확립된 그대로 유지하라.
   · 앞에서 밝혀진 비밀·정보를 인물이 다시 모르는 상태로 되돌리지 마라.
-- **표현 중복 절대 금지 (가장 중요)**: 앞 회차에서 쓴 묘사·비유·문장·대사를 그대로도, 비슷하게도 다시 쓰지 마라.
-  같은 상황·감정·행동도 매번 '다른 표현'으로 써라. 특히 반복되기 쉬운 것 —
-  · 감정 상투구('심장이 쿵 내려앉았다', '눈이 크게 흔들렸다', '숨을 삼켰다'),
-  · 외양·표정 묘사, 배경·분위기 묘사, 행동 묘사('주먹을 꽉 쥐었다'), 장면 전환 문구.
-  · 위 '이미 여러 번 쓴 표현' 목록에 있는 것은 무슨 일이 있어도 재사용하지 마라.
+- **장면·연출 반복 절대 금지 (가장 중요)**: 앞 회차에서 이미 나온 '상황·행동·연출'을 다시 재현하지 마라.
+  단어만 바꿔 같은 장면을 되풀이하는 것도 금지다. 특히 다음을 매 회차 반복하지 마라 —
+  · 인물의 관계를 늘 같은 동작으로 표현하기(손을 잡고 힘주기, 안기, 구원·고백 대사의 재확인),
+  · 특정 인물이 매번 같은 방식으로 등장·개입하기(예: 같은 장치·화면·전조로 나타나기),
+  · 이미 확인한 감정을 다시 확인하는 데 그치는 장면, 같은 대화의 재탕.
+  · 위 '반복된 장면·행동·연출' 목록의 상황은 이번 화에서 절대 재현하지 마라.
+  인물의 성격·관계는 '새로운 사건·새로운 행동·새로운 장소'를 통해 다르게 드러내라.
+- **표현 중복 금지**: 앞 회차에서 쓴 묘사·비유·문장·대사를 그대로도 비슷하게도 다시 쓰지 마라.
+  감정 상투구('심장이 쿵 내려앉았다', '눈이 크게 흔들렸다'), 외양·표정·배경 묘사, 장면 전환 문구를 반복하지 말고,
+  위 '이미 여러 번 쓴 표현' 목록은 무슨 일이 있어도 재사용하지 마라.
 - **분량: 공백 포함 {target:,}자 이상 ({target:,}~{int(target * 1.2):,}자).** 여러 장면으로 구성하라.
 {DESCRIPTION_RULES}
 - **심경 변화**는 반드시 이번 화의 사건이 원인이어야 하고, 몸짓과 대사로 단계적으로 보여라.
 - **시간 일관성**: 앞 화가 끝난 시점 이후에서 시작하고, 낮/밤·이동시간·계절이 맞아야 한다.
 - 역사물이면 인명·연호·관직·물건의 고증을 지켜라.
-- 이번 화는 지정된 전개를 수행하되, 결말을 향해 한 걸음 전진해야 한다.
+- 이번 화는 지정된 전개를 수행하되, **앞 회차와 뚜렷이 다른 새로운 사건·정보·장소·관계 변화**를 담아
+  이야기를 실제로 전진시켜라. 같은 감정 상태를 다시 확인하는 데 그치지 마라.
 - 대화 비중 높게, 문단은 짧게.
 - 마지막 문장은 절단신공으로 끝내라.
 
@@ -1701,6 +1759,27 @@ def _generate_full_chapter(w: dict, no: int, beat: dict, prev: list, directive: 
         if s2:
             summary = s2
         tries += 1
+
+    # ── 장면 반복 감시 ──
+    # 이번 화가 '이미 여러 화에서 반복된 장면'을 또 되풀이하면, 그 장면들을 지목해
+    # 새로운 사건으로 대체하도록 딱 한 번 다시 쓰게 한다 (반복이 실제로 준 경우에만 채택).
+    if not llm.is_mock:
+        motifs = _recurring_motifs(prev, w)
+        if motifs:
+            hit = [m for m in motifs if m in _chapter_bigrams(text)]
+            if len(hit) >= 6:
+                names = ", ".join(f"'{a} {b}'" for a, b in hit[:10])
+                redir = (f"[반드시 지켜라] 다음 장면·행동이 앞 회차들과 똑같이 또 반복됐다: {names}. "
+                         "이 상황들을 삭제하고, 인물의 관계·감정은 '완전히 다른 새로운 사건과 행동'으로 대체해 "
+                         "이번 화를 다시 써라. " + (directive or "")).strip()
+                raw2 = llm.write(_chapter_prompt(w, no, beat, prev, redir, later),
+                                 mock_text="", max_tokens=16000)
+                if not llm.last_error and raw2.strip():
+                    t2, x2, s2 = _parse_chapter(raw2, no)
+                    hit2 = [m for m in motifs if m in _chapter_bigrams(x2)]
+                    if x2.strip() and len(x2) >= min_chars and len(hit2) < len(hit):
+                        title, text = t2 or title, x2      # 반복이 줄었을 때만 교체
+                        summary = s2 or summary
     return title, text, summary, None
 
 
