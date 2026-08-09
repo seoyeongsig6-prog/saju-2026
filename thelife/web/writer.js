@@ -1051,75 +1051,288 @@ $("#btn-write").onclick = async () => {
 /* ══════════ 새 작품 — 단계별 설계 (위저드) ══════════
    아이디어 한 줄만 받고, 세계관·인물·플롯은 AI가 만든다.
    사용자는 확인하고 마음에 안 드는 부분만 다시 만든다. */
-const WZ_GENRES = ["현대 판타지", "로맨스 판타지", "로맨스", "정통 판타지", "무협",
-  "회귀·환생·빙의", "헌터·각성물", "아카데미·학원", "미스터리·스릴러", "SF·과학",
-  "현대물(현대 배경)", "사극·시대극", "드라마·일상", "공포·호러"];
 const WZ_TOTALS = [15, 25, 40, 70];
+const WZ_OTHER = "기타 (직접 입력)";
 let WZ = null;
 
 function startWizard() {
-  WZ = { step: 1, genre: "", total: 25, draft: null, outline: [] };
+  WZ = { i: 0, phase: "form", total: 25, sel: {}, other: {}, detail: {},
+         basic: {}, cast: [], castOpen: -1, draft: null, outline: [] };
   view("w-wizard");
-  $("#wz-idea").value = "";
-  renderChips();
-  wzGo(1);
+  wzRender();
 }
-function renderChips() {
-  const g = $("#wz-genres");
-  g.innerHTML = "";
-  WZ_GENRES.forEach((name) => {
-    const b = document.createElement("button");
-    b.className = "chip" + (WZ.genre === name ? " on" : "");
-    b.textContent = name;
-    b.onclick = () => { WZ.genre = (WZ.genre === name ? "" : name); renderChips(); };
-    g.appendChild(b);
+/* 지금까지 고른 것을 사람이 읽는 문장으로 (AI 추천의 참고 자료) */
+function wzContext() {
+  const b = WZ.basic;
+  const bits = [];
+  if (b.title) bits.push(`제목: ${b.title}`);
+  if (b.logline) bits.push(`로그라인: ${b.logline}`);
+  if (b.ending) bits.push(`결말: ${b.ending}`);
+  WZ_SPEC.forEach((s) => {
+    const v = wzValues(s.id);
+    if (v.length) bits.push(`${s.title}: ${v.join(", ")}`);
   });
-  const t = $("#wz-totals");
-  t.innerHTML = "";
+  return bits.join("\n");
+}
+function wzValues(id) {
+  const arr = (WZ.sel[id] || []).slice();
+  if (WZ.other[id]) arr.push(WZ.other[id]);
+  return arr;
+}
+/* ── 단계 이동 ── */
+function wzStepCount() { return WZ_SPEC.length; }
+function wzRender() {
+  if (WZ.phase !== "form") return;
+  const s = WZ_SPEC[WZ.i];
+  $("#wzp-1").classList.remove("hidden");
+  ["wzp-2", "wzp-3", "wzp-4"].forEach((v) => $(`#${v}`).classList.add("hidden"));
+  $("#wz-kicker").textContent = (s.group ? s.group + " · " : "") +
+    (s.n ? `${s.n}번` : "기본");
+  $("#wz-title").textContent = s.title;
+  $("#wz-sub").textContent = s.sub ||
+    (s.kind ? "" : (s.pick === 0 ? "여러 개 고를 수 있어요."
+      : s.pick > 1 ? `최대 ${s.pick}개까지 고를 수 있어요.` : "하나만 고르세요."));
+  // 진행 표시 (전체 단계 대비)
+  const prog = Math.round(((WZ.i + 1) / wzStepCount()) * 4);
+  document.querySelectorAll("#w-wizard .wz-dot").forEach((d) =>
+    d.classList.toggle("on", +d.dataset.s <= Math.max(1, prog)));
+  $("#wz-count").textContent = `${WZ.i + 1}/${wzStepCount()}`;
+  $("#wz-back").style.visibility = "";
+  const box = $("#wz-step-body");
+  box.innerHTML = "";
+  if (s.kind === "text") wzRenderText(box, s);
+  else if (s.kind === "cast") wzRenderCast(box, s);
+  else wzRenderPick(box, s, WZ.sel, WZ.other, WZ.detail, s.id);
+  wzFoot(s);
+  window.scrollTo(0, 0);
+}
+function wzFoot(s) {
+  const foot = $("#wz-foot");
+  foot.innerHTML = "";
+  const mk = (label, fn, ghost) => {
+    const b = document.createElement("button");
+    b.className = ghost ? "btn-ghost2" : "btn-main";
+    b.textContent = label; b.onclick = fn; foot.appendChild(b); return b;
+  };
+  const last = WZ.i >= wzStepCount() - 1;
+  mk(last ? "이대로 만들기 ✨" : "다음 →", () => {
+    if (last) wzGenerate(); else { WZ.i++; wzRender(); }
+  });
+  if (s.opts) mk("✨ AI에게 추천받기", () => wzSuggest(s), true);
+}
+/* ── 기본 정보 (직접 입력) ── */
+function wzRenderText(box, s) {
+  s.fields.forEach((f) => {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = `<div class="wz-label">${f.label}</div>` +
+      (f.area ? `<textarea class="wz-in" rows="3" placeholder="${f.ph}"></textarea>`
+               : `<input class="wz-in one" placeholder="${f.ph}">`);
+    const el = wrap.querySelector("textarea,input");
+    el.value = WZ.basic[f.k] || "";
+    el.oninput = () => { WZ.basic[f.k] = el.value; };
+    box.appendChild(wrap);
+  });
+  const t = document.createElement("div");
+  t.innerHTML = `<div class="wz-label">총 회차</div><div class="chips" id="wz-totals"></div>`;
+  box.appendChild(t);
+  const tc = t.querySelector("#wz-totals");
   WZ_TOTALS.forEach((n) => {
     const b = document.createElement("button");
     b.className = "chip" + (WZ.total === n ? " on" : "");
     b.textContent = `${n}화`;
-    b.onclick = () => { WZ.total = n; renderChips(); };
-    t.appendChild(b);
+    b.onclick = () => { WZ.total = n; wzRender(); };
+    tc.appendChild(b);
   });
 }
-function wzGo(step) {
-  WZ.step = step;
-  [1, 2, 3, 4].forEach((s) => $(`#wzp-${s}`).classList.toggle("hidden", s !== step));
-  document.querySelectorAll("#w-wizard .wz-dot").forEach((d) =>
-    d.classList.toggle("on", +d.dataset.s <= step));
-  $("#wz-count").textContent = `${step}/4`;
-  $("#wz-back").style.visibility = (step === 2) ? "hidden" : "";
+/* ── 보기 고르기 (칩 또는 설명 카드) ── */
+function wzRenderPick(box, s, sel, other, detail, key) {
+  const rich = (s.opts || []).some((o) => typeof o === "object");
+  const cur = sel[key] || (sel[key] = []);
+  const wrap = document.createElement("div");
+  wrap.className = rich ? "opt-cards" : "chips";
+  (s.opts || []).forEach((raw) => {
+    const o = (typeof raw === "string") ? { v: raw } : raw;
+    const on = cur.includes(o.v);
+    const el = document.createElement("button");
+    el.className = (rich ? "optc" : "chip") + (on ? " on" : "");
+    el.innerHTML = rich
+      ? `<b>${escapeHtml(o.v)}</b>${o.h ? `<i>${escapeHtml(o.h)}</i>` : ""}
+         ${o.d ? `<p>${escapeHtml(o.d)}</p>` : ""}${o.e ? `<small>${escapeHtml(o.e)}</small>` : ""}`
+      : escapeHtml(o.v);
+    el.onclick = () => { wzToggle(sel, key, o.v, s.pick); wzRender(); };
+    wrap.appendChild(el);
+  });
+  // 기타 → 직접 입력
+  const ot = document.createElement("button");
+  ot.className = (rich ? "optc" : "chip") + (other[key] ? " on" : "");
+  ot.innerHTML = rich ? `<b>${WZ_OTHER}</b>` : WZ_OTHER;
+  ot.onclick = () => {
+    const v = prompt("직접 입력해 주세요.", other[key] || "");
+    if (v === null) return;
+    other[key] = v.trim();
+    wzRender();
+  };
+  wrap.appendChild(ot);
+  box.appendChild(wrap);
+  // 고른 뒤 세부 입력
+  if (s.detail && (cur.length || other[key])) {
+    const d = document.createElement("div");
+    d.innerHTML = `<div class="wz-label">조금 더 자세히 (선택)</div>
+      <input class="wz-in one" placeholder="${escapeHtml(s.detail)}">`;
+    const el = d.querySelector("input");
+    el.value = detail[key] || "";
+    el.oninput = () => { detail[key] = el.value; };
+    box.appendChild(d);
+  }
+}
+function wzToggle(sel, key, val, pick) {
+  const arr = sel[key] || (sel[key] = []);
+  const at = arr.indexOf(val);
+  if (at >= 0) { arr.splice(at, 1); return; }
+  if (pick === 1) { sel[key] = [val]; return; }      // 하나만
+  if (pick > 1 && arr.length >= pick) arr.shift();   // 최대 개수 넘으면 오래된 것 밀어내기
+  arr.push(val);
+}
+/* ── AI에게 추천받기 ── */
+async function wzSuggest(s, target) {
+  const opts = (s.opts || []).map((o) => (typeof o === "string" ? o : o.v));
+  busy("AI가 고르는 중…");
+  const r = await api("/api/writer/brief/suggest", {
+    method: "POST",
+    body: JSON.stringify({ question: s.title, options: opts,
+      pick: s.pick === 0 ? 3 : (s.pick || 1), context: wzContext() }),
+  });
+  unbusy();
+  if (!r.ok) { notice(r.error || "추천을 받지 못했어요."); return; }
+  (target || WZ.sel)[s.id] = r.picked;
+  if (target) wzRenderCastDetail(); else wzRender();
+  if (r.reason) notice(`AI 추천: ${r.picked.join(", ")}\n\n${r.reason}`);
+}
+
+/* ── 인물 설정 ── */
+function wzRenderCast(box, s) {
+  if (WZ.castOpen >= 0) { wzRenderCastDetail(box); return; }
+  const list = document.createElement("div");
+  list.className = "cast-list";
+  WZ.cast.forEach((c, i) => {
+    const el = document.createElement("div");
+    el.className = "cast-row";
+    el.innerHTML = `<div class="cast-main">
+        <input class="cast-n" placeholder="이름" value="${escapeHtml(c.name || "")}">
+        <input class="cast-a" placeholder="나이" value="${escapeHtml(c.age || "")}">
+      </div>
+      <button class="cast-more">자세히 ›</button>
+      <button class="cast-del" title="삭제">✕</button>`;
+    el.querySelector(".cast-n").oninput = (e) => { c.name = e.target.value; };
+    el.querySelector(".cast-a").oninput = (e) => { c.age = e.target.value; };
+    el.querySelector(".cast-more").onclick = () => { WZ.castOpen = i; wzRender(); };
+    el.querySelector(".cast-del").onclick = () => {
+      removeRowUndo(el, ".cast-list", () => c, () => {}, "인물");
+      WZ.cast.splice(i, 1); wzRender();
+    };
+    list.appendChild(el);
+  });
+  box.appendChild(list);
+  const add = document.createElement("button");
+  add.className = "btn-ghost2";
+  add.textContent = "＋ 인물 추가";
+  add.onclick = () => { WZ.cast.push({ name: "", age: "", sel: {}, other: {}, detail: {} }); wzRender(); };
+  box.appendChild(add);
+}
+function wzRenderCastDetail(box) {
+  box = box || $("#wz-step-body");
+  box.innerHTML = "";
+  const c = WZ.cast[WZ.castOpen];
+  if (!c) { WZ.castOpen = -1; wzRender(); return; }
+  $("#wz-kicker").textContent = "인물 · 자세히";
+  $("#wz-title").textContent = c.name || "이 인물";
+  $("#wz-sub").textContent = "비워두면 AI가 알아서 채워요.";
+  WZ_CAST_SPEC.forEach((cs) => {
+    const h = document.createElement("div");
+    h.innerHTML = `<div class="wz-label">${cs.n}. ${cs.title}
+      <button class="mini-ai" data-id="${cs.id}">✨ 추천</button></div>`;
+    h.querySelector(".mini-ai").onclick = () => wzSuggest(cs, c.sel);
+    box.appendChild(h);
+    wzRenderPick(box, cs, c.sel, c.other, c.detail, cs.id);
+  });
+  const foot = $("#wz-foot");
+  foot.innerHTML = "";
+  const done = document.createElement("button");
+  done.className = "btn-main";
+  done.textContent = "이 인물 완료 ✓";
+  done.onclick = () => { WZ.castOpen = -1; wzRender(); };
+  foot.appendChild(done);
+  window.scrollTo(0, 0);
+}
+/* 선택 단계가 끝난 뒤의 화면 (생성 중 / 확인 / 회차) */
+function wzGo(phase) {
+  WZ.phase = phase;
+  const pane = { gen: "wzp-2", result: "wzp-3", outline: "wzp-4" }[phase];
+  ["wzp-1", "wzp-2", "wzp-3", "wzp-4"].forEach((v) =>
+    $(`#${v}`).classList.toggle("hidden", v !== pane));
+  document.querySelectorAll("#w-wizard .wz-dot").forEach((d) => d.classList.add("on"));
+  $("#wz-count").textContent = { gen: "생성 중", result: "확인", outline: "완성" }[phase] || "";
+  $("#wz-back").style.visibility = (phase === "gen") ? "hidden" : "";
   const foot = $("#wz-foot");
   foot.innerHTML = "";
   const btn = (label, fn, ghost) => {
     const b = document.createElement("button");
     b.className = ghost ? "btn-ghost2" : "btn-main";
-    b.textContent = label;
-    b.onclick = fn;
-    foot.appendChild(b);
-    return b;
+    b.textContent = label; b.onclick = fn; foot.appendChild(b); return b;
   };
-  if (step === 1) btn("AI가 다 만들기 ✨", wzGenerate);
-  if (step === 2) foot.innerHTML = "";
-  if (step === 3) {
+  if (phase === "result") {
     btn("좋아요, 다음 →", wzOutline);
     btn("🔄 인물 전체 다시 만들기", () => wzRedraw("characters"), true);
   }
-  if (step === 4) btn("완성! 작품 시작하기 🎉", wzFinish);
+  if (phase === "outline") btn("완성! 작품 시작하기 🎉", wzFinish);
   window.scrollTo(0, 0);
 }
+/* 고른 항목들을 작품설명서 형식으로 옮긴다 */
+function wzJoin(id) { return wzValues(id).join(", "); }
+function wzLine(label, id) { const v = wzJoin(id); return v ? `${label}: ${v}` : ""; }
+function wzCastOut() {
+  const out = [];
+  WZ.cast.forEach((c) => {
+    if (!(c.name || "").trim()) return;
+    const pick = (k) => {
+      const a = (c.sel[k] || []).slice();
+      if (c.other[k]) a.push(c.other[k]);
+      let s = a.join(", ");
+      if (c.detail[k]) s += (s ? " — " : "") + c.detail[k];
+      return s;
+    };
+    out.push({ name: c.name.trim(), age: (c.age || "").trim(), role: pick("role"),
+      personality: pick("personality"), want: pick("want"), fear: pick("fear"),
+      secret: pick("secret"), facade: pick("facade"), truth: pick("truth"), need: "", relation: "" });
+  });
+  return out;
+}
 function wzBody(extra) {
-  const idea = $("#wz-idea").value.trim();
   const d = (WZ.draft || {});
+  const cast = wzCastOut();
+  const lead = cast.find((c) => (c.role || "").includes("주인공"));
+  const style = [wzLine("분위기", "mood"), wzLine("속도", "pace"), wzLine("감정 표현", "emotion"),
+                 wzLine("대사", "dialogue"), wzLine("묘사", "describe")].filter(Boolean).join(" / ");
+  const world = [wzLine("시대", "era"), wzLine("주요 배경", "place")].filter(Boolean).join("\n");
+  const structure = [wzLine("시간의 흐름", "time"), wzLine("정보 전달", "info"),
+                     wzLine("반전", "twist"), wzLine("플롯 유형", "plot")].filter(Boolean).join("\n");
   return Object.assign({
-    title: d.title || "", genre: WZ.genre, total_chapters: WZ.total,
-    logline: d.logline || idea, intent: d.intent || "",
-    world_setting: d.world_setting || "", world_rules: d.world_rules || "",
-    taboos: d.taboos || "", protagonist: d.protagonist || {},
-    characters: d.characters || [], canon: d.canon || [],
-    style: d.style || "", ending: d.ending || "", outline: WZ.outline || [],
+    title: WZ.basic.title || d.title || "",
+    genre: wzJoin("genre") || d.genre || "",
+    total_chapters: WZ.total,
+    logline: WZ.basic.logline || d.logline || "",
+    ending: WZ.basic.ending || d.ending || "",
+    intent: wzLine("이야기에서 중요한 것", "focus") || d.intent || "",
+    world_setting: world || d.world_setting || "",
+    world_rules: d.world_rules || "", taboos: d.taboos || "",
+    style: style || d.style || "",
+    structure: structure,
+    protagonist: (d.protagonist && d.protagonist.name) ? d.protagonist
+      : (lead ? { name: lead.name, age: lead.age, personality: lead.personality,
+                  want: lead.want, need: lead.fear, secret: lead.secret } : {}),
+    characters: (d.characters && d.characters.length) ? d.characters : cast,
+    canon: d.canon || [],
+    outline: WZ.outline || [],
   }, extra || {});
 }
 function wzTasks(list) {
@@ -1127,23 +1340,25 @@ function wzTasks(list) {
     `<div class="task ${t[1]}"><span class="ic">${t[1] === "done" ? "✓" : ""}</span>${t[0]}</div>`).join("");
 }
 async function wzGenerate() {
-  const idea = $("#wz-idea").value.trim();
-  if (!idea && !WZ.genre) { notice("아이디어 한 줄이나 장르 중 하나는 알려주세요."); return; }
-  wzGo(2);
+  const b = WZ.basic;
+  if (!(b.logline || "").trim() && !wzJoin("genre")) {
+    notice("로그라인이나 장르 중 하나는 알려주세요."); return;
+  }
+  wzGo("gen");
   $("#wz-gen-h").textContent = "이야기를 짜고 있어요";
   wzTasks([["세계관 만드는 중", "now"], ["인물 만드는 중", ""], ["플롯 정리", ""]]);
   const r = await api("/api/writer/brief/draft", {
-    method: "POST", body: JSON.stringify(wzBody({ logline: idea })),
+    method: "POST", body: JSON.stringify(wzBody()),
   });
   if (!r.ok) {
     notice((r.error || "만들지 못했어요.") + (r.detail ? `\n\n${r.detail}` : ""));
-    wzGo(1);
+    WZ.phase = "form"; wzRender();
     return;
   }
   WZ.draft = r.draft || {};
   wzTasks([["세계관 만드는 중", "done"], ["인물 만드는 중", "done"], ["플롯 정리", "done"]]);
   renderWzResult();
-  setTimeout(() => wzGo(3), 350);
+  setTimeout(() => wzGo("result"), 350);
 }
 /* 일부만 다시 만들기 — 그 칸을 비우고 다시 요청하면 그 부분만 새로 생성된다 */
 async function wzRedraw(field) {
@@ -1184,14 +1399,17 @@ function renderWzResult() {
   box.querySelectorAll("[data-rd]").forEach((b) => { b.onclick = () => wzRedraw(b.dataset.rd); });
 }
 async function wzOutline() {
-  wzGo(2);
+  wzGo("gen");
   $("#wz-gen-h").textContent = "회차별 전개를 짜고 있어요";
   wzTasks([["설정 정리", "done"], [`1화~${WZ.total}화 흐름 만드는 중`, "now"]]);
   const r = await api("/api/writer/brief/outline", { method: "POST", body: JSON.stringify(wzBody()) });
-  if (!r.ok) { notice((r.error || "전개를 못 만들었어요.") + (r.detail ? `\n\n${r.detail}` : "")); wzGo(3); return; }
+  if (!r.ok) {
+    notice((r.error || "전개를 못 만들었어요.") + (r.detail ? `\n\n${r.detail}` : ""));
+    wzGo("result"); return;
+  }
   WZ.outline = r.outline || [];
   renderWzOutline();
-  wzGo(4);
+  wzGo("outline");
 }
 function renderWzOutline() {
   const d = WZ.draft || {};
@@ -1213,7 +1431,11 @@ async function wzFinish() {
   notice("작품이 만들어졌어요! 회차를 눌러 집필을 시작하세요.");
 }
 $("#wz-back").onclick = () => {
-  if (WZ && WZ.step > 1 && WZ.step !== 2) { wzGo(WZ.step === 4 ? 3 : 1); return; }
+  if (!WZ) { showHome(); return; }
+  if (WZ.phase === "outline") { wzGo("result"); return; }
+  if (WZ.phase === "result") { WZ.phase = "form"; wzRender(); return; }
+  if (WZ.castOpen >= 0) { WZ.castOpen = -1; wzRender(); return; }   // 인물 상세 → 목록
+  if (WZ.i > 0) { WZ.i--; wzRender(); return; }                     // 앞 단계로
   showHome();
 };
 

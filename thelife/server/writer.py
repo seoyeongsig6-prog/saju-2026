@@ -872,6 +872,12 @@ class CharIn(BaseModel):
     want: str = ""
     need: str = ""
     secret: str = ""
+    # 단계별 설계에서 받는 항목들
+    age: str = ""
+    personality: str = ""       # 성격 (여러 개)
+    fear: str = ""              # 가장 두려워하는 것
+    facade: str = ""            # 사람들에게 보이는 모습
+    truth: str = ""             # 자신의 실제 모습
 
 
 class CanonIn(BaseModel):
@@ -902,6 +908,7 @@ class BuildBody(BaseModel):
     style: str = ""
     style_sample: str = ""
     ending: str = ""
+    structure: str = ""          # 이야기 구성 방식 (시간 흐름·정보 전달·반전·플롯 유형)
     outline: list[OutlineIn] = []
 
 
@@ -943,9 +950,12 @@ def _assemble_brief(b: BuildBody) -> str:
     if chars:
         lines = []
         for ch in chars:
-            parts = [f"- {ch.name.strip()}"]
-            for label, val in (("역할", ch.role), ("관계", ch.relation), ("욕망", ch.want),
-                               ("결핍", ch.need), ("비밀", ch.secret)):
+            head = ch.name.strip() + (f" ({ch.age.strip()})" if ch.age.strip() else "")
+            parts = [f"- {head}"]
+            for label, val in (("역할", ch.role), ("관계", ch.relation), ("성격", ch.personality),
+                               ("원하는 것", ch.want), ("두려워하는 것", ch.fear),
+                               ("결핍", ch.need), ("숨기는 것", ch.secret),
+                               ("남에게 보이는 모습", ch.facade), ("실제 모습", ch.truth)):
                 if val.strip():
                     parts.append(f"{label}: {val.strip()}")
             lines.append(" / ".join(parts))
@@ -958,6 +968,7 @@ def _assemble_brief(b: BuildBody) -> str:
         out.append(_sec("핵심 설정·고유명사 (표기 고정)", "\n".join(lines)))
 
     out.append(_sec("문체", b.style))
+    out.append(_sec("이야기 구성 방식 (시간 흐름·정보 전달·반전·플롯)", b.structure))
     out.append(_sec("결말 — 이야기는 반드시 이곳에 도달한다", b.ending))
 
     valid = sorted([o for o in b.outline if o.no and o.no >= 1 and (o.title.strip() or o.content.strip())],
@@ -1113,6 +1124,54 @@ JSON 스키마 (다른 텍스트 없이 압축 JSON만):
     if isinstance(data.get("characters"), list):  # 요금제 상한까지만
         data["characters"] = data["characters"][:maxc]
     return {"ok": True, "draft": data, "max_characters": maxc}
+
+
+class SuggestBody(BaseModel):
+    question: str = ""            # 무엇을 고르는 항목인지 (예: "작품 분위기")
+    options: list[str] = []       # 고를 수 있는 보기
+    pick: int = 1                 # 몇 개까지 고를지
+    context: str = ""             # 지금까지의 선택(제목·로그라인·장르 등)
+
+
+@router.post("/brief/suggest")
+def suggest_choice(b: SuggestBody, user: str = Header(default="solo", alias="X-User-Id")):
+    """단계별 설계에서 'AI에게 추천받기' — 지금까지의 설정에 가장 어울리는 보기를 고른다.
+    보기 중에서만 고르므로 응답이 짧고 값이 싸다."""
+    opts = [o.strip() for o in (b.options or []) if o.strip()][:60]
+    if not opts:
+        return {"ok": False, "error": "고를 보기가 없어요."}
+    if llm.is_mock:
+        return {"ok": True, "picked": opts[:max(1, b.pick)], "reason": "(예시 추천)"}
+    with db.connect() as c:
+        ok, _cap = _ai_gate(c, user)
+        if not ok:
+            return _AI_BUSY
+    n = max(1, min(int(b.pick or 1), 5))
+    prompt = f"""당신은 프로 웹소설 기획자다. 아래 작품에 가장 어울리는 '{b.question}'을 고르라.
+
+[지금까지 정해진 것]
+{(b.context or '아직 없음')[:2000]}
+
+[보기 — 반드시 이 중에서만 고른다]
+{chr(10).join('- ' + o for o in opts)}
+
+정확히 {n}개를 고르고, 아래 JSON만 출력하라 (설명·코드펜스 금지).
+{{"picked": ["보기 그대로 정확히"], "reason": "왜 이게 어울리는지 한 문장"}}"""
+    raw = llm.write(prompt, mock_text="", max_tokens=600)
+    if llm.last_error:
+        return {"ok": False, "error": "추천을 받지 못했어요.", "detail": llm.last_error}
+    data = parse_llm_json(raw) or {}
+    picked = [p for p in (data.get("picked") or []) if p in opts][:n]
+    if not picked:                                   # 형식이 틀리면 비슷한 것 찾아보기
+        for p in (data.get("picked") or []):
+            for o in opts:
+                if p and (p in o or o in p) and o not in picked:
+                    picked.append(o)
+                    break
+        picked = picked[:n]
+    if not picked:
+        return {"ok": False, "error": "추천을 받지 못했어요. 다시 시도해 주세요."}
+    return {"ok": True, "picked": picked, "reason": str(data.get("reason", ""))[:200]}
 
 
 @router.post("/brief/outline")

@@ -335,17 +335,12 @@
     <span class="wz-count" id="wz-count">1/4</span>
   </div>
 
-  <!-- 1단계: 아이디어 한 줄 -->
+  <!-- 1단계: 항목별 선택 (명세 순서대로 한 화면에 하나씩) -->
   <div class="wz-pane" id="wzp-1">
-    <div class="wz-kicker">STEP 1 · 아이디어</div>
-    <h1 class="wz-q">어떤 이야기를<br>쓰고 싶으세요?</h1>
-    <p class="wz-sub">한 줄이면 충분해요. 세계관·인물·플롯은 AI가 알아서 만들어 드릴게요.</p>
-    <textarea id="wz-idea" class="wz-in" rows="4"
-      placeholder="예) 회사에서 쫓겨난 개발자가 우연히 만든 AI로 복수를 시작한다"></textarea>
-    <div class="wz-label">장르</div>
-    <div id="wz-genres" class="chips"></div>
-    <div class="wz-label">총 회차</div>
-    <div id="wz-totals" class="chips"></div>
+    <div class="wz-kicker" id="wz-kicker"></div>
+    <h1 class="wz-q sm" id="wz-title"></h1>
+    <p class="wz-sub" id="wz-sub"></p>
+    <div id="wz-step-body"></div>
   </div>
 
   <!-- 2단계: 생성 중 -->
@@ -470,6 +465,7 @@
   </div>
 </div>
 
+<script src="/static/wzspec.js"></script>
 <script src="/static/writer.js"></script>
 </body>
 </html>
