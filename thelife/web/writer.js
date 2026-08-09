@@ -48,6 +48,7 @@ let AI_BODY = false, PENS = 0, PEN_NEEDED = false, PEN_PACKS = [];
     if (cfg) {
       TIER = cfg.tier || "free"; LIMITS = cfg.limits; TIERS_INFO = cfg.tiers; EXPIRES = cfg.expires_at;
       PENS = cfg.pens || 0; PEN_NEEDED = !!cfg.pen_needed; PEN_PACKS = cfg.pen_packs || [];
+      if (cfg.sample) SAMPLE = cfg.sample;
     }
     Ads.refresh();
     renderPenBar();
@@ -1187,6 +1188,15 @@ function wzRender() {
   wzSave();
   window.scrollTo(0, 0);
 }
+/* 아래 고정 버튼이 내용 마지막 줄을 가리지 않게, 버튼 높이를 재서 여백을 잡는다.
+   버튼 수가 단계마다 달라지므로 숫자를 박아두면 언젠가 또 잘린다. */
+function wzPad() {
+  const foot = $("#wz-foot"), w = $("#w-wizard");
+  if (!foot || !w) return;
+  requestAnimationFrame(() => { w.style.paddingBottom = (foot.offsetHeight + 28) + "px"; });
+}
+window.addEventListener("resize", wzPad);
+
 function wzFoot(s) {
   const foot = $("#wz-foot");
   foot.innerHTML = "";
@@ -1195,11 +1205,28 @@ function wzFoot(s) {
     b.className = ghost ? "btn-ghost2" : "btn-main";
     b.textContent = label; b.onclick = fn; foot.appendChild(b); return b;
   };
+  wzPad();
   const last = WZ.i >= wzStepCount() - 1;
   mk(last ? "이대로 만들기 ✨" : "다음 →", () => {
     if (last) wzGenerate(); else { WZ.i++; wzRender(); }
   });
   if (s.opts) mk("✨ AI에게 추천받기", () => wzSuggest(s), true);
+  // 첫 단계 — 기본만 넣고 나머지는 통째로 맡기는 길
+  if (s.kind === "text") {
+    const b = mk("✨ 나머지는 AI에게 맡기기", wzAutoAll, true);
+    const hint = document.createElement("p");
+    hint.className = "wz-foot-hint";
+    hint.textContent = "장르부터 인물·플롯까지 AI가 정합니다. 만든 뒤에 하나씩 고칠 수 있어요.";
+    foot.insertBefore(hint, b);      // 세로 뒤집힌 배치라 버튼 '아래'에 놓이려면 앞에 넣는다
+  }
+}
+/* 남은 단계를 건너뛰고 바로 만든다 — 고른 게 있으면 그대로 살려서 쓴다 */
+function wzAutoAll() {
+  if (!(WZ.basic.logline || "").trim()) {
+    notice("한 줄 줄거리(로그라인)만 알려주세요.\n나머지는 AI가 정합니다.");
+    return;
+  }
+  wzGenerate();          // 실패하면 지금 단계로 그대로 돌아온다 (WZ.i는 건드리지 않는다)
 }
 /* ── 기본 정보 (직접 입력) ── */
 function wzRenderText(box, s) {
@@ -1388,9 +1415,11 @@ function wzGo(phase) {
   };
   if (phase === "result") {
     btn("좋아요, 다음 →", wzOutline);
+    btn("✍ 설정대로 써보기 (예시)", () => makeSample({ body: wzBody() }), true);
     btn("🔄 인물 전체 다시 만들기", () => wzRedraw("characters"), true);
   }
   if (phase === "outline") btn("완성! 작품 시작하기 🎉", wzFinish);
+  wzPad();
   window.scrollTo(0, 0);
 }
 /* 고른 항목들을 작품설명서 형식으로 옮긴다 */
@@ -1601,9 +1630,12 @@ function renderPlotList() {
          <div class="g-wrap" id="g-${no}">${guideHtml(GUIDE_CACHE[no])}</div>
          <div class="pl-acts">
            <button class="regen">🔄 가이드 새로</button>
+           <button class="smp">📝 본문 예시</button>
            <button class="go">${ch ? "✍ 이어 쓰기" : "✍ 이 화 쓰기"}</button>
          </div>`;
       pane.querySelector(".regen").onclick = () => loadGuide(no, true);
+      pane.querySelector(".smp").onclick = () =>
+        makeSample({ work_id: WORK.id, no, title: `${no}화 본문 예시` });
       pane.querySelector(".go").onclick = () => openChapterByNo(no);
       el.appendChild(pane);
     }
@@ -1758,6 +1790,80 @@ window.addEventListener("beforeunload", (e) => {
   e.preventDefault();
   e.returnValue = "";
 });
+
+/* ══════════ 본문 예시 (설정대로 써본 한 토막, 약 1,000자) ══════════
+   회차 본문이 아니라 '내 설정이 글로 나오면 어떤 느낌인지' 보는 참고용이다.
+   등급별로 하루 몇 건까지, 광고를 보면 1건씩 더. */
+const SAMPLE_NOTE = "이 예시는 작품을 쓰는데 도움이 되도록 설정된 내용을 반영한 본문 예시입니다. " +
+  "전체적인 흐름과는 다소 차이가 날 수 있으며, 본문 작성에 참고용으로 이용 바랍니다.";
+let SAMPLE = { used: 0, base: 1, extra: 0, left: 1 };
+
+function smpLeftText() {
+  const total = SAMPLE.base + SAMPLE.extra;
+  return `오늘 ${total}건 중 ${SAMPLE.left}건 남음 · 광고를 보면 1건 더`;
+}
+function openSmp(title) {
+  $("#smp-title").textContent = title || "본문 예시";
+  $("#smp-note").textContent = SAMPLE_NOTE;
+  $("#smp-back").classList.remove("hidden");
+  $("#smp-sheet").classList.remove("hidden");
+}
+function closeSmp() {
+  $("#smp-back").classList.add("hidden");
+  $("#smp-sheet").classList.add("hidden");
+}
+$("#smp-close").onclick = closeSmp;
+$("#smp-back").onclick = closeSmp;
+
+/* 예시 만들기 — opts: {body, work_id, no, title} */
+async function makeSample(opts) {
+  const o = opts || {};
+  const payload = Object.assign({}, o.body || {}, { work_id: o.work_id || 0, no: o.no || 0 });
+  openSmp(o.title || (o.no ? `${o.no}화 본문 예시` : "본문 예시"));
+  $("#smp-body").innerHTML = `<p class="smp-wait">설정을 반영해 쓰는 중…</p>`;
+  $("#smp-foot").innerHTML = "";
+  const r = await api("/api/writer/brief/sample", { method: "POST", body: JSON.stringify(payload) });
+  if (r.sample) SAMPLE = r.sample;
+  if (!r.ok) {
+    $("#smp-body").innerHTML = `<p class="smp-wait">${escapeHtml(r.error || "예시를 만들지 못했어요.")}</p>`;
+    smpFoot(o, r.need === "ad");
+    return;
+  }
+  $("#smp-body").innerHTML = `<div class="smp-text">${escapeHtml(r.text).replace(/\n/g, "<br>")}</div>`;
+  smpFoot(o, false);
+}
+function smpFoot(o, needAd) {
+  const foot = $("#smp-foot");
+  foot.innerHTML = `<span class="smp-left">${escapeHtml(smpLeftText())}</span>`;
+  const mk = (label, fn, primary) => {
+    const b = document.createElement("button");
+    b.className = primary ? "primary" : "ghost small";
+    b.textContent = label; b.onclick = fn; foot.appendChild(b); return b;
+  };
+  if (SAMPLE.left > 0 && !needAd) mk("🔄 다시 써보기", () => makeSample(o));
+  else mk("🎬 광고 보고 1건 더", () => watchAdForSample(o), true);
+}
+/* 광고를 끝까지 보면 예시 1건을 더 준다 */
+function watchAdForSample(o) {
+  const m = $("#ad-interstitial"), btn = $("#ad-close");
+  m.classList.remove("hidden");
+  let n = 5; btn.disabled = true; btn.textContent = `보는 중 (${n})`;
+  const t = setInterval(() => {
+    n -= 1;
+    if (n <= 0) { clearInterval(t); btn.disabled = false; btn.textContent = "받기"; }
+    else btn.textContent = `보는 중 (${n})`;
+  }, 1000);
+  btn.onclick = async () => {
+    if (btn.disabled) return;
+    clearInterval(t);
+    m.classList.add("hidden");
+    const r = await api("/api/writer/sample/ad", { method: "POST" });
+    if (r && r.sample) SAMPLE = r.sample;
+    smpFoot(o, SAMPLE.left <= 0);
+    if (SAMPLE.left > 0) makeSample(o);
+  };
+  // 네이티브: AdMob.showRewardedAd() — 보상 콜백에서 위와 같이 처리한다
+}
 
 /* ── 플롯보기 시트 (페이지를 떠나지 않고 아래에서 올라온다) ── */
 function openSheet(which) {

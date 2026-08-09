@@ -179,6 +179,12 @@ def _body_gate(c, user: str):
         "error": "이 앱은 본문을 작가가 직접 씁니다. 회차를 열면 집필 가이드와 함께 쓸 수 있어요."}
 
 
+# ── 본문 예시(약 1,000자) — 하루 몇 건까지 ────────────────────────────────
+# 등급별 기본 건수. 여기에 '광고를 본 횟수'만큼 1건씩 더해진다.
+# 한국시간 자정에 리셋된다. 광고로 늘어나는 총량은 아래 AI_DAILY_CAP이 막아준다.
+SAMPLE_BASE = {"free": 1, "light": 3, "pro": 10}
+SAMPLE_CHARS = 1000
+
 # 하루 AI 호출 상한 — 비용 폭탄/남용 방지 안전망 (정상 사용엔 넉넉).
 AI_DAILY_CAP = {"free": 40, "light": 250, "pro": 800}
 for _k, _v in AI_DAILY_CAP.items():
@@ -231,6 +237,16 @@ def _ai_gate(c, user: str):
 _AI_BUSY = {"ok": False, "error": "오늘 AI 생성 횟수를 다 썼어요. 내일 다시 시도하거나 요금제를 올려 주세요."}
 
 
+def _sample_quota(c, user: str) -> dict:
+    """오늘 본문 예시를 몇 건 썼고 몇 건 남았는지. (광고 1회 = 1건 추가)"""
+    day = db.real_now().date().isoformat()          # 한국시간 자정에 리셋
+    base = SAMPLE_BASE.get(_tier_name(c, user), 1)
+    used = int(db.kv_get(c, f"smpl:{user}:{day}", "0") or "0")
+    extra = int(db.kv_get(c, f"smplad:{user}:{day}", "0") or "0")
+    return {"used": used, "base": base, "extra": extra,
+            "left": max(0, base + extra - used), "day": day}
+
+
 def _clamp(s: str, n: int) -> str:
     return (s or "")[:n]
 
@@ -263,8 +279,10 @@ def writer_config(user: str = Header(default="solo", alias="X-User-Id")):
     #  · writing_enabled — 작가가 '직접' 쓰는 에디터. 핵심 기능이라 모든 등급에 열려 있다.
     #  · ai_body        — AI가 본문을 '대신' 써주는 기능. 판매 빌드에는 없다.
     ai_body = not LAUNCH_MODE           # 개인 서버는 등급과 무관하게 허용(_body_gate와 동일 규칙)
+    with db.connect() as c:
+        quota = _sample_quota(c, user)
     return {"launch_mode": LAUNCH_MODE, "writing_enabled": True, "ai_body": ai_body,
-            "pens_enabled": not LAUNCH_MODE,
+            "pens_enabled": not LAUNCH_MODE, "sample": quota, "sample_chars": SAMPLE_CHARS,
             "tier": t, "limits": TIERS[t], "tiers": TIERS, "expires_at": ent,
             "pens": pens, "pen_needed": False, "pen_packs": ([] if LAUNCH_MODE else PEN_PACKS)}
 
@@ -1202,6 +1220,82 @@ def suggest_choice(b: SuggestBody, user: str = Header(default="solo", alias="X-U
     if not picked:
         return {"ok": False, "error": "추천을 받지 못했어요. 다시 시도해 주세요."}
     return {"ok": True, "picked": picked, "reason": str(data.get("reason", ""))[:200]}
+
+
+class SampleBody(BuildBody):
+    work_id: int = 0        # 이미 만든 작품에서 부를 때
+    no: int = 0             # 몇 화의 예시인지 (0이면 도입부)
+
+
+SAMPLE_NOTE = ("이 예시는 작품을 쓰는데 도움이 되도록 설정된 내용을 반영한 본문 예시입니다. "
+               "전체적인 흐름과는 다소 차이가 날 수 있으며, 본문 작성에 참고용으로 이용 바랍니다.")
+
+
+@router.get("/sample/quota")
+def sample_quota(user: str = Header(default="solo", alias="X-User-Id")):
+    with db.connect() as c:
+        return {"ok": True, "sample": _sample_quota(c, user), "chars": SAMPLE_CHARS}
+
+
+@router.post("/sample/ad")
+def sample_ad_reward(user: str = Header(default="solo", alias="X-User-Id")):
+    """광고를 끝까지 본 대가로 예시 1건을 더 준다."""
+    with db.connect() as c:
+        q = _sample_quota(c, user)
+        db.kv_set(c, f"smplad:{user}:{q['day']}", str(q["extra"] + 1))
+        return {"ok": True, "sample": _sample_quota(c, user)}
+
+
+@router.post("/brief/sample")
+def write_sample(b: SampleBody, user: str = Header(default="solo", alias="X-User-Id")):
+    """설정한 내용을 그대로 반영한 '본문 예시' 한 토막(약 1,000자)을 쓴다.
+    회차 본문이 아니다 — 작가가 문체·분위기를 가늠하고 참고하라고 만드는 것이다."""
+    if llm.is_mock:
+        return {"ok": False, "error": "AI가 연결되어 있지 않아요.",
+                "detail": "API 키/사용량 한도를 확인해 주세요."}
+    _cap_build(b)
+    with db.connect() as c:
+        q = _sample_quota(c, user)
+        if q["left"] <= 0:
+            return {"ok": False, "need": "ad", "sample": q,
+                    "error": "오늘 쓸 수 있는 예시를 다 썼어요. 광고를 보면 1건 더 만들 수 있어요."}
+        ok, _cap = _ai_gate(c, user)
+        if not ok:
+            return _AI_BUSY
+        db.kv_set(c, f"smpl:{user}:{q['day']}", str(q["used"] + 1))   # 먼저 차감(중복 요청 방지)
+        # 작품에서 부른 경우엔 그 화의 줄거리를 함께 넣어 준다
+        plan_line = ""
+        if b.work_id:
+            w = _load_work(c, b.work_id, user)
+            if w:
+                o = next((x for x in (w.get("outline") or []) if int(x.get("no", 0)) == b.no), None)
+                if o:
+                    plan_line = f"\n[이 화의 줄거리]\n{o.get('title', '')} — {o.get('content', '')}"
+    where = f"{b.no}화의 한 장면" if b.no else "1화 도입부"
+    prompt = f"""당신은 프로 웹소설 작가다. 아래 기획을 그대로 반영해 {where}를 약 {SAMPLE_CHARS}자로 써라.
+작가가 '내 설정이 글로 나오면 어떤 느낌인지' 확인하려고 보는 예시다.
+
+[기획]
+{_assemble_brief(b)}{plan_line}
+
+규칙:
+- 정해진 인물 이름·세계관·금기를 그대로 쓴다. 새로 지어내지 마라.
+- 정한 문체·분위기가 드러나게 쓴다. 이게 이 예시의 목적이다.
+- 장면 하나에 집중한다. 요약·설명이 아니라 실제 본문처럼 대사와 묘사로.
+- 같은 표현을 반복하지 마라.
+- 약 {SAMPLE_CHARS}자. 제목·머리말·설명 없이 본문만 출력하라."""
+    raw = llm.write(prompt, mock_text="", max_tokens=2600)
+    text = (raw or "").strip()
+    if not text:
+        with db.connect() as c:                       # 실패했으면 차감을 되돌린다
+            q2 = _sample_quota(c, user)
+            db.kv_set(c, f"smpl:{user}:{q2['day']}", str(max(0, q2["used"] - 1)))
+            back = _sample_quota(c, user)
+        return {"ok": False, "sample": back, "error": "예시를 만들지 못했어요. 다시 시도해 주세요.",
+                "detail": llm.last_error or "빈 응답"}
+    with db.connect() as c:
+        left = _sample_quota(c, user)
+    return {"ok": True, "text": text, "chars": len(text), "note": SAMPLE_NOTE, "sample": left}
 
 
 @router.post("/brief/outline")
