@@ -257,7 +257,7 @@ function renderThemeSeg() {
 applyTheme(localStorage.getItem("thelife_theme") || "light");
 
 function view(id) {
-  ["w-home", "w-settings", "w-plans", "w-pens", "w-build", "w-work", "w-editor"].forEach((v) =>
+  ["w-home", "w-settings", "w-plans", "w-pens", "w-build", "w-work", "w-plot", "w-editor"].forEach((v) =>
     $(`#${v}`).classList.toggle("hidden", v !== id));
 }
 
@@ -989,38 +989,8 @@ $("#bible-revise").onclick = async () => {
   notice("설정집을 고쳤어요. 이후 회차부터 반영됩니다.\n(이미 쓴 회차는 편집기에서 직접 고치거나 '다시 쓰기' 하세요)");
 };
 
-/* ---------- 전체 플롯 보기 (열고/닫기 · 예정 회차는 눌러서 계획 수정) ---------- */
-$("#btn-plot").onclick = () => {
-  const p = $("#plot-panel");
-  if (!p.classList.contains("hidden")) { p.classList.add("hidden"); return; }
-  renderPlot();
-  p.classList.remove("hidden");
-};
-function renderPlot() {
-  const p = $("#plot-panel");
-  const byNo = {};
-  (WORK.outline || []).forEach((o) => { byNo[o.no] = o; });
-  const written = {};
-  WORK.chapters.forEach((ch) => { written[ch.no] = ch; });
-  const total = Math.max(WORK.total_chapters || 0, WORK.chapters.length,
-    ...(WORK.outline || []).map((o) => o.no), 0);
-  p.innerHTML = `<div class="plot-h">${escapeHtml(WORK.title)} — 전체 플롯</div>
-    <div class="plot-goal">목표: ${escapeHtml(WORK.ending || "")}</div>
-    <p class="hint" style="margin:0 0 8px">아직 안 쓴 회차는 눌러서 줄거리를 미리 짤 수 있어요 (지정한 대로 집필됩니다).</p>`;
-  for (let n = 1; n <= total; n++) {
-    const ch = written[n], o = byNo[n];
-    const done = !!ch;
-    const title = (ch && ch.title) || (o && o.title) || "";
-    const text = done ? (ch.summary || "(요약 없음)") : (o && o.content ? o.content : "계획 미정 — 눌러서 작성");
-    const row = document.createElement("div");
-    row.className = `plot-row ${done ? "done" : "plan"}`;
-    row.innerHTML = `<div class="plot-no">${n}화 <span>${done ? "✍ 집필됨" : "✎ 계획"}</span></div>
-      ${title ? `<b>${escapeHtml(title)}</b>` : ""}
-      <p>${escapeHtml(text)}</p>`;
-    if (!done) row.onclick = () => editOutline(n, row, renderPlot);   // 예정 회차 계획 수정
-    p.appendChild(row);
-  }
-}
+/* ---------- 전체 플롯 보기 → 플롯/가이드 페이지로 ---------- */
+$("#btn-plot").onclick = () => showPlot();
 
 /* ---------- 모든 회차 다시 쓰기 (앞→뒤 순차, 설정·이름·결말 고정) ---------- */
 $("#btn-rewrite-all").onclick = async () => {
@@ -1069,71 +1039,316 @@ $("#btn-write").onclick = async () => {
   openChapter(r.id);
 };
 
-/* ---------- 편집기 ---------- */
+/* ══════════ 전체 플롯 / 가이드 (아코디언) ══════════
+   제목을 누르면 그 화의 줄거리와 집필 가이드가 펼쳐지고, 다른 제목을 누르면 접힌다. */
+let PLOT_OPEN = 0;                     // 지금 펼쳐진 화 번호 (0=없음)
+const GUIDE_CACHE = {};                // {no: guide}
+
+function showPlot(focusNo) {
+  view("w-plot");
+  if (focusNo) PLOT_OPEN = focusNo;
+  renderPlotList();
+}
+function plotRows() {
+  const byNo = {}, written = {};
+  (WORK.outline || []).forEach((o) => { byNo[o.no] = o; });
+  (WORK.chapters || []).forEach((ch) => { written[ch.no] = ch; });
+  const total = Math.max(WORK.total_chapters || 0, WORK.chapters.length,
+    ...(WORK.outline || []).map((o) => o.no), 0);
+  const rows = [];
+  for (let n = 1; n <= total; n++) rows.push({ no: n, o: byNo[n], ch: written[n] });
+  return rows;
+}
+function renderPlotList() {
+  const rows = plotRows();
+  $("#pl-meta").textContent =
+    `총 ${rows.length}화 · ${WORK.chapters.length}화 집필됨 — 제목을 누르면 줄거리와 가이드가 열려요`;
+  const box = $("#pl-list");
+  box.innerHTML = "";
+  rows.forEach(({ no, o, ch }) => {
+    const open = PLOT_OPEN === no;
+    const title = (ch && ch.title) || (o && o.title) || `${no}화`;
+    const el = document.createElement("div");
+    el.className = "pl-item" + (open ? " open" : "");
+    el.innerHTML =
+      `<button class="pl-head"><span class="pl-no">${no}화</span>
+         <span class="pl-t">${escapeHtml(title)}</span>
+         <span class="pl-chev">${open ? "▲" : "▼"}</span></button>`;
+    el.querySelector(".pl-head").onclick = () => {
+      PLOT_OPEN = open ? 0 : no;       // 같은 걸 누르면 접기, 다른 걸 누르면 그것만 열기
+      renderPlotList();
+      if (!open) loadGuide(no);
+    };
+    if (open) {
+      const pane = document.createElement("div");
+      pane.className = "pl-pane";
+      const syn = (o && o.content) ? escapeHtml(o.content)
+        : (ch && ch.summary ? escapeHtml(ch.summary) : "");
+      pane.innerHTML =
+        `<p class="pl-syn${syn ? "" : " empty"}">${syn || "아직 줄거리가 없어요."}</p>
+         <span class="pl-gtag">가이드</span>
+         <div class="g-wrap" id="g-${no}">${guideHtml(GUIDE_CACHE[no])}</div>
+         <div class="pl-acts">
+           <button class="regen">🔄 가이드 새로</button>
+           ${ch ? `<button class="go">✍ 이 화 쓰기</button>`
+                : `<button class="go">✍ 이 화 쓰기</button>`}
+         </div>`;
+      pane.querySelector(".regen").onclick = () => loadGuide(no, true);
+      pane.querySelector(".go").onclick = () => openChapterByNo(no);
+      el.appendChild(pane);
+    }
+    box.appendChild(el);
+  });
+}
+const GUIDE_ORDER = ["목표", "연결", "갈등", "인물", "사건", "맺음"];
+function guideHtml(g) {
+  if (!g) return `<p class="g-v" style="padding:8px 0">가이드를 불러오는 중…</p>`;
+  let h = GUIDE_ORDER.map((k) => g[k]
+    ? `<div class="g-row"><span class="g-k">${k}</span><span class="g-v">${escapeHtml(g[k])}</span></div>`
+    : "").join("");
+  if (g["반복주의"]) {
+    h += `<div class="g-row warn"><span class="g-k">반복 주의</span>
+            <span class="g-v">${escapeHtml(g["반복주의"])}</span></div>`;
+  }
+  return h || `<p class="g-v" style="padding:8px 0">가이드가 없어요.</p>`;
+}
+async function loadGuide(no, force) {
+  const slot = $(`#g-${no}`);
+  if (slot && (force || !GUIDE_CACHE[no])) {
+    slot.innerHTML = `<p class="g-v" style="padding:8px 0">가이드를 ${force ? "새로 만드는" : "불러오는"} 중…</p>`;
+  }
+  const r = await api(`/api/writer/works/${WORK.id}/guide`, {
+    method: "POST", body: JSON.stringify({ no, force: !!force }),
+  });
+  if (!r.ok) {
+    const s = $(`#g-${no}`);
+    if (s) s.innerHTML = `<p class="g-v" style="padding:8px 0">${escapeHtml(r.error || "가이드를 못 만들었어요.")}</p>`;
+    return;
+  }
+  GUIDE_CACHE[no] = r.guide;
+  const s2 = $(`#g-${no}`);
+  if (s2) s2.innerHTML = guideHtml(r.guide);
+}
+$("#pl-home").onclick = () => openWork(WORK.id);
+$("#pl-menu").onclick = () => openMenu("plot");
+
+/* ══════════ 본문 쓰기 ══════════ */
+let DIRTY = false, SAVING = false, DRAFT_T = null;
+const draftKey = (id) => `draft:${id}`;
+
 async function openChapter(id) {
   const d = await api(`/api/writer/chapters/${id}`);
   if (!d.ok) { notice("회차를 불러오지 못했어요"); return; }
   CHAPTER = d.chapter;
   view("w-editor");
-  const beat = WORK.beats[CHAPTER.beat_idx] || {};
-  $("#ed-beat").textContent = `${CHAPTER.no}화 · 비트: ${beat.name || ""}`;
+  closeSheet();
+  $("#ed-heading").textContent = `${CHAPTER.no}화 본문 쓰기`;
   $("#ed-title").value = CHAPTER.title || "";
   $("#ed-body").value = CHAPTER.body || "";
-  // 삭제는 마지막 회차만 (중간을 비우면 기억이 끊긴다) — 아니면 버튼을 숨긴다
-  const lastNo = WORK.chapters.length ? WORK.chapters[WORK.chapters.length - 1].no : 0;
-  $("#ed-del").style.display = (CHAPTER.no === lastNo) ? "" : "none";
-  countChars();
+  DIRTY = false;
+  // 임시저장본이 서버 내용과 다르면 되살린다 (앱이 꺼져도 글이 안 날아가게)
+  try {
+    const raw = localStorage.getItem(draftKey(id));
+    if (raw) {
+      const dr = JSON.parse(raw);
+      if ((dr.body || "") !== (CHAPTER.body || "") || (dr.title || "") !== (CHAPTER.title || "")) {
+        $("#ed-title").value = dr.title || "";
+        $("#ed-body").value = dr.body || "";
+        DIRTY = true;
+        notice("저장하지 않고 종료된 글을 되살렸어요.\n확인 후 '저장하기'를 눌러주세요.");
+      }
+    }
+  } catch (e) { /* 임시저장은 없어도 그만 */ }
+  const nos = plotRows().map((r) => r.no);
+  $("#ed-prev").disabled = CHAPTER.no <= Math.min(...nos, 1);
+  $("#ed-next").disabled = CHAPTER.no >= Math.max(...nos, CHAPTER.no);
+  edStatus();
 }
-$("#ed-body").addEventListener("input", countChars);
-function countChars() {
-  $("#ed-count").textContent = `${$("#ed-body").value.length.toLocaleString()}자`;
+/* 번호로 열기 — 아직 안 쓴 화면 새로 만들지 않고 안내한다 */
+function openChapterByNo(no) {
+  const ch = (WORK.chapters || []).find((c) => c.no === no);
+  if (ch) { openChapter(ch.id); return; }
+  notice(`${no}화는 아직 만들어지지 않았어요.\n회차 목록에서 먼저 만들어 주세요.`);
 }
-$("#ed-back").onclick = () => openWork(WORK.id);
-$("#ed-save").onclick = async () => {
+
+$("#ed-body").addEventListener("input", onEdit);
+$("#ed-title").addEventListener("input", onEdit);
+function onEdit() {
+  DIRTY = true;
+  edStatus();
+  clearTimeout(DRAFT_T);
+  DRAFT_T = setTimeout(saveDraft, 700);      // 타이핑이 멈추면 자동 임시저장
+}
+function saveDraft() {
+  if (!CHAPTER) return;
+  try {
+    localStorage.setItem(draftKey(CHAPTER.id), JSON.stringify({
+      title: $("#ed-title").value, body: $("#ed-body").value, at: Date.now(),
+    }));
+    edStatus("임시저장됨");
+  } catch (e) { /* 저장공간 부족 등 — 무시 */ }
+}
+function edStatus(msg) {
+  const n = $("#ed-body").value.length.toLocaleString();
+  $("#ed-status").textContent = `${n}자 · ` + (msg || (DIRTY ? "저장 안 됨" : "저장됨"));
+}
+async function saveChapter(quiet) {
+  if (!CHAPTER || SAVING) return false;
+  SAVING = true;
   const r = await api(`/api/writer/chapters/${CHAPTER.id}`, {
     method: "PUT",
     body: JSON.stringify({ title: $("#ed-title").value, body: $("#ed-body").value }),
   });
-  notice(r.ok ? "저장했어요." : r.error);
-};
-$("#ed-copy").onclick = async () => {
-  await navigator.clipboard.writeText($("#ed-body").value);
-  notice("본문을 복사했어요. 연재 플랫폼에 붙여넣으세요.");
-};
-$("#ed-download").onclick = () => {
-  const blob = new Blob([`${$("#ed-title").value}\n\n${$("#ed-body").value}`],
-    { type: "text/plain;charset=utf-8" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `${WORK.title}_${CHAPTER.no}화.txt`;
-  a.click();
-};
-$("#ed-regen").onclick = async () => {
-  const directive = prompt("다시 쓸 때의 지시 (비워도 됩니다):", CHAPTER.directive || "");
-  if (directive === null) return;
-  busy("다시 쓰는 중…");
-  const cid = CHAPTER.id;
-  const r = await api(`/api/writer/chapters/${cid}/regenerate`, {
-    method: "POST", body: JSON.stringify({ directive }),
-  });
-  unbusy();
-  if (!r.ok) { if (handleBodyNeed(r)) return; notice(r.error); return; }
-  setPens(r.pens);
-  await openChapter(cid);
-  if (r.undo) {
-    noticeUndo("다시 썼어요. 이전 글로 되돌릴 수 있어요.", async () => {
-      const rr = await api(`/api/writer/trash/${r.undo}/restore`, { method: "POST" });
-      if (!rr.ok) { notice(rr.error || "되돌리기 실패"); return; }
-      await openChapter(cid);
-      notice("이전 글로 되돌렸어요.");
-    });
+  SAVING = false;
+  if (!r.ok) { notice(r.error || "저장 실패"); return false; }
+  DIRTY = false;
+  try { localStorage.removeItem(draftKey(CHAPTER.id)); } catch (e) {}
+  // 로컬 사본도 갱신해 앞뒤 이동 시 최신 내용이 보이게
+  const mine = (WORK.chapters || []).find((c) => c.id === CHAPTER.id);
+  if (mine) { mine.title = $("#ed-title").value; }
+  edStatus("저장됨");
+  if (!quiet) notice("저장했어요.");
+  return true;
+}
+$("#ed-save").onclick = () => saveChapter();
+
+/* 이동 전 저장 확인 — 저장 안 한 변경이 있으면 물어본다 */
+function guard(go) {
+  if (!DIRTY) { go(); return; }
+  $("#confirm-text").textContent = "저장하지 않은 내용이 있어요.\n저장할까요?";
+  $("#confirm").classList.remove("hidden");
+  $("#cf-save").onclick = async () => {
+    $("#confirm").classList.add("hidden");
+    if (await saveChapter(true)) go();
+  };
+  $("#cf-discard").onclick = () => {
+    $("#confirm").classList.add("hidden");
+    DIRTY = false;
+    try { localStorage.removeItem(draftKey(CHAPTER.id)); } catch (e) {}
+    go();
+  };
+  $("#cf-cancel").onclick = () => $("#confirm").classList.add("hidden");
+}
+function stepChapter(delta) {
+  const list = (WORK.chapters || []).slice().sort((a, b) => a.no - b.no);
+  const i = list.findIndex((c) => c.id === CHAPTER.id);
+  const t = list[i + delta];
+  if (!t) { notice(delta > 0 ? "마지막 회차예요." : "첫 회차예요."); return; }
+  guard(() => openChapter(t.id));
+}
+$("#ed-prev").onclick = () => stepChapter(-1);
+$("#ed-next").onclick = () => stepChapter(1);
+$("#ed-home").onclick = () => guard(() => openWork(WORK.id));
+$("#ed-menu").onclick = () => openMenu("editor");
+
+/* 브라우저/앱을 그냥 닫아도 글이 남도록 */
+window.addEventListener("beforeunload", (e) => {
+  if (!DIRTY) return;
+  saveDraft();
+  e.preventDefault();
+  e.returnValue = "";
+});
+
+/* ── 플롯보기 시트 (페이지를 떠나지 않고 아래에서 올라온다) ── */
+function openSheet(which) {
+  $("#sh-title").textContent = `${CHAPTER.no}화`;
+  document.querySelectorAll("#plot-sheet .st").forEach((b) =>
+    b.classList.toggle("on", b.dataset.sht === which));
+  $("#sheet-back").classList.remove("hidden");
+  $("#plot-sheet").classList.remove("hidden");
+  renderSheet(which);
+}
+function closeSheet() {
+  $("#sheet-back").classList.add("hidden");
+  $("#plot-sheet").classList.add("hidden");
+}
+function renderSheet(which) {
+  const no = CHAPTER.no;
+  const byNo = {}; (WORK.outline || []).forEach((o) => { byNo[o.no] = o; });
+  const box = $("#sh-body");
+  if (which === "near") {
+    const chBy = {}; (WORK.chapters || []).forEach((c) => { chBy[c.no] = c; });
+    const cell = (n, cls, label) => {
+      const o = byNo[n], ch = chBy[n];
+      if (!o && !ch && n !== no) return "";
+      const t = (ch && ch.title) || (o && o.title) || "";
+      const txt = (n < no && ch && ch.summary) ? ch.summary
+        : (o && o.content) ? o.content : "아직 계획이 없어요.";
+      return `<div class="near ${cls}"><div class="near-h">${label}</div>
+        ${t ? `<b style="font-size:13px">${escapeHtml(t)}</b><br>` : ""}
+        <p>${escapeHtml(txt)}</p></div>`;
+    };
+    box.innerHTML = cell(no - 1, "prev", `‹ ${no - 1}화 · 앞`)
+      + cell(no, "now", `● ${no}화 · 지금 쓰는 중`)
+      + cell(no + 1, "next", `${no + 1}화 › 다음`);
+    return;
   }
-};
-$("#ed-del").onclick = async () => {
+  const o = byNo[no];
+  box.innerHTML =
+    `<p class="pl-syn${o && o.content ? "" : " empty"}">${o && o.content ? escapeHtml(o.content) : "아직 줄거리가 없어요."}</p>
+     <span class="pl-gtag">가이드</span>
+     <div class="g-wrap" id="g-${no}">${guideHtml(GUIDE_CACHE[no])}</div>
+     <div class="pl-acts"><button class="regen">🔄 가이드 새로</button>
+       <button class="go">📖 전체 플롯 열기</button></div>`;
+  box.querySelector(".regen").onclick = () => loadGuide(no, true);
+  box.querySelector(".go").onclick = () => { closeSheet(); guard(() => showPlot(no)); };
+  if (!GUIDE_CACHE[no]) loadGuide(no);
+}
+$("#ed-plot").onclick = () => openSheet("guide");
+$("#sh-close").onclick = closeSheet;
+$("#sheet-back").onclick = closeSheet;
+document.querySelectorAll("#plot-sheet .st").forEach((b) => {
+  b.onclick = () => openSheet(b.dataset.sht);
+});
+
+/* ── 메뉴 시트 (☰) ── */
+function openMenu(where) {
+  const box = $("#mn-body");
+  box.innerHTML = "";
+  const add = (label, fn, cls) => {
+    const b = document.createElement("button");
+    b.textContent = label;
+    if (cls) b.className = cls;
+    b.onclick = () => { closeMenu(); fn(); };
+    box.appendChild(b);
+  };
+  if (where === "editor") {
+    add("📖 전체 플롯 / 가이드", () => guard(() => showPlot(CHAPTER.no)));
+    add("📋 본문 복사", async () => {
+      await navigator.clipboard.writeText($("#ed-body").value);
+      notice("본문을 복사했어요. 연재 플랫폼에 붙여넣으세요.");
+    });
+    add("⬇ .txt로 받기", () => {
+      const blob = new Blob([`${$("#ed-title").value}\n\n${$("#ed-body").value}`],
+        { type: "text/plain;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${WORK.title}_${CHAPTER.no}화.txt`;
+      a.click();
+    });
+    const lastNo = WORK.chapters.length ? WORK.chapters[WORK.chapters.length - 1].no : 0;
+    if (CHAPTER && CHAPTER.no === lastNo) add("🗑 이 회차 삭제", deleteChapter, "danger");
+  } else {
+    add("✍ 작품 화면", () => openWork(WORK.id));
+    add("⚙ 설정", showSettings);
+  }
+  $("#menu-back").classList.remove("hidden");
+  $("#menu-sheet").classList.remove("hidden");
+}
+function closeMenu() {
+  $("#menu-back").classList.add("hidden");
+  $("#menu-sheet").classList.add("hidden");
+}
+$("#mn-close").onclick = closeMenu;
+$("#menu-back").onclick = closeMenu;
+
+async function deleteChapter() {
   if (!confirm("이 회차를 삭제할까요?")) return;
-  const wid = WORK.id;
-  const r = await api(`/api/writer/chapters/${CHAPTER.id}`, { method: "DELETE" });
+  const wid = WORK.id, cid = CHAPTER.id;
+  const r = await api(`/api/writer/chapters/${cid}`, { method: "DELETE" });
   if (!r.ok) { notice(r.error); return; }
+  try { localStorage.removeItem(draftKey(cid)); } catch (e) {}
+  DIRTY = false;
   await openWork(wid);
   if (r.undo) {
     noticeUndo("회차를 삭제했어요.", async () => {
@@ -1143,6 +1358,6 @@ $("#ed-del").onclick = async () => {
       notice("되돌렸어요.");
     });
   }
-};
+}
 
 showHome();

@@ -1339,20 +1339,143 @@ class OutlineBody(BaseModel):
 @router.put("/works/{work_id}/outline")
 def edit_outline(work_id: int, body: OutlineBody,
                  user: str = Header(default="solo", alias="X-User-Id")):
-    """회차별 전개(계획) 편집 — 지정된 회차는 그 내용대로 집필된다."""
+    """회차별 전개(계획) 편집 — 지정된 회차는 그 내용대로 집필된다.
+    이미 만들어 둔 집필 가이드(guide)는 덮어쓰지 않고 그대로 보존한다."""
     with db.connect() as c:
         w = _load_work(c, work_id, user)
         if not w:
             return {"ok": False, "error": "작품을 찾을 수 없어요."}
-        outline = [{"no": o.no, "title": o.title.strip(), "content": o.content.strip()}
-                   for o in sorted(body.outline, key=lambda o: o.no)
-                   if o.no and o.no >= 1 and (o.title.strip() or o.content.strip())]
+        old = {o.get("no"): o for o in (w.get("outline") or [])}
+        outline = []
+        for o in sorted(body.outline, key=lambda o: o.no):
+            if not o.no or o.no < 1 or not (o.title.strip() or o.content.strip()):
+                continue
+            item = {"no": o.no, "title": o.title.strip(), "content": o.content.strip()}
+            prev_g = (old.get(o.no) or {}).get("guide")
+            if prev_g:
+                item["guide"] = prev_g          # 가이드 보존
+            outline.append(item)
         total = w["total_chapters"]
         if outline:
             total = max(total, outline[-1]["no"])
         c.execute("UPDATE works SET outline_json=?, total_chapters=? WHERE id=?",
                   (json.dumps(outline, ensure_ascii=False), total, work_id))
     return {"ok": True, "outline_count": len(outline)}
+
+
+# ─────────────────────── 집필 가이드 (이번 회차에서 중요한 것) ───────────────────────
+# 작가가 '직접' 쓸 때 옆에서 짚어주는 코치. 본문을 대신 쓰지 않으므로 짧고 값이 싸다.
+GUIDE_KEYS = ["목표", "연결", "갈등", "인물", "사건", "맺음"]
+
+
+def _repeat_notes(prev: list, w: dict) -> str:
+    """이미 과하게 쓴 단어·표현을 작가에게 알려주는 한 줄 (AI 없이 계산)."""
+    words = _overused_words(prev, w, top=6)
+    exprs = _overused_expressions(prev, top=4)
+    bits = []
+    if words:
+        bits.append("자주 쓴 단어 — " + ", ".join(words))
+    if exprs:
+        bits.append("이미 쓴 표현 — " + " / ".join(e[:28] for e in exprs[:3]))
+    if not bits:
+        return ""
+    return " · ".join(bits) + " → 이번 화에서는 다른 표현·다른 감각으로 가보세요."
+
+
+def _guide_prompt(w: dict, no: int, this_o: dict, prev_o: dict, next_o: dict,
+                  prev_summaries: str) -> str:
+    chars = "\n".join(
+        f"- {ch['name']}: {ch.get('role','')} / 욕망 {ch.get('want','')} / 결핍 {ch.get('need','')}"
+        for ch in (w.get("characters") or [])[:10])
+    return f"""당신은 웹소설 편집자다. 작가가 '{no}화'를 직접 집필하기 직전이다.
+작가가 이 회차를 쓸 때 반드시 짚어야 할 것을 항목별로 짧고 구체적으로 알려줘라.
+본문을 대신 쓰지 마라. 지시·조언만 해라.
+
+[작품] {w.get('title','')} ({w.get('genre','')}) · 총 {w.get('total_chapters')}화
+[로그라인] {w.get('premise','')}
+[고정 결말] {w.get('ending','')}
+[인물]
+{chars}
+
+[앞 회차 흐름 요약]
+{prev_summaries or '아직 없음(이번이 초반)'}
+
+[바로 앞 회차 계획] {prev_o.get('no','-')}화 「{prev_o.get('title','')}」 {prev_o.get('content','')}
+[이번 회차 계획] {no}화 「{this_o.get('title','')}」 {this_o.get('content','')}
+[다음 회차 계획] {next_o.get('no','-')}화 「{next_o.get('title','')}」 {next_o.get('content','')}
+
+아래 JSON만 출력하라 (설명·코드펜스 금지). 각 값은 한국어 1~2문장, 구체적으로.
+{{
+ "목표": "이 화가 반드시 이뤄야 할 것 한 가지",
+ "연결": "앞 화에서 이어받을 상태와, 다음 화로 넘겨야 할 것",
+ "갈등": "이 화에서 주인공을 막아서는 것",
+ "인물": "누가 어떻게 변하는가 (감정·태도의 이동)",
+ "사건": "실제로 벌어지는 핵심 장면 1~2개",
+ "맺음": "마지막을 어떻게 끊어 다음 화를 궁금하게 할지"
+}}"""
+
+
+class GuideBody(BaseModel):
+    no: int
+    force: bool = False
+
+
+@router.post("/works/{work_id}/guide")
+def make_guide(work_id: int, body: GuideBody,
+               user: str = Header(default="solo", alias="X-User-Id")):
+    """이 회차의 집필 가이드를 만든다(있으면 그대로 돌려주고, force면 새로 만든다)."""
+    no = int(body.no or 0)
+    if no < 1:
+        return {"ok": False, "error": "회차 번호가 잘못됐어요."}
+    with db.connect() as c:
+        w = _load_work(c, work_id, user)
+        if not w:
+            return {"ok": False, "error": "작품을 찾을 수 없어요."}
+        outline = list(w.get("outline") or [])
+        by_no = {o.get("no"): o for o in outline}
+        this_o = by_no.get(no) or {"no": no, "title": "", "content": ""}
+        prev_rows = [dict(r) for r in c.execute(
+            "SELECT no, title, summary, body FROM chapters WHERE work_id=? AND no<? ORDER BY no",
+            (work_id, no)).fetchall()]
+
+        cached = (this_o.get("guide") or {})
+        if cached and not body.force:
+            cached = dict(cached)
+            cached["반복주의"] = _repeat_notes(prev_rows, w)   # 반복 정보는 항상 최신으로
+            return {"ok": True, "guide": cached, "cached": True}
+
+        ok, cap = _ai_gate(c, user)
+        if not ok:
+            return _AI_BUSY
+        summaries = "\n".join(
+            f"- {p['no']}화 「{p.get('title','')}」 {p.get('summary','') or (p.get('body') or '')[:120]}"
+            for p in prev_rows[-6:])
+        raw = llm.write(
+            _guide_prompt(w, no, this_o, by_no.get(no - 1, {}), by_no.get(no + 1, {}), summaries),
+            mock_text='{"목표":"(예시) 주인공이 처음으로 반격의 실마리를 잡는다.",'
+                      '"연결":"(예시) 앞 화의 해고 상태를 이어받고, 다음 화의 전화로 넘긴다.",'
+                      '"갈등":"(예시) 증거가 결정적이지 않다.","인물":"(예시) 무력감에서 작은 확신으로.",'
+                      '"사건":"(예시) 조력자가 USB를 건넨다.","맺음":"(예시) 적의 전화가 걸려온다."}',
+            max_tokens=1400)
+        if not llm.is_mock and llm.last_error:
+            return {"ok": False, "error": "가이드를 만들지 못했어요.",
+                    "detail": f"AI 호출 오류 — {llm.last_error}"}
+        data = parse_llm_json(raw) or {}
+        guide = {k: str(data.get(k, "")).strip() for k in GUIDE_KEYS}
+        if not any(guide.values()):
+            return {"ok": False, "error": "가이드를 만들지 못했어요. 다시 시도해 주세요."}
+
+        this_o["guide"] = guide                     # 저장(캐시)
+        if no not in by_no:
+            outline.append(this_o)
+        else:
+            outline = [this_o if o.get("no") == no else o for o in outline]
+        outline.sort(key=lambda o: o.get("no", 0))
+        c.execute("UPDATE works SET outline_json=? WHERE id=?",
+                  (json.dumps(outline, ensure_ascii=False), work_id))
+        out = dict(guide)
+        out["반복주의"] = _repeat_notes(prev_rows, w)
+    return {"ok": True, "guide": out}
 
 
 # NOTE: 예전의 '이름 일괄 변경(/rename)' 기능은 제거되었다.

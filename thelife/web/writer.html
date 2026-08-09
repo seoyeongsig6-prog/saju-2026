@@ -245,7 +245,6 @@
       <button id="btn-plot" class="ghost small">📖 전체 플롯 보기</button>
       <button id="btn-rewrite-all" class="ghost small">🔄 모든 회차 다시 쓰기</button>
     </div>
-    <div id="plot-panel" class="plot-panel hidden"></div>
     <div id="ch-list" class="ch-list"></div>
     <div id="pen-bar" class="pen-bar hidden"></div>
     <div id="ch-write-box" class="write-box">
@@ -312,21 +311,67 @@
   </div>
 </div>
 
-<!-- 회차 편집기 -->
-<div id="w-editor" class="wview hidden">
-  <div class="w-top">
-    <span id="ed-beat" class="dim"></span>
-    <span id="ed-count" class="dim"></span>
+<!-- 전체 플롯 / 가이드 (아코디언 — 제목을 누르면 줄거리+가이드가 펼쳐진다) -->
+<div id="w-plot" class="wview hidden">
+  <div class="app-top">
+    <button class="top-ic" id="pl-home" title="작품">🏠</button>
+    <b class="top-title">전체플롯 / 가이드</b>
+    <button class="top-ic" id="pl-menu" title="메뉴">☰</button>
   </div>
-  <input id="ed-title" class="ed-title">
-  <textarea id="ed-body" class="ed-body" spellcheck="false"></textarea>
-  <div class="ed-actions">
-    <button id="ed-back" class="ed-nav">← 회차 목록</button>
-    <button id="ed-save" class="primary">저장</button>
-    <button id="ed-copy">본문 복사</button>
-    <button id="ed-download">.txt 받기</button>
-    <button id="ed-regen">다시 쓰기</button>
-    <button id="ed-del" class="danger">삭제</button>
+  <div id="pl-meta" class="pl-meta"></div>
+  <div id="pl-list" class="pl-list"></div>
+</div>
+
+<!-- 본문 쓰기 -->
+<div id="w-editor" class="wview hidden">
+  <div class="app-top">
+    <button class="top-ic" id="ed-home" title="작품">🏠</button>
+    <b class="top-title" id="ed-heading">본문 쓰기</b>
+    <button class="top-ic" id="ed-menu" title="메뉴">☰</button>
+  </div>
+  <input id="ed-title" class="ed-title" placeholder="이 회차 제목">
+  <textarea id="ed-body" class="ed-body" spellcheck="false" placeholder="여기에 본문을 쓰세요…"></textarea>
+  <div id="ed-status" class="ed-status"></div>
+  <div class="ed-bar">
+    <button id="ed-prev" class="edb-arrow" title="이전 화">◀</button>
+    <button id="ed-plot" class="edb">플롯보기</button>
+    <button id="ed-save" class="edb save">저장하기</button>
+    <button id="ed-next" class="edb-arrow" title="다음 화">▶</button>
+  </div>
+
+  <!-- 플롯보기 — 아래에서 올라오는 시트 (페이지를 떠나지 않는다) -->
+  <div id="sheet-back" class="sheet-back hidden"></div>
+  <div id="plot-sheet" class="sheet hidden">
+    <div class="sheet-grip"></div>
+    <div class="sheet-head">
+      <b id="sh-title">이번 회차</b>
+      <button id="sh-close" class="sh-x">✕</button>
+    </div>
+    <div class="sheet-tabs">
+      <button class="st on" data-sht="guide">이번 회차 가이드</button>
+      <button class="st" data-sht="near">앞뒤 확인</button>
+    </div>
+    <div id="sh-body" class="sheet-body"></div>
+  </div>
+</div>
+
+<!-- 메뉴 시트 (☰) -->
+<div id="menu-back" class="sheet-back hidden"></div>
+<div id="menu-sheet" class="sheet hidden">
+  <div class="sheet-grip"></div>
+  <div class="sheet-head"><b>메뉴</b><button id="mn-close" class="sh-x">✕</button></div>
+  <div id="mn-body" class="sheet-body menu-body"></div>
+</div>
+
+<!-- 저장 확인 (이동 전) -->
+<div id="confirm" class="modal hidden">
+  <div class="modal-card">
+    <p id="confirm-text" class="notice-text"></p>
+    <div class="notice-actions col">
+      <button id="cf-save" class="primary">저장하고 이동</button>
+      <button id="cf-discard" class="ghost">저장 안 하고 이동</button>
+      <button id="cf-cancel" class="ghost">취소</button>
+    </div>
   </div>
 </div>
 
