@@ -1057,7 +1057,7 @@ let WZ = null;
 
 function startWizard() {
   WZ = { i: 0, phase: "form", total: 25, sel: {}, other: {}, detail: {},
-         basic: {}, cast: [], castOpen: -1, draft: null, outline: [] };
+         basic: {}, cast: [], castOpen: -1, draft: null, outline: [], paints: {} };
   view("w-wizard");
   wzRender();
 }
@@ -1100,6 +1100,7 @@ function wzRender() {
   $("#wz-back").style.visibility = "";
   const box = $("#wz-step-body");
   box.innerHTML = "";
+  WZ.paints = {};                     // 지운 화면의 옛 갱신함수는 버린다
   if (s.kind === "text") wzRenderText(box, s);
   else if (s.kind === "cast") wzRenderCast(box, s);
   else wzRenderPick(box, s, WZ.sel, WZ.other, WZ.detail, s.id);
@@ -1136,11 +1137,14 @@ function wzRenderText(box, s) {
   t.innerHTML = `<div class="wz-label">총 회차</div><div class="chips" id="wz-totals"></div>`;
   box.appendChild(t);
   const tc = t.querySelector("#wz-totals");
+  const tb = [];
   WZ_TOTALS.forEach((n) => {
     const b = document.createElement("button");
     b.className = "chip" + (WZ.total === n ? " on" : "");
     b.textContent = `${n}화`;
-    b.onclick = () => { WZ.total = n; wzRender(); };
+    // 그 자리에서 표시만 바꾼다 (다시 그리면 스크롤이 위로 튄다)
+    b.onclick = () => { WZ.total = n; tb.forEach((x) => x.el.classList.toggle("on", x.n === n)); };
+    tb.push({ el: b, n });
     tc.appendChild(b);
   });
 }
@@ -1150,46 +1154,61 @@ function wzRenderPick(box, s, sel, other, detail, key) {
   const cur = sel[key] || (sel[key] = []);
   const wrap = document.createElement("div");
   wrap.className = rich ? "opt-cards" : "chips";
+  const btns = [];
+  let detailBox = null;
+  /* 고른 표시만 그 자리에서 바꾼다 — 화면을 다시 그리지 않으므로 스크롤이 튀지 않는다 */
+  const paint = () => {
+    const cur = sel[key] || [];
+    btns.forEach((b) => b.el.classList.toggle("on", cur.includes(b.v)));
+    if (otEl) {
+      otEl.classList.toggle("on", !!other[key]);
+      const lab = other[key] ? `기타: ${other[key]}` : WZ_OTHER;
+      otEl.innerHTML = rich ? `<b>${escapeHtml(lab)}</b>` : escapeHtml(lab);
+    }
+    if (detailBox) detailBox.classList.toggle("hidden", !(cur.length || other[key]));
+  };
   (s.opts || []).forEach((raw) => {
     const o = (typeof raw === "string") ? { v: raw } : raw;
-    const on = cur.includes(o.v);
     const el = document.createElement("button");
-    el.className = (rich ? "optc" : "chip") + (on ? " on" : "");
+    el.className = rich ? "optc" : "chip";
     el.innerHTML = rich
       ? `<b>${escapeHtml(o.v)}</b>${o.h ? `<i>${escapeHtml(o.h)}</i>` : ""}
          ${o.d ? `<p>${escapeHtml(o.d)}</p>` : ""}${o.e ? `<small>${escapeHtml(o.e)}</small>` : ""}`
       : escapeHtml(o.v);
-    el.onclick = () => { wzToggle(sel, key, o.v, s.pick); wzRender(); };
+    el.onclick = () => { wzToggle(sel, key, o.v, s.pick); paint(); };
+    btns.push({ el, v: o.v });
     wrap.appendChild(el);
   });
   // 기타 → 직접 입력
-  const ot = document.createElement("button");
-  ot.className = (rich ? "optc" : "chip") + (other[key] ? " on" : "");
-  ot.innerHTML = rich ? `<b>${WZ_OTHER}</b>` : WZ_OTHER;
-  ot.onclick = () => {
+  const otEl = document.createElement("button");
+  otEl.className = rich ? "optc" : "chip";
+  otEl.onclick = () => {
     const v = prompt("직접 입력해 주세요.", other[key] || "");
     if (v === null) return;
     other[key] = v.trim();
-    wzRender();
+    paint();
   };
-  wrap.appendChild(ot);
+  wrap.appendChild(otEl);
   box.appendChild(wrap);
-  // 고른 뒤 세부 입력
-  if (s.detail && (cur.length || other[key])) {
-    const d = document.createElement("div");
-    d.innerHTML = `<div class="wz-label">조금 더 자세히 (선택)</div>
+  // 고른 뒤 세부 입력 (미리 만들어 두고 보이기만 전환 — 위치가 흔들리지 않게)
+  if (s.detail) {
+    detailBox = document.createElement("div");
+    detailBox.innerHTML = `<div class="wz-label">조금 더 자세히 (선택)</div>
       <input class="wz-in one" placeholder="${escapeHtml(s.detail)}">`;
-    const el = d.querySelector("input");
+    const el = detailBox.querySelector("input");
     el.value = detail[key] || "";
     el.oninput = () => { detail[key] = el.value; };
-    box.appendChild(d);
+    box.appendChild(detailBox);
   }
+  paint();
+  WZ.paints[key] = paint;             // AI 추천 뒤 '표시만' 갱신할 때 쓴다
+  return paint;
 }
 function wzToggle(sel, key, val, pick) {
   const arr = sel[key] || (sel[key] = []);
   const at = arr.indexOf(val);
   if (at >= 0) { arr.splice(at, 1); return; }
-  if (pick === 1) { sel[key] = [val]; return; }      // 하나만
+  if (pick === 1) { arr.length = 0; arr.push(val); return; }   // 하나만 (배열은 그대로 두고 내용만 바꾼다)
   if (pick > 1 && arr.length >= pick) arr.shift();   // 최대 개수 넘으면 오래된 것 밀어내기
   arr.push(val);
 }
@@ -1205,7 +1224,9 @@ async function wzSuggest(s, target) {
   unbusy();
   if (!r.ok) { notice(r.error || "추천을 받지 못했어요."); return; }
   (target || WZ.sel)[s.id] = r.picked;
-  if (target) wzRenderCastDetail(); else wzRender();
+  // 표시만 그 자리에서 갱신 (화면을 다시 그리지 않아 보던 위치가 유지된다)
+  if (WZ.paints[s.id]) WZ.paints[s.id]();
+  else if (target) wzRenderCastDetail(); else wzRender();
   if (r.reason) notice(`AI 추천: ${r.picked.join(", ")}\n\n${r.reason}`);
 }
 
@@ -1242,6 +1263,7 @@ function wzRenderCast(box, s) {
 function wzRenderCastDetail(box) {
   box = box || $("#wz-step-body");
   box.innerHTML = "";
+  WZ.paints = {};
   const c = WZ.cast[WZ.castOpen];
   if (!c) { WZ.castOpen = -1; wzRender(); return; }
   $("#wz-kicker").textContent = "인물 · 자세히";
