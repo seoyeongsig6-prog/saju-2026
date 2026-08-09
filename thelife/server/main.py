@@ -108,6 +108,14 @@ def writer_page():
     return FileResponse(WEB / "writer.html", headers={"Cache-Control": "no-cache"})
 
 
+@app.get("/mockup")
+def mockup_page():
+    """디자인 목업 — 폰에서 새 화면 흐름을 눌러보며 확인하는 용도.
+    실제 앱과 완전히 분리된 정적 화면이라 데이터에 영향이 없다."""
+    return FileResponse(WEB.parent / "mockup" / "wizard.html",
+                        headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/manifest.webmanifest")
 def manifest():
     """홈 화면에 추가했을 때 앱 이름·아이콘·전체화면 설정."""
