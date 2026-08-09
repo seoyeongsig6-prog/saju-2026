@@ -654,7 +654,8 @@ async function openWork(id) {
   WORK = d.work;
   WORK.chapters = d.chapters;
   view("w-work");
-  $("#wk-title").textContent = WORK.title;
+  $("#wk-title").textContent = "작품";
+  $("#wk-name").textContent = WORK.title;
   $("#wk-progress").textContent = `${d.chapters.length}/${WORK.total_chapters}화`;
   renderChapters();
   renderBible();
@@ -756,17 +757,10 @@ function renderBible() {
   if (WORK.brief) {
     bs.classList.remove("hidden");
     $("#brief-edit").value = WORK.brief;
+    $("#brief-view").innerHTML = briefHtml(WORK.brief);
   } else {
     bs.classList.add("hidden");
   }
-  const spb = $("#style-profile-box");
-  if (WORK.style_profile) {
-    spb.classList.remove("hidden");
-    spb.textContent = WORK.style_profile;
-  } else {
-    spb.classList.add("hidden");
-  }
-  $("#bible-sample").value = WORK.style_sample || "";
   renderCanon();
   const box = $("#bible-chars");
   box.innerHTML = "";
@@ -788,6 +782,19 @@ function renderBible() {
     const lastBeat = written ? WORK.chapters[written - 1].beat_idx : -1;
     return `<div class="b-beat ${i <= lastBeat ? "done" : ""}">
       <span class="no">${i + 1}</span><b>${b.name}</b><span>${b.summary || ""}</span></div>`;
+  }).join("");
+}
+
+/* 작품 설명서를 읽기 좋게 — '## 제목' 단위로 접히는 카드로 */
+function briefHtml(txt) {
+  const parts = String(txt || "").split(/\n(?=##\s)/);
+  return parts.map((blk) => {
+    const m = blk.match(/^##\s*(.+)/);
+    const head = m ? m[1].trim() : "요약";
+    const body = (m ? blk.slice(m[0].length) : blk).trim();
+    if (!body) return "";
+    return `<details class="bv"><summary>${escapeHtml(head)}</summary>
+      <div>${escapeHtml(body).replace(/\n/g, "<br>")}</div></details>`;
   }).join("");
 }
 
@@ -887,14 +894,14 @@ function renderCanon() {
   const canon = WORK.canon || {};
   const keys = Object.keys(canon);
   if (!keys.length) {
-    box.innerHTML = `<p class="hint" style="opacity:.7">아직 고정된 이름이 없어요.</p>`;
+    box.innerHTML = `<p class="hint" style="opacity:.7">아직 남겨둔 내용이 없어요.</p>`;
     return;
   }
   box.innerHTML = "";
   keys.forEach((k) => {
     const row = document.createElement("div");
     row.className = "canon-row";
-    row.innerHTML = `<b>${k}</b>${canon[k] ? ` — <span>${canon[k]}</span>` : ""}
+    row.innerHTML = `<span class="cn-t"><b>${escapeHtml(k)}</b>${canon[k] ? ` — ${escapeHtml(canon[k])}` : ""}</span>
       <button class="del" title="삭제">✕</button>`;
     row.querySelector(".del").onclick = async () => {
       const val = canon[k];
@@ -1004,86 +1011,12 @@ $("#brief-save").onclick = async () => {
   notice("설명서를 저장했어요. 이후 모든 회차가 이 내용을 절대 기준으로 씁니다.");
 };
 
-$("#bible-learn").onclick = async () => {
-  const sample = $("#bible-sample").value.trim();
-  if (sample.length < 300) { notice("문체를 배우려면 표본이 300자는 넘어야 해요."); return; }
-  busy("문체를 학습하는 중… (15초쯤)");
-  const r = await api(`/api/writer/works/${WORK.id}/style`, {
-    method: "POST", body: JSON.stringify({ sample }),
-  });
-  unbusy();
-  if (!r.ok) { notice(r.error + (r.detail ? `\n\n[원인] ${r.detail}` : "")); return; }
-  WORK.style_profile = r.profile;
-  WORK.style_sample = sample;
-  renderBible();
-  notice("문체를 배웠어요. 다음 회차부터 이 결로 씁니다.\n학습된 프로파일은 문체 섹션에서 확인하세요.");
-};
 
-$("#bible-revise").onclick = async () => {
-  const directive = $("#bible-cmd").value.trim();
-  if (!directive) { notice("무엇을 고칠지 알려주세요."); return; }
-  busy("설정집을 고치는 중…");
-  const r = await api(`/api/writer/works/${WORK.id}/bible/revise`, {
-    method: "POST", body: JSON.stringify({ directive }),
-  });
-  unbusy();
-  if (!r.ok) { notice((r.error || "실패") + (r.detail ? `\n\n[원인] ${r.detail}` : "")); return; }
-  $("#bible-cmd").value = "";
-  const d = await api(`/api/writer/works/${WORK.id}`);
-  WORK = d.work; WORK.chapters = d.chapters;
-  renderBible();
-  notice("설정집을 고쳤어요. 이후 회차부터 반영됩니다.\n(이미 쓴 회차는 편집기에서 직접 고치거나 '다시 쓰기' 하세요)");
-};
+$("#wk-home").onclick = () => showHome();
+$("#wk-menu").onclick = () => openMenu("work");
 
-/* ---------- 전체 플롯 보기 → 플롯/가이드 페이지로 ---------- */
+/* ---------- 줄거리 / 가이드 보기 ---------- */
 $("#btn-plot").onclick = () => showPlot();
-
-/* ---------- 모든 회차 다시 쓰기 (앞→뒤 순차, 설정·이름·결말 고정) ---------- */
-$("#btn-rewrite-all").onclick = async () => {
-  const chs = WORK.chapters;
-  if (!chs.length) { notice("아직 쓴 회차가 없어요."); return; }
-  const penNote = PEN_NEEDED ? `\n회차마다 펜 1개가 들어요 (총 ${chs.length}개 필요, 보유 ${PENS}개).` : "";
-  if (!confirm(`이미 쓴 ${chs.length}개 회차를 1화부터 순서대로 모두 다시 씁니다.\n` +
-    `제목·인물 이름·결말·설명서 등 기본 설정은 절대 바뀌지 않아요.\n` +
-    `시간이 오래 걸리고 AI 사용량이 많이 듭니다.${penNote}\n진행할까요?`)) return;
-  for (let i = 0; i < chs.length; i++) {
-    busy(`모든 회차 다시 쓰는 중… (${i + 1}/${chs.length}화)`);
-    const r = await api(`/api/writer/chapters/${chs[i].id}/regenerate`, {
-      method: "POST", body: JSON.stringify({ directive: "", forward: true }),
-    });
-    if (!r.ok) {
-      unbusy();
-      if (handleBodyNeed(r)) { await openWork(WORK.id); return; }
-      notice(`${chs[i].no}화에서 멈췄어요.\n\n${r.error || ""}${r.detail ? "\n" + r.detail : ""}`);
-      await openWork(WORK.id);
-      return;
-    }
-    setPens(r.pens);
-  }
-  unbusy();
-  await openWork(WORK.id);
-  notice("모든 회차를 다시 썼어요.");
-};
-
-/* ---------- 회차 쓰기 ---------- */
-$("#btn-write").onclick = async () => {
-  const cpc = (WORK.chars_per_chapter || 5000).toLocaleString();
-  busy(`${WORK.chapters.length + 1}화를 쓰는 중… (${cpc}자, 30초~1분)`);
-  const r = await api(`/api/writer/works/${WORK.id}/chapters`, {
-    method: "POST", body: JSON.stringify({ directive: $("#directive").value.trim() }),
-  });
-  unbusy();
-  if (!r.ok) {
-    if (handleBodyNeed(r)) return;             // 프로/펜 필요 → 안내·이동
-    notice((r.error || "실패했어요") + (r.detail ? `\n\n[원인] ${r.detail}` : "") +
-      (r.trace ? `\n${r.trace.join("\n")}` : ""));
-    return;
-  }
-  setPens(r.pens);
-  $("#directive").value = "";
-  await openWork(WORK.id);
-  openChapter(r.id);
-};
 
 /* ══════════ 새 작품 — 단계별 설계 (위저드) ══════════
    아이디어 한 줄만 받고, 세계관·인물·플롯은 AI가 만든다.
@@ -1126,6 +1059,7 @@ function wzOpen(wz) {
   WZ.live = true;                    // 지금 설정 중 → 새로고침하면 이 자리로 돌아온다
   view("w-wizard");
   if (WZ.phase === "result") { renderWzResult(); wzGo("result"); }
+  else if (WZ.phase === "plan") { wzGo("plan"); }
   else if (WZ.phase === "outline") { renderWzOutline(); wzGo("outline"); }
   else { WZ.phase = "form"; wzRender(); }
 }
@@ -1177,14 +1111,14 @@ function wzRender() {
   document.querySelectorAll("#w-wizard .wz-dot").forEach((d) =>
     d.classList.toggle("on", +d.dataset.s <= Math.max(1, prog)));
   $("#wz-count").textContent = `${WZ.i + 1}/${wzStepCount()}`;
-  $("#wz-back").style.visibility = "";
   const box = $("#wz-step-body");
   box.innerHTML = "";
   WZ.paints = {};                     // 지운 화면의 옛 갱신함수는 버린다
   if (s.kind === "text") wzRenderText(box, s);
   else if (s.kind === "cast") wzRenderCast(box, s);
   else wzRenderPick(box, s, WZ.sel, WZ.other, WZ.detail, s.id);
-  wzFoot(s);
+  // 인물 상세 화면은 자기 하단 버튼을 직접 만든다 (덮어쓰지 않는다)
+  if (!(s.kind === "cast" && WZ.castOpen >= 0)) wzFoot(s);
   wzSave();
   window.scrollTo(0, 0);
 }
@@ -1197,28 +1131,69 @@ function wzPad() {
 }
 window.addEventListener("resize", wzPad);
 
-function wzFoot(s) {
+/* 하단 버튼은 어느 화면에서나 같은 모양이다 — [← 이전][다음 →] 한 줄, 그 아래 AI 보조 한 줄. */
+function wzBar(prevFn, nextLabel, nextFn, ai) {
   const foot = $("#wz-foot");
   foot.innerHTML = "";
-  const mk = (label, fn, ghost) => {
+  const row = document.createElement("div");
+  row.className = "wz-row";
+  const prev = document.createElement("button");
+  prev.className = "btn-prev"; prev.textContent = "← 이전";
+  prev.onclick = prevFn || (() => wzBackStep());
+  const next = document.createElement("button");
+  next.className = "btn-main"; next.textContent = nextLabel;
+  next.onclick = nextFn;
+  row.appendChild(prev); row.appendChild(next);
+  foot.appendChild(row);
+  if (ai) {
     const b = document.createElement("button");
-    b.className = ghost ? "btn-ghost2" : "btn-main";
-    b.textContent = label; b.onclick = fn; foot.appendChild(b); return b;
-  };
-  wzPad();
-  const last = WZ.i >= wzStepCount() - 1;
-  mk(last ? "이대로 만들기 ✨" : "다음 →", () => {
-    if (last) wzGenerate(); else { WZ.i++; wzRender(); }
-  });
-  if (s.opts) mk("✨ AI에게 추천받기", () => wzSuggest(s), true);
-  // 첫 단계 — 기본만 넣고 나머지는 통째로 맡기는 길
-  if (s.kind === "text") {
-    const b = mk("✨ 나머지는 AI에게 맡기기", wzAutoAll, true);
-    const hint = document.createElement("p");
-    hint.className = "wz-foot-hint";
-    hint.textContent = "장르부터 인물·플롯까지 AI가 정합니다. 만든 뒤에 하나씩 고칠 수 있어요.";
-    foot.insertBefore(hint, b);      // 세로 뒤집힌 배치라 버튼 '아래'에 놓이려면 앞에 넣는다
+    b.className = "btn-ghost2"; b.textContent = ai.label; b.onclick = ai.fn;
+    foot.appendChild(b);
+    if (ai.hint) {
+      const h = document.createElement("p");
+      h.className = "wz-foot-hint"; h.textContent = ai.hint;
+      foot.appendChild(h);
+    }
   }
+  wzPad();
+}
+function wzFoot(s) {
+  const last = WZ.i >= wzStepCount() - 1;
+  let ai = null;
+  if (s.kind === "text") {
+    ai = { label: "✨ 나머지는 AI에게 맡기기", fn: wzAutoAll,
+           hint: "장르부터 인물·플롯까지 AI가 정합니다. 만든 뒤에 하나씩 고칠 수 있어요." };
+  } else if (s.kind === "cast") {
+    ai = { label: "✨ AI가 모든 인물 만들기", fn: wzCastAll };
+  } else if (s.opts) {
+    ai = { label: `✨ AI가 ${s.title} 정하기`, fn: () => wzSuggest(s) };
+  }
+  wzBar(null, last ? "이대로 만들기 ✨" : "다음 →",
+        () => { if (last) wzGenerate(); else { WZ.i++; wzRender(); } }, ai);
+}
+/* 한 단계 뒤로 (하단 '이전'과 안드로이드 뒤로가기가 같이 쓴다) */
+function wzBackStep() {
+  if (!WZ) { showHome(); return; }
+  if (WZ.phase === "outline") { wzGo("plan"); return; }
+  if (WZ.phase === "plan") { wzGo("result"); return; }
+  if (WZ.phase === "result") { WZ.phase = "form"; wzRender(); return; }
+  if (WZ.castOpen >= 0) { WZ.castOpen = -1; wzRender(); return; }
+  if (WZ.i > 0) { WZ.i--; wzRender(); return; }
+  WZ.live = false; wzSave(); WZ = null;
+  showHome();
+}
+/* 인물 전체를 AI에게 — 이름만 있으면 나머지 항목을 한 번에 채운다 */
+async function wzCastAll() {
+  const named = WZ.cast.filter((c) => (c.name || "").trim());
+  if (!named.length) { notice("인물 이름을 먼저 하나 이상 적어 주세요."); return; }
+  for (const c of named) {
+    for (const cs of WZ_CAST_SPEC) {
+      if ((c.sel[cs.id] || []).length || c.other[cs.id]) continue;
+      await wzSuggest(cs, c.sel, true);
+    }
+  }
+  wzRender();
+  notice("인물 설정을 채웠어요. 각 인물을 열어 고칠 수 있어요.");
 }
 /* 남은 단계를 건너뛰고 바로 만든다 — 고른 게 있으면 그대로 살려서 쓴다 */
 function wzAutoAll() {
@@ -1322,18 +1297,19 @@ function wzToggle(sel, key, val, pick) {
   arr.push(val);
 }
 /* ── AI에게 추천받기 ── */
-async function wzSuggest(s, target) {
+async function wzSuggest(s, target, quiet) {
   const opts = (s.opts || []).map((o) => (typeof o === "string" ? o : o.v));
-  busy("AI가 고르는 중…");
+  if (!quiet) busy("AI가 고르는 중…");
   const r = await api("/api/writer/brief/suggest", {
     method: "POST",
     body: JSON.stringify({ question: s.title, options: opts,
       pick: s.pick === 0 ? 3 : (s.pick || 1), context: wzContext() }),
   });
-  unbusy();
-  if (!r.ok) { notice(r.error || "추천을 받지 못했어요."); return; }
+  if (!quiet) unbusy();
+  if (!r.ok) { if (!quiet) notice(r.error || "추천을 받지 못했어요."); return; }
   (target || WZ.sel)[s.id] = r.picked;
   wzSave();
+  if (quiet) return;
   // 표시만 그 자리에서 갱신 (화면을 다시 그리지 않아 보던 위치가 유지된다)
   if (WZ.paints[s.id]) WZ.paints[s.id]();
   else if (target) wzRenderCastDetail(); else wzRender();
@@ -1348,14 +1324,14 @@ function wzRenderCast(box, s) {
   WZ.cast.forEach((c, i) => {
     const el = document.createElement("div");
     el.className = "cast-row";
+    const done = WZ_CAST_SPEC.filter((cs) => (c.sel[cs.id] || []).length || c.other[cs.id]).length;
     el.innerHTML = `<div class="cast-main">
-        <input class="cast-n" placeholder="이름" value="${escapeHtml(c.name || "")}">
-        <input class="cast-a" placeholder="나이" value="${escapeHtml(c.age || "")}">
+        <b class="cast-nm">${escapeHtml(c.name || "이름 없음")}</b>
+        <span class="cast-meta">${escapeHtml([c.age, wzCastRole(c)].filter(Boolean).join(" · ") || "기본 정보를 채워 주세요")}</span>
+        <span class="cast-done">${done}/${WZ_CAST_SPEC.length} 항목</span>
       </div>
       <button class="cast-more">자세히 ›</button>
       <button class="cast-del" title="삭제">✕</button>`;
-    el.querySelector(".cast-n").oninput = (e) => { c.name = e.target.value; wzSaveSoon(); };
-    el.querySelector(".cast-a").oninput = (e) => { c.age = e.target.value; wzSaveSoon(); };
     el.querySelector(".cast-more").onclick = () => { WZ.castOpen = i; wzRender(); };
     el.querySelector(".cast-del").onclick = () => {
       removeRowUndo(el, ".cast-list", () => c, () => {}, "인물");
@@ -1370,6 +1346,13 @@ function wzRenderCast(box, s) {
   add.onclick = () => { WZ.cast.push({ name: "", age: "", sel: {}, other: {}, detail: {} }); wzRender(); };
   box.appendChild(add);
 }
+/* 역할(관계)은 10번 항목에서 고른 값 */
+function wzCastRole(c) {
+  const k = (WZ_CAST_SPEC[0] || {}).id;
+  const a = (c.sel[k] || []).slice();
+  if (c.other[k]) a.push(c.other[k]);
+  return a.join(", ");
+}
 function wzRenderCastDetail(box) {
   box = box || $("#wz-step-body");
   box.innerHTML = "";
@@ -1378,49 +1361,131 @@ function wzRenderCastDetail(box) {
   if (!c) { WZ.castOpen = -1; wzRender(); return; }
   $("#wz-kicker").textContent = "인물 · 자세히";
   $("#wz-title").textContent = c.name || "이 인물";
-  $("#wz-sub").textContent = "비워두면 AI가 알아서 채워요.";
+  $("#wz-sub").textContent = "이름·나이·역할을 먼저 정하고, 나머지는 골라 주세요.";
+  // 기본 정보 — 모든 인물이 먼저 갖는 것
+  const basic = document.createElement("div");
+  basic.className = "cast-basic";
+  basic.innerHTML = `<div class="wz-label">기본 정보</div>
+    <div class="row2"><input class="cb-n" placeholder="이름" value="${escapeHtml(c.name || "")}">
+      <input class="cb-a" placeholder="나이" value="${escapeHtml(c.age || "")}"></div>`;
+  basic.querySelector(".cb-n").oninput = (e) => {
+    c.name = e.target.value; $("#wz-title").textContent = c.name || "이 인물"; wzSaveSoon();
+  };
+  basic.querySelector(".cb-a").oninput = (e) => { c.age = e.target.value; wzSaveSoon(); };
+  box.appendChild(basic);
   WZ_CAST_SPEC.forEach((cs) => {
     const h = document.createElement("div");
-    h.innerHTML = `<div class="wz-label">${cs.n}. ${cs.title}
-      <button class="mini-ai" data-id="${cs.id}">✨ 추천</button></div>`;
-    h.querySelector(".mini-ai").onclick = () => wzSuggest(cs, c.sel);
+    h.className = "cast-sec";
+    h.innerHTML = `<div class="wz-label">${cs.n}. ${cs.title}</div>`;
     box.appendChild(h);
     wzRenderPick(box, cs, c.sel, c.other, c.detail, cs.id);
   });
-  const foot = $("#wz-foot");
-  foot.innerHTML = "";
-  const done = document.createElement("button");
-  done.className = "btn-main";
-  done.textContent = "이 인물 완료 ✓";
-  done.onclick = () => { WZ.castOpen = -1; wzRender(); };
-  foot.appendChild(done);
+  wzBar(() => { WZ.castOpen = -1; wzRender(); }, "다음 →",
+        () => { WZ.castOpen = -1; wzRender(); },
+        { label: "✨ AI가 이 인물 설정하기", fn: () => wzCastOne(c) });
   window.scrollTo(0, 0);
+}
+/* 이 인물의 빈 항목을 한 번에 채운다 (개별 추천 버튼 대신) */
+async function wzCastOne(c) {
+  if (!(c.name || "").trim()) { notice("이름을 먼저 적어 주세요."); return; }
+  busy("AI가 이 인물을 설정하는 중…");
+  for (const cs of WZ_CAST_SPEC) await wzSuggest(cs, c.sel, true);
+  unbusy();
+  wzRenderCastDetail();
 }
 /* 선택 단계가 끝난 뒤의 화면 (생성 중 / 확인 / 회차) */
 function wzGo(phase) {
   WZ.phase = phase;
   wzSave();
-  const pane = { gen: "wzp-2", result: "wzp-3", outline: "wzp-4" }[phase];
-  ["wzp-1", "wzp-2", "wzp-3", "wzp-4"].forEach((v) =>
+  const pane = { gen: "wzp-2", result: "wzp-3", plan: "wzp-5", outline: "wzp-4" }[phase];
+  ["wzp-1", "wzp-2", "wzp-3", "wzp-4", "wzp-5"].forEach((v) =>
     $(`#${v}`).classList.toggle("hidden", v !== pane));
   document.querySelectorAll("#w-wizard .wz-dot").forEach((d) => d.classList.add("on"));
-  $("#wz-count").textContent = { gen: "생성 중", result: "확인", outline: "완성" }[phase] || "";
-  $("#wz-back").style.visibility = (phase === "gen") ? "hidden" : "";
+  $("#wz-count").textContent =
+    { gen: "생성 중", result: "세계관", plan: "화별 줄거리", outline: "완성" }[phase] || "";
   const foot = $("#wz-foot");
   foot.innerHTML = "";
-  const btn = (label, fn, ghost) => {
-    const b = document.createElement("button");
-    b.className = ghost ? "btn-ghost2" : "btn-main";
-    b.textContent = label; b.onclick = fn; foot.appendChild(b); return b;
-  };
+  if (phase === "gen") { wzPad(); return; }          // 생성 중엔 버튼 없음
   if (phase === "result") {
-    btn("좋아요, 다음 →", wzOutline);
-    btn("✍ 설정대로 써보기 (예시)", () => makeSample({ body: wzBody() }), true);
-    btn("🔄 인물 전체 다시 만들기", () => wzRedraw("characters"), true);
+    wzBar(null, "다음 (화별 줄거리 짜기) →", () => { wzSaveWorld(); wzGo("plan"); },
+          { label: "🔄 세계관 다시 만들기", fn: () => wzRedraw("world") });
   }
-  if (phase === "outline") btn("완성! 작품 시작하기 🎉", wzFinish);
-  wzPad();
+  if (phase === "plan") {
+    renderWzPlan();
+    wzBar(null, "다음 →", wzPlanNext,
+          { label: "✨ AI가 전체 줄거리 짜기", fn: wzOutline });
+  }
+  if (phase === "outline") wzBar(null, "완성! 작품 시작하기 🎉", wzFinish, null);
   window.scrollTo(0, 0);
+}
+/* 확인 화면에서 고친 세계관·결말을 기획에 되돌려 넣는다 */
+function wzSaveWorld() {
+  const d = WZ.draft || (WZ.draft = {});
+  const g = (id) => { const e = $("#" + id); return e ? e.value.trim() : undefined; };
+  const t = g("wzr-title"); if (t !== undefined) d.title = t;
+  const w = g("wzr-world"); if (w !== undefined) d.world_setting = w;
+  const r = g("wzr-rules"); if (r !== undefined) d.world_rules = r;
+  const b = g("wzr-taboos"); if (b !== undefined) d.taboos = b;
+  const e2 = g("wzr-ending"); if (e2 !== undefined) d.ending = e2;
+  wzSave();
+}
+/* ── 화별 줄거리 구성 (작가가 직접 짜는 자리) ── */
+function wzPlanRows() {
+  const cap = (LIMITS && LIMITS.max_chapters) || WZ.total;
+  return Math.max(1, Math.min(WZ.total, cap));
+}
+function renderWzPlan() {
+  const n = wzPlanRows();
+  const cap = (LIMITS && LIMITS.max_chapters) || WZ.total;
+  const syn = (LIMITS && LIMITS.syn_chars) || 0;
+  const label = (LIMITS && LIMITS.label) || "";
+  const note = $("#wz-plan-note");
+  note.innerHTML = WZ.total > cap
+    ? `현재 <b>${escapeHtml(label)}</b> 요금제라 AI로 만드는 줄거리는 <b>${cap}화까지</b>예요.
+       (고른 총 회차는 ${WZ.total}화) 화당 줄거리는 <b>약 ${syn}자</b>까지 자세히 써집니다.
+       <button class="wz-note-go">요금제 보기</button>`
+    : `<b>${escapeHtml(label)}</b> 요금제 — ${cap}화까지, 화당 약 ${syn}자까지 자세히 써집니다.`;
+  const go = note.querySelector(".wz-note-go");
+  if (go) go.onclick = () => showPlans();
+  const box = $("#wz-plan-list");
+  box.innerHTML = "";
+  WZ.plan = WZ.plan || {};
+  for (let i = 1; i <= n; i++) {
+    const row = document.createElement("div");
+    row.className = "wz-plan-row";
+    const cur = WZ.plan[i] || {};
+    row.innerHTML = `<span class="n">${i}화</span>
+      <input class="pt" placeholder="이 화 제목 (선택)" value="${escapeHtml(cur.title || "")}">
+      <textarea class="pc" rows="2" placeholder="이 화에 벌어지는 일 (비워두면 AI가 채워요)">${escapeHtml(cur.content || "")}</textarea>`;
+    row.querySelector(".pt").oninput = (e) => {
+      (WZ.plan[i] = WZ.plan[i] || {}).title = e.target.value; wzSaveSoon();
+    };
+    row.querySelector(".pc").oninput = (e) => {
+      (WZ.plan[i] = WZ.plan[i] || {}).content = e.target.value; wzSaveSoon();
+    };
+    box.appendChild(row);
+  }
+}
+/* 직접 채운 게 있으면 그대로 쓰고, 다 비었으면 AI에게 맡긴다 */
+function wzPlanNext() {
+  const n = wzPlanRows();
+  const mine = [];
+  for (let i = 1; i <= n; i++) {
+    const c = WZ.plan[i] || {};
+    if ((c.title || "").trim() || (c.content || "").trim()) {
+      mine.push({ no: i, title: (c.title || "").trim(), content: (c.content || "").trim() });
+    }
+  }
+  if (!mine.length) { wzOutline(); return; }          // 하나도 안 채웠으면 AI가
+  if (mine.length < n) {
+    if (!confirm(`${n}화 중 ${mine.length}화만 채우셨어요.\n나머지는 AI가 채울까요?\n\n[취소]를 누르면 채운 것만 씁니다.`)) {
+      WZ.outline = mine; renderWzOutline(); wzGo("outline"); return;
+    }
+    wzOutline(); return;
+  }
+  WZ.outline = mine;
+  renderWzOutline();
+  wzGo("outline");
 }
 /* 고른 항목들을 작품설명서 형식으로 옮긴다 */
 function wzJoin(id) { return wzValues(id).join(", "); }
@@ -1458,7 +1523,7 @@ function wzBody(extra) {
     logline: WZ.basic.logline || d.logline || "",
     ending: WZ.basic.ending || d.ending || "",
     intent: wzLine("이야기에서 중요한 것", "focus") || d.intent || "",
-    world_setting: world || d.world_setting || "",
+    world_setting: d.world_setting || world || "",
     world_rules: d.world_rules || "", taboos: d.taboos || "",
     style: style || d.style || "",
     structure: structure,
@@ -1467,8 +1532,19 @@ function wzBody(extra) {
                   want: lead.want, need: lead.fear, secret: lead.secret } : {}),
     characters: (d.characters && d.characters.length) ? d.characters : cast,
     canon: d.canon || [],
-    outline: WZ.outline || [],
+    outline: (WZ.outline && WZ.outline.length) ? WZ.outline : wzPlanOut(),
   }, extra || {});
+}
+/* 작가가 화별 줄거리 화면에서 직접 채운 것 */
+function wzPlanOut() {
+  const out = [];
+  Object.keys(WZ.plan || {}).forEach((k) => {
+    const v = WZ.plan[k] || {};
+    if ((v.title || "").trim() || (v.content || "").trim()) {
+      out.push({ no: Number(k), title: (v.title || "").trim(), content: (v.content || "").trim() });
+    }
+  });
+  return out.sort((a, b) => a.no - b.no);
 }
 function wzTasks(list) {
   $("#wz-tasks").innerHTML = list.map((t) =>
@@ -1480,8 +1556,8 @@ async function wzGenerate() {
     notice("로그라인이나 장르 중 하나는 알려주세요."); return;
   }
   wzGo("gen");
-  $("#wz-gen-h").textContent = "이야기를 짜고 있어요";
-  wzTasks([["세계관 만드는 중", "now"], ["인물 만드는 중", ""], ["플롯 정리", ""]]);
+  $("#wz-gen-h").textContent = "세계관을 만들고 있어요";
+  wzTasks([["배경 만드는 중", "now"], ["규칙·금기 정리", ""], ["결말 고정", ""]]);
   const r = await api("/api/writer/brief/draft", {
     method: "POST", body: JSON.stringify(wzBody()),
   });
@@ -1492,7 +1568,7 @@ async function wzGenerate() {
   }
   WZ.draft = r.draft || {};
   wzSave();
-  wzTasks([["세계관 만드는 중", "done"], ["인물 만드는 중", "done"], ["플롯 정리", "done"]]);
+  wzTasks([["배경 만드는 중", "done"], ["규칙·금기 정리", "done"], ["결말 고정", "done"]]);
   renderWzResult();
   setTimeout(() => wzGo("result"), 350);
 }
@@ -1514,14 +1590,20 @@ async function wzRedraw(field) {
 function renderWzResult() {
   const d = WZ.draft || {};
   const box = $("#wz-result");
-  const world = [d.world_setting, d.world_rules, d.taboos].filter(Boolean).join("\n\n");
-  let h = `<div class="wzc"><h3>📖 ${escapeHtml(d.title || "제목 미정")}<span class="tag">AI 생성</span></h3>
-      <p>${escapeHtml(d.logline || "")}</p></div>
-    <div class="wzc"><h3>🌍 세계관</h3><p>${escapeHtml(world || "—")}</p>
-      <div class="wzc-acts"><button data-rd="world">🔄 세계관 다시</button></div></div>`;
+  let h = `<div class="wzc"><h3>📖 제목</h3>
+      <input id="wzr-title" class="wz-in one" value="${escapeHtml(d.title || "")}" placeholder="제목">
+      <p class="wzc-p">${escapeHtml(d.logline || "")}</p></div>
+    <div class="wzc"><h3>🌍 세계관</h3>
+      <label class="wzc-l">배경</label>
+      <textarea id="wzr-world" class="wz-in" rows="3">${escapeHtml(d.world_setting || "")}</textarea>
+      <label class="wzc-l">핵심 규칙</label>
+      <textarea id="wzr-rules" class="wz-in" rows="4">${escapeHtml(d.world_rules || "")}</textarea>
+      <label class="wzc-l">금기 · 제약</label>
+      <textarea id="wzr-taboos" class="wz-in" rows="2">${escapeHtml(d.taboos || "")}</textarea></div>`;
   const cast = [];
   if (d.protagonist && d.protagonist.name) cast.push(Object.assign({ role: "주인공" }, d.protagonist));
   (d.characters || []).forEach((c) => cast.push(c));
+  if (cast.length) h += `<div class="wzc-h">👥 인물 <small>앞 단계에서 정한 인물이에요</small></div>`;
   cast.forEach((c, i) => {
     const col = i === 0 ? "linear-gradient(135deg,#8b70ff,#6a54f0)"
       : ["linear-gradient(135deg,#d9559b,#c23f86)", "linear-gradient(135deg,#d64b43,#b03b34)",
@@ -1531,33 +1613,42 @@ function renderWzResult() {
       <p>${escapeHtml([c.relation, c.want && "욕망 " + c.want, c.need && "결핍 " + c.need,
         c.secret && "비밀 " + c.secret].filter(Boolean).join(" · "))}</p></div></div>`;
   });
-  if (d.ending) h += `<div class="wzc"><h3>🎯 결말</h3><p>${escapeHtml(d.ending)}</p></div>`;
+  h += `<div class="wzc"><h3>🎯 결말</h3>
+      <textarea id="wzr-ending" class="wz-in" rows="3">${escapeHtml(d.ending || "")}</textarea></div>`;
   box.innerHTML = h;
-  box.querySelectorAll("[data-rd]").forEach((b) => { b.onclick = () => wzRedraw(b.dataset.rd); });
+  box.querySelectorAll("textarea,input").forEach((el) => { el.oninput = () => wzSaveSoon(); });
 }
 async function wzOutline() {
+  const back = WZ.phase;
   wzGo("gen");
-  $("#wz-gen-h").textContent = "회차별 전개를 짜고 있어요";
-  wzTasks([["설정 정리", "done"], [`1화~${WZ.total}화 흐름 만드는 중`, "now"]]);
+  $("#wz-gen-h").textContent = "회차별 줄거리를 짜고 있어요";
+  wzTasks([["설정 정리", "done"], [`1화~${wzPlanRows()}화 흐름 만드는 중`, "now"]]);
   const r = await api("/api/writer/brief/outline", { method: "POST", body: JSON.stringify(wzBody()) });
   if (!r.ok) {
     notice((r.error || "전개를 못 만들었어요.") + (r.detail ? `\n\n${r.detail}` : ""));
-    wzGo("result"); return;
+    wzGo(back === "gen" ? "plan" : back); return;
   }
   WZ.outline = r.outline || [];
   wzSave();
-  renderWzOutline();
+  renderWzOutline(r);
   wzGo("outline");
 }
-function renderWzOutline() {
+function renderWzOutline(r) {
   const d = WZ.draft || {};
   const rows = (WZ.outline || []).map((o) =>
     `<div class="wz-ep"><span class="n">${o.no}화</span><div><b>${escapeHtml(o.title || "")}</b>
-      <span>${escapeHtml((o.content || "").slice(0, 90))}</span></div></div>`).join("");
-  $("#wz-outline").innerHTML =
+      <span>${escapeHtml(o.content || "")}</span></div></div>`).join("");
+  const cap = (r && r.capped) || ((LIMITS && LIMITS.max_chapters) || WZ.total) < WZ.total;
+  const lim = (LIMITS && LIMITS.max_chapters) || WZ.total;
+  const capNote = cap
+    ? `<div class="wz-note">현재 <b>${escapeHtml((LIMITS && LIMITS.label) || "")}</b> 요금제라
+         AI 줄거리는 <b>${lim}화까지</b>만 만들어졌어요 (고른 총 회차 ${WZ.total}화).
+         나머지 회차는 작품을 시작한 뒤 직접 채우거나, 요금제를 올리면 이어서 만들 수 있어요.</div>`
+    : "";
+  $("#wz-outline").innerHTML = capNote +
     `<div class="wzc"><h3>🗺 총 ${WZ.outline.length || WZ.total}화 · 결말 고정</h3>
        <p style="color:var(--text)">${escapeHtml(d.ending || "")}</p></div>
-     <div class="wzc" style="padding:6px 16px">${rows || "<p>전개가 비어 있어요.</p>"}</div>`;
+     <div class="wzc" style="padding:6px 16px">${rows || "<p>줄거리가 비어 있어요.</p>"}</div>`;
 }
 async function wzFinish() {
   busy("작품을 만드는 중…");
@@ -1569,15 +1660,11 @@ async function wzFinish() {
   await openWork(r.id);
   notice("작품이 만들어졌어요! 회차를 눌러 집필을 시작하세요.");
 }
-$("#wz-back").onclick = () => {
-  if (!WZ) { showHome(); return; }
-  if (WZ.phase === "outline") { wzGo("result"); return; }
-  if (WZ.phase === "result") { WZ.phase = "form"; wzRender(); return; }
-  if (WZ.castOpen >= 0) { WZ.castOpen = -1; wzRender(); return; }   // 인물 상세 → 목록
-  if (WZ.i > 0) { WZ.i--; wzRender(); return; }                     // 앞 단계로
-  WZ.live = false; wzSave(); WZ = null;   // 내용은 남겨 두되 '하는 중'은 아니다
+$("#wz-home").onclick = () => {
+  if (WZ) { WZ.live = false; wzSave(); WZ = null; }
   showHome();
 };
+$("#wz-menu").onclick = () => openMenu("wizard");
 
 /* ══════════ 전체 플롯 / 가이드 (아코디언) ══════════
    제목을 누르면 그 화의 줄거리와 집필 가이드가 펼쳐지고, 다른 제목을 누르면 접힌다. */
@@ -1603,6 +1690,7 @@ function renderPlotList() {
   const rows = plotRows();
   $("#pl-meta").textContent =
     `총 ${rows.length}화 · ${WORK.chapters.length}화 집필됨 — 제목을 누르면 줄거리와 가이드가 열려요`;
+  $("#pl-menu").title = "메뉴";
   const box = $("#pl-list");
   box.innerHTML = "";
   rows.forEach(({ no, o, ch }) => {
@@ -1626,21 +1714,48 @@ function renderPlotList() {
         : (ch && ch.summary ? escapeHtml(ch.summary) : "");
       pane.innerHTML =
         `<p class="pl-syn${syn ? "" : " empty"}">${syn || "아직 줄거리가 없어요."}</p>
-         <span class="pl-gtag">가이드</span>
+         <button class="pl-edit">✎ 줄거리 고치기</button>
+         <span class="pl-gtag">본 화 구성 가이드</span>
          <div class="g-wrap" id="g-${no}">${guideHtml(GUIDE_CACHE[no])}</div>
          <div class="pl-acts">
-           <button class="regen">🔄 가이드 새로</button>
-           <button class="smp">📝 본문 예시</button>
-           <button class="go">${ch ? "✍ 이어 쓰기" : "✍ 이 화 쓰기"}</button>
+           <button class="smp${SAMPLE.base > 0 ? "" : " off"}">AI가 이번화 본문 예시로 쓰기</button>
+           <button class="go">${ch ? "이어 쓰기" : "쓰기"}</button>
          </div>`;
-      pane.querySelector(".regen").onclick = () => loadGuide(no, true);
-      pane.querySelector(".smp").onclick = () =>
+      if (!GUIDE_CACHE[no]) loadGuide(no);
+      pane.querySelector(".smp").onclick = () => {
+        if (SAMPLE.base <= 0) { notice("라이트 버전 이상에서만 제공됩니다."); showPlans(); return; }
         makeSample({ work_id: WORK.id, no, title: `${no}화 본문 예시` });
+      };
       pane.querySelector(".go").onclick = () => openChapterByNo(no);
+      pane.querySelector(".pl-edit").onclick = () => editPlotSyn(pane, no);
       el.appendChild(pane);
     }
     box.appendChild(el);
   });
+}
+/* 줄거리 직접 고치기 — AI가 쓴 것도 작가가 언제든 바꾼다 */
+function editPlotSyn(pane, no) {
+  const o = (WORK.outline || []).find((x) => x.no === no) || { title: "", content: "" };
+  const box = pane.querySelector(".pl-syn");
+  box.outerHTML = `<div class="pl-ed">
+    <input class="pe-t" placeholder="이 화 제목" value="${escapeHtml(o.title || "")}">
+    <textarea class="pe-c" rows="5" placeholder="이 화에 벌어지는 일">${escapeHtml(o.content || "")}</textarea>
+    <div class="row2"><button class="primary pe-s">수정 내용 저장</button>
+      <button class="pe-x">취소</button></div></div>`;
+  pane.querySelector(".pe-x").onclick = () => renderPlotList();
+  pane.querySelector(".pe-s").onclick = async () => {
+    const title = pane.querySelector(".pe-t").value.trim();
+    const content = pane.querySelector(".pe-c").value.trim();
+    const next = (WORK.outline || []).filter((x) => x.no !== no)
+      .concat([{ no, title, content }]).sort((a, b) => a.no - b.no);
+    const r = await api(`/api/writer/works/${WORK.id}/outline`, {
+      method: "PUT", body: JSON.stringify({ outline: next }),
+    });
+    if (!r.ok) { notice(r.error || "저장하지 못했어요."); return; }
+    WORK.outline = r.outline || next;
+    renderPlotList();
+    notice("줄거리를 저장했어요.");
+  };
 }
 const GUIDE_ORDER = ["목표", "연결", "갈등", "인물", "사건", "맺음"];
 function guideHtml(g) {
@@ -1944,8 +2059,13 @@ function openMenu(where) {
     });
     const lastNo = WORK.chapters.length ? WORK.chapters[WORK.chapters.length - 1].no : 0;
     if (CHAPTER && CHAPTER.no === lastNo) add("🗑 이 회차 삭제", deleteChapter, "danger");
+  } else if (where === "wizard") {
+    add("🏠 내 작품 목록", () => { if (WZ) { WZ.live = false; wzSave(); WZ = null; } showHome(); });
+    add("⚙ 설정", showSettings);
   } else {
-    add("✍ 작품 화면", () => openWork(WORK.id));
+    if (WORK) add("✍ 작품 메인", () => openWork(WORK.id));
+    if (WORK) add("📖 줄거리 / 가이드", () => showPlot());
+    add("🏠 내 작품 목록", showHome);
     add("⚙ 설정", showSettings);
   }
   $("#menu-back").classList.remove("hidden");
@@ -1976,8 +2096,25 @@ async function deleteChapter() {
   }
 }
 
+/* ── 뒤로가기 — 브라우저/안드로이드 버튼으로 한 화면씩 되돌아간다 ── */
+function goBack() {
+  const open = ["w-editor", "w-plot", "w-wizard", "w-work", "w-plans", "w-pens", "w-settings"]
+    .find((v) => !$(`#${v}`).classList.contains("hidden"));
+  if (!$("#smp-sheet").classList.contains("hidden")) { closeSmp(); return; }
+  if (!$("#menu-sheet").classList.contains("hidden")) { closeMenu(); return; }
+  if (!$("#plot-sheet").classList.contains("hidden")) { closeSheet(); return; }
+  if (open === "w-editor") { guard(() => openWork(WORK.id)); return; }
+  if (open === "w-plot") { openWork(WORK.id); return; }
+  if (open === "w-wizard") { wzBackStep(); return; }
+  if (open === "w-plans") { showSettings(); return; }
+  if (open === "w-pens") { showBack(); return; }
+  showHome();
+}
+window.addEventListener("popstate", () => { history.pushState(null, ""); goBack(); });
+
 /* 시작 — 설정하다 만 게 있으면(새로고침·앱 재시작) 그 자리로 돌려놓는다 */
 (function boot() {
   const prev = wzSaved();
+  history.pushState(null, "");          // 뒤로가기를 잡아둘 한 칸
   showHome().then(() => { if (prev && prev.live) wzOpen(prev); });
 })();

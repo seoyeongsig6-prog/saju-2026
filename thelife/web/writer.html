@@ -242,44 +242,36 @@
 
 <!-- 작품 화면 -->
 <div id="w-work" class="wview hidden">
-  <div class="w-top">
-    <button class="ghost small" onclick="showHome()">← 목록</button>
-    <b id="wk-title"></b>
-    <span id="wk-progress" class="dim"></span>
+  <div class="app-top">
+    <button class="top-ic" id="wk-home" title="홈">🏠</button>
+    <b class="top-title" id="wk-title"></b>
+    <button class="top-ic" id="wk-menu" title="메뉴">☰</button>
   </div>
+  <div class="wk-sub"><b id="wk-name"></b><span id="wk-progress"></span></div>
   <div class="w-tabs">
-    <button data-wtab="chapters" class="wtab active">회차</button>
-    <button data-wtab="bible" class="wtab">설정집</button>
+    <button data-wtab="chapters" class="wtab active">작품 메인</button>
+    <button data-wtab="bible" class="wtab">작품 설정</button>
   </div>
 
-  <!-- 회차 탭 -->
+  <!-- 작품 메인 -->
   <div id="wt-chapters" class="wtabpane">
-    <div class="ch-toolbar">
-      <button id="btn-plot" class="ghost small">📖 전체 플롯 보기</button>
-      <button id="btn-rewrite-all" class="ghost small">🔄 모든 회차 다시 쓰기</button>
-    </div>
+    <button id="btn-plot" class="wk-plot">📖 줄거리 / 가이드 보기</button>
     <div id="ch-list" class="ch-list"></div>
     <div id="pen-bar" class="pen-bar hidden"></div>
-    <div id="ch-write-box" class="write-box">
-      <input id="directive" placeholder="작가의 지시 (선택 — 예: 이번 화에서 멘토의 비밀이 드러난다)">
-      <button id="btn-write" class="primary">다음 회차 쓰기 ✍</button>
-    </div>
   </div>
 
   <!-- 설정집 탭 -->
   <div id="wt-bible" class="wtabpane hidden">
-    <div id="revise-box" class="write-box" style="margin:0 0 16px">
-      <input id="bible-cmd" placeholder="설정 수정 명령 (예: 주인공 이름을 ○○로 바꿔 / 여주인공을 추가해)">
-      <button id="bible-revise" class="primary">명령대로 설정 고치기</button>
-    </div>
     <div id="brief-section" class="hidden">
-      <div class="story-h">작품설명서 — 절대 기준 <small class="dim">(모든 회차가 이 문서를 다시 읽으며 쓰입니다. 여기 고치면 이후 회차에 바로 반영돼요)</small></div>
+      <div class="story-h">작품 설명서</div>
+      <p class="hint">모든 회차가 이 문서를 기준으로 쓰입니다. 여기를 고치면 다음 회차부터 반영돼요.</p>
+      <div id="brief-view" class="brief-view"></div>
       <div class="form" style="margin-bottom:8px">
-        <textarea id="brief-edit" rows="10" placeholder="작품설명서 전문"></textarea>
-        <button id="brief-save" class="ghost small">설명서 저장</button>
+        <textarea id="brief-edit" rows="10" placeholder="작품 설명서 전문"></textarea>
+        <button id="brief-save" class="primary">수정 내용 저장</button>
       </div>
     </div>
-    <div class="story-h">작품의 심장</div>
+    <div class="story-h">작품 개요</div>
     <div class="form" style="margin-bottom:8px">
       <input id="bible-title" placeholder="작품 제목">
       <textarea id="bible-ending" rows="2" placeholder="결말 — 이야기가 반드시 도달할 곳"></textarea>
@@ -293,41 +285,37 @@
             <option value="5000">5000자</option>
           </select></label>
       </div>
-      <button id="bible-save-core" class="ghost small">작품 설정 저장</button>
+      <button id="bible-save-core" class="primary">수정 내용 저장</button>
     </div>
-    <div class="story-h">문체</div>
-    <div id="style-profile-box" class="style-box hidden"></div>
-    <div class="form" style="margin-bottom:8px">
-      <textarea id="bible-sample" rows="5" placeholder="문체 표본 붙여넣기 (300자 이상) — 이 작품의 모든 회차가 이 결로 쓰입니다"></textarea>
-      <button id="bible-learn" class="primary">이 문체 학습하기</button>
-    </div>
-    <div class="story-h">고유명사 사전 — 채널명·조직명·지명·별명 고정</div>
-    <p class="hint">여기 고정한 이름은 모든 회차에서 이 표기 그대로 쓰입니다 (설정 붕괴 방지).<br>
-       AI가 쓰다가 지어낸 이름도 자동으로 여기 쌓입니다.</p>
+    <div class="story-h">기억하기</div>
+    <p class="hint">소설을 쓰면서 꼭 기억해야 할 사항들을 이 곳에 남겨 두세요.<br>
+       여기 적은 이름과 표기는 모든 회차에서 그대로 쓰입니다.</p>
     <div id="canon-list" class="canon-list"></div>
     <div class="write-box" style="margin:8px 0 16px">
       <div class="row2">
         <input id="canon-name" placeholder="이름 (예: 조직명·채널명·지명·별명)">
         <input id="canon-value" placeholder="설명 (선택 — 예: 주인공이 속한 길드)">
       </div>
-      <button id="canon-add" class="ghost small">이 이름 고정</button>
+      <button id="canon-add" class="primary">저장하기</button>
     </div>
-    <div class="story-h">인물 (보글러 원형) — ✎로 직접 편집</div>
+    <div class="story-h">인물 — ✎로 직접 편집</div>
     <div id="bible-chars"></div>
     <div class="story-h">관계도</div>
     <div id="rel-graph" class="rel-graph"></div>
     <p class="hint" id="rel-graph-hint">인물을 탭하면 그 인물의 관계만 밝혀져요. 관계선의 라벨을 탭하면 긴장 관계를 볼 수 있어요.</p>
     <div id="bible-rels"></div>
-    <p class="hint">관계와 플롯은 위의 '명령'으로 고치는 게 빨라요.</p>
-    <div class="story-h">플롯 지도 — Save the Cat 15비트</div>
-    <div id="bible-beats"></div>
+    <div id="bible-beats" class="hidden"></div>
   </div>
 </div>
 
 <!-- 새 작품 — 단계별 설계 (아이디어 한 줄 → AI 생성 → 확인 → 완성) -->
 <div id="w-wizard" class="wview hidden">
+  <div class="app-top">
+    <button class="top-ic" id="wz-home" title="홈">🏠</button>
+    <b class="top-title">새 작품 설계</b>
+    <button class="top-ic" id="wz-menu" title="메뉴">☰</button>
+  </div>
   <div class="wz-top">
-    <button class="top-ic" id="wz-back">←</button>
     <div class="wz-steps">
       <i class="wz-dot" data-s="1"></i><i class="wz-dot" data-s="2"></i>
       <i class="wz-dot" data-s="3"></i><i class="wz-dot" data-s="4"></i>
@@ -354,17 +342,26 @@
 
   <!-- 3단계: 결과 확인 -->
   <div class="wz-pane hidden" id="wzp-3">
-    <div class="wz-kicker">STEP 3 · 확인</div>
-    <h1 class="wz-q sm">이렇게 만들어 봤어요</h1>
-    <p class="wz-sub">마음에 들면 그대로 두고, 아니면 그 부분만 다시 만들 수 있어요.</p>
+    <div class="wz-kicker">확인</div>
+    <h1 class="wz-q sm">세계관을 이렇게 만들었어요</h1>
+    <p class="wz-sub">직접 고쳐 쓸 수 있어요. 고친 내용은 그대로 저장됩니다.</p>
     <div id="wz-result"></div>
+  </div>
+
+  <!-- 화별 줄거리 구성 (작가가 직접 짜거나 AI에게 맡긴다) -->
+  <div class="wz-pane hidden" id="wzp-5">
+    <div class="wz-kicker">화별 줄거리</div>
+    <h1 class="wz-q sm">회차별 줄거리를 짜요</h1>
+    <p class="wz-sub">직접 채워도 되고, 아래 버튼으로 AI에게 맡겨도 돼요.</p>
+    <div id="wz-plan-note" class="wz-note"></div>
+    <div id="wz-plan-list"></div>
   </div>
 
   <!-- 4단계: 플롯 · 회차 -->
   <div class="wz-pane hidden" id="wzp-4">
-    <div class="wz-kicker">STEP 4 · 플롯</div>
+    <div class="wz-kicker">완성</div>
     <h1 class="wz-q sm">전체 흐름이에요</h1>
-    <p class="wz-sub">1화부터 마지막화까지 큰 줄기를 잡았어요.</p>
+    <p class="wz-sub">이대로 작품을 시작합니다. 회차 줄거리는 나중에도 고칠 수 있어요.</p>
     <div id="wz-outline"></div>
   </div>
 
@@ -375,7 +372,7 @@
 <div id="w-plot" class="wview hidden">
   <div class="app-top">
     <button class="top-ic" id="pl-home" title="작품">🏠</button>
-    <b class="top-title">전체플롯 / 가이드</b>
+    <b class="top-title">줄거리 / 가이드</b>
     <button class="top-ic" id="pl-menu" title="메뉴">☰</button>
   </div>
   <div id="pl-meta" class="pl-meta"></div>
@@ -394,8 +391,8 @@
   <div id="ed-status" class="ed-status"></div>
   <div class="ed-bar">
     <button id="ed-prev" class="edb-arrow" title="이전 화">◀</button>
-    <button id="ed-plot" class="edb">플롯보기</button>
-    <button id="ed-save" class="edb save">저장하기</button>
+    <button id="ed-plot" class="edb">줄거리/가이드</button>
+    <button id="ed-save" class="edb">저장하기</button>
     <button id="ed-next" class="edb-arrow" title="다음 화">▶</button>
   </div>
 

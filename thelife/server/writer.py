@@ -182,7 +182,7 @@ def _body_gate(c, user: str):
 # ── 본문 예시(약 1,000자) — 하루 몇 건까지 ────────────────────────────────
 # 등급별 기본 건수. 여기에 '광고를 본 횟수'만큼 1건씩 더해진다.
 # 한국시간 자정에 리셋된다. 광고로 늘어나는 총량은 아래 AI_DAILY_CAP이 막아준다.
-SAMPLE_BASE = {"free": 1, "light": 3, "pro": 10}
+SAMPLE_BASE = {"free": 0, "light": 3, "pro": 10}
 SAMPLE_CHARS = 1000
 
 # 하루 AI 호출 상한 — 비용 폭탄/남용 방지 안전망 (정상 사용엔 넉넉).
@@ -1126,6 +1126,14 @@ def draft_brief(b: BuildBody, user: str = Header(default="solo", alias="X-User-I
             return _AI_BUSY
         maxc = _limits(_tier_name(c, user))["max_characters"]
     filled = _assemble_brief(b)
+    # 작가가 앞 단계에서 인물을 이미 만들었으면 새 인물을 지어내지 않는다 (설계상 인물은 작가의 몫)
+    has_cast = bool((b.protagonist and (b.protagonist.name or "").strip())
+                    or [c2 for c2 in (b.characters or []) if (getattr(c2, "name", "") or "").strip()])
+    cast_rule = ("- characters·protagonist는 **작가가 적은 인물을 그대로** 옮겨라. "
+                 "새 인물을 만들지 마라. 빈 칸(욕망·결핍·비밀 등)만 채워라."
+                 if has_cast else
+                 "- characters는 **정확히 {n}명**. 적대자·조력자·애정상대 등 원형을 고루, "
+                 "각 인물의 want와 need는 어긋나게(입체성), 관계(relation)를 분명히.".format(n=maxc))
     schema = {
         "title": "제목 (없으면 창작)",
         "logline": "로그라인 한두 문장",
@@ -1157,8 +1165,7 @@ JSON 스키마 (다른 텍스트 없이 압축 JSON만):
 - **작가가 이미 쓴 항목은 그 의도와 표현을 최대한 존중하라.** 로그라인·세계관·주인공·
   결말 등 작가가 채운 값은 그대로 옮기고(사소한 다듬기만 허용), 임의로 뒤집지 마라.
 - **비어 있는 항목만 새로 지어라.** 채운 내용과 모순 없이, 구체적이고 일관되게.
-- characters는 **정확히 {maxc}명**(작가가 넣은 인물을 우선 포함). 적대자·조력자·애정상대 등
-  원형을 고루, 각 인물의 want와 need는 어긋나게(입체성), 관계(relation)를 분명히.
+{cast_rule}
 - world_rules는 이 작품만의 독창적 설정을 구체적으로.
 - canon은 표기가 흔들리면 안 되는 고유명사 3~6개.
 - ending은 하나의 도달점으로 고정(열린 결말 금지).
@@ -1256,6 +1263,9 @@ def write_sample(b: SampleBody, user: str = Header(default="solo", alias="X-User
     _cap_build(b)
     with db.connect() as c:
         q = _sample_quota(c, user)
+        if q["base"] <= 0:
+            return {"ok": False, "need": "tier", "sample": q,
+                    "error": "라이트 버전 이상에서만 제공됩니다."}
         if q["left"] <= 0:
             return {"ok": False, "need": "ad", "sample": q,
                     "error": "오늘 쓸 수 있는 예시를 다 썼어요. 광고를 보면 1건 더 만들 수 있어요."}
@@ -1339,7 +1349,7 @@ Save the Cat 15비트를 회차 진행률에 맞춰 배치하고, 반드시 고�
 - 마지막 화들은 고정된 결말을 실현한다.
 - content는 요약이 아니라 '이 화에 실제로 벌어지는 일'. 설정·인물을 구체적으로 사용.
 - 압축 JSON만 출력. 설명·코드펜스 금지."""
-    raw = llm.write(prompt, mock_text="", max_tokens=16000)
+    raw = llm.write(prompt, mock_text="", max_tokens=32000)
     data = parse_llm_json(raw)
     items = data.get("outline") if isinstance(data, dict) else (data if isinstance(data, list) else None)
     if not items:
@@ -1356,9 +1366,42 @@ Save the Cat 15비트를 회차 진행률에 맞춰 배치하고, 반드시 고�
         if 1 <= no <= total:                       # 상한 넘는 회차는 버린다
             outline.append({"no": no, "title": str(it.get("title", "")).strip(),
                             "content": str(it.get("content", "")).strip()})
+    # 모델이 중간에 끊어 빠진 화가 있으면 한 번만 보충한다 (25화 골랐는데 몇 개만 나오던 문제)
+    have = {o["no"] for o in outline}
+    missing = [n for n in range(1, total + 1) if n not in have]
+    if missing:
+        done = "\n".join(f"{o['no']}화: {o['title']} — {o['content'][:80]}" for o in outline[-6:])
+        fix = llm.write(
+            f"""아래 웹소설의 회차 전개에서 {missing[0]}화~{missing[-1]}화가 빠졌다. 그 화들만 채워라.
+
+[기획]
+{context[:4000]}
+
+[직전까지의 전개]
+{done}
+
+출력: {{"outline":[{{"no":{missing[0]},"title":"제목","content":"약 {syn}자"}}]}}
+- no는 {', '.join(str(n) for n in missing[:60])} 만. 빠짐없이.
+- 각 화 content는 약 {syn}자. 압축 JSON만 출력.""",
+            mock_text="", max_tokens=32000)
+        more = parse_llm_json(fix)
+        more = more.get("outline") if isinstance(more, dict) else (more if isinstance(more, list) else [])
+        for it in (more or []):
+            if not isinstance(it, dict):
+                continue
+            try:
+                no = int(it.get("no"))
+            except (TypeError, ValueError):
+                continue
+            if no in have or not (1 <= no <= total):
+                continue
+            have.add(no)
+            outline.append({"no": no, "title": str(it.get("title", "")).strip(),
+                            "content": str(it.get("content", "")).strip()})
     outline.sort(key=lambda o: o["no"])
-    return {"ok": True, "outline": outline,
-            "capped": requested > total, "tier_max": lim["max_chapters"]}
+    return {"ok": True, "outline": outline, "capped": requested > total,
+            "tier_max": lim["max_chapters"], "syn_chars": syn, "tier_label": lim["label"],
+            "requested": requested, "missing": [n for n in range(1, total + 1) if n not in have]}
 
 
 @router.post("/works")
@@ -1604,6 +1647,23 @@ class GuideBody(BaseModel):
     force: bool = False
 
 
+def _guide_fallback(w, no, this_o, prev_o, next_o) -> dict:
+    """AI 응답이 깨졌을 때 쓰는 최소 가이드 — 줄거리와 결말에서 직접 만든다."""
+    here = (this_o.get("content") or "").strip()
+    return {
+        "목표": here or f"{no}화에서 이야기를 한 걸음 전진시킨다.",
+        "연결": " ".join(x for x in [
+            (f"앞 화({prev_o.get('title') or f'{no-1}화'})에서 이어받는다." if no > 1
+             else "이야기의 첫 화다. 세계와 인물을 자연스럽게 보여준다."),
+            (f"다음 화({next_o.get('title') or f'{no+1}화'})로 넘긴다." if next_o else ""),
+        ] if x),
+        "갈등": "이 화에서 주인공을 막는 것이 무엇인지 분명히 드러낸다.",
+        "인물": "이 화가 끝났을 때 주인공의 마음이 어떻게 달라지는지 정한다.",
+        "사건": here or "이 화에서 실제로 벌어지는 사건을 하나 확실히 넣는다.",
+        "맺음": f"마지막 줄에서 다음 화를 궁금하게 만든다. 최종 결말: {(w.get('ending') or '').strip()[:80]}",
+    }
+
+
 @router.post("/works/{work_id}/guide")
 def make_guide(work_id: int, body: GuideBody,
                user: str = Header(default="solo", alias="X-User-Id")):
@@ -1647,7 +1707,8 @@ def make_guide(work_id: int, body: GuideBody,
         data = parse_llm_json(raw) or {}
         guide = {k: str(data.get(k, "")).strip() for k in GUIDE_KEYS}
         if not any(guide.values()):
-            return {"ok": False, "error": "가이드를 만들지 못했어요. 다시 시도해 주세요."}
+            # AI가 형식을 못 맞춰도 빈손으로 돌려보내지 않는다 — 줄거리에서 만들 수 있는 만큼 채운다.
+            guide = _guide_fallback(w, no, this_o, by_no.get(no - 1, {}), by_no.get(no + 1, {}))
 
         this_o["guide"] = guide                     # 저장(캐시)
         if no not in by_no:
