@@ -32,16 +32,19 @@ let WORK = null, CHAPTER = null;
 
 /* 판매용 런치 버전 여부 — 서버 플래그.
    body.launch = 판매 빌드(자연어 설정 수정·회당글자수 등 제외 항목 숨김).
-   body.nobody = 본문 쓰기 권한 없음(무료·라이트) → 본문 집필 UI 숨김.
-   프로 구독자는 nobody가 풀려 본문 쓰기가 보이고, 펜으로 쓴다. */
+   body.nobody = 'AI가 본문을 대신 써주는' 기능 없음 → 그 UI만 숨긴다.
+                 작가가 직접 쓰는 에디터는 모든 등급에서 항상 열려 있다(핵심 기능).
+   body.nopen  = 펜(소모성 재화)을 안 쓰는 빌드 → 펜 잔액·충전 UI 숨김. */
 let LAUNCH = true, TIER = "free", LIMITS = null, TIERS_INFO = null, EXPIRES = null;
-let PENS = 0, PEN_NEEDED = false, PEN_PACKS = [];
+let AI_BODY = false, PENS = 0, PEN_NEEDED = false, PEN_PACKS = [];
 (async () => {
   try {
     const cfg = await api("/api/writer/config");
     LAUNCH = !!(cfg && cfg.launch_mode);
+    AI_BODY = !!(cfg && cfg.ai_body);
     document.body.classList.toggle("launch", LAUNCH);
-    document.body.classList.toggle("nobody", !(cfg && cfg.writing_enabled));
+    document.body.classList.toggle("nobody", !AI_BODY);
+    document.body.classList.toggle("nopen", !(cfg && cfg.pens_enabled));
     if (cfg) {
       TIER = cfg.tier || "free"; LIMITS = cfg.limits; TIERS_INFO = cfg.tiers; EXPIRES = cfg.expires_at;
       PENS = cfg.pens || 0; PEN_NEEDED = !!cfg.pen_needed; PEN_PACKS = cfg.pen_packs || [];
@@ -124,6 +127,7 @@ const IC = {
   stack: '<svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg>',
   spark: '<svg viewBox="0 0 24 24"><path d="M12 3l2.2 6L20 11l-5.8 2L12 19l-2.2-6L4 11l5.8-2z"/></svg>',
   ban: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/></svg>',
+  write: '<svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M13 6l5 5L9 20H4v-5z"/></svg>',
 };
 function _feat(icon, label, val, off) {
   return `<li class="${off ? "off" : ""}">${icon}<span>${label}</span><b>${val}</b></li>`;
@@ -136,12 +140,18 @@ function renderPlans() {
     const P = TIERS_INFO[t];
     const works = P.max_works >= 100000 ? "무제한" : P.max_works + "개";
     const cur = t === TIER;
+    // 이 빌드가 '실제로 하는 것'만 적는다 — 없는 기능을 플랜에 적지 않는다.
+    const anyStyle = PLAN_ORDER.some((k) => TIERS_INFO[k] && TIERS_INFO[k].style_learning);
+    const anyBody = PLAN_ORDER.some((k) => TIERS_INFO[k] && TIERS_INFO[k].body_writing);
     const feats = [
       _feat(IC.book, "AI 회차 줄거리", P.max_chapters + "화"),
       _feat(IC.pen, "화당 줄거리", P.syn_chars + "자"),
       _feat(IC.users, "AI 인물 생성", P.max_characters + "명"),
       _feat(IC.stack, "작품 수", works),
-      _feat(IC.spark, "문체 학습", P.style_learning ? "✓" : "—", !P.style_learning),
+      _feat(IC.write, "직접 쓰기 · 집필 가이드", "✓"),
+      P.ai_daily ? _feat(IC.spark, "하루 AI 사용", P.ai_daily + "회") : "",
+      anyStyle ? _feat(IC.spark, "문체 학습", P.style_learning ? "✓" : "—", !P.style_learning) : "",
+      anyBody ? _feat(IC.pen, "AI 본문 대행", P.body_writing ? "✓" : "—", !P.body_writing) : "",
       _feat(IC.ban, "광고 제거", P.ads ? "—" : "✓", P.ads),
     ].join("");
     const cta = cur
@@ -668,16 +678,42 @@ function renderChapters() {
   const written = WORK.chapters.length;
   if (!written) {
     box.innerHTML = `<p class="hint">아직 쓴 회차가 없어요. 전체 플롯은 위 '전체 플롯 보기'에서 보고 다듬을 수 있어요.<br>
-      ${LAUNCH ? "" : "아래 '다음 회차 쓰기'로 1화를 시작하세요."}</p>`;
+      아래 '1화 쓰기'를 누르면 줄거리와 집필 가이드를 옆에 두고 바로 쓸 수 있어요.</p>`;
   }
   // 이미 쓴 회차만 목록에 보여준다 (예정 회차·비트 라벨은 표시하지 않음).
   WORK.chapters.forEach((ch) => {
     const el = document.createElement("button");
     el.className = "ch-item";
-    el.innerHTML = `<span class="ch-no">${ch.no}화</span> ${escapeHtml(ch.title) || ""}`;
+    const n = ch.chars || 0;
+    el.innerHTML = `<span class="ch-no">${ch.no}화</span> ${escapeHtml(ch.title) || ""}` +
+      `<span class="ch-len">${n ? n.toLocaleString() + "자" : "아직 안 씀"}</span>`;
     el.onclick = () => openChapter(ch.id);
     box.appendChild(el);
   });
+  // 작가가 직접 쓰는 입구 — 등급과 무관하게 항상 있다.
+  const nos = WORK.chapters.map((c) => c.no);
+  let next = 1;
+  while (nos.includes(next)) next++;
+  if (next <= (WORK.total_chapters || 0)) {
+    const go = document.createElement("button");
+    go.className = "ch-new primary";
+    go.innerHTML = `✍ ${next}화 쓰기`;
+    go.onclick = () => startWriting(next);
+    box.appendChild(go);
+  }
+}
+
+/* 빈 회차를 열고(없으면 만들고) 바로 에디터로 — AI도 펜도 쓰지 않는다. */
+async function startWriting(no) {
+  const r = await api(`/api/writer/works/${WORK.id}/chapters/blank`, {
+    method: "POST", body: JSON.stringify({ no: no || 0 }),
+  });
+  if (!r.ok) { notice(r.error || "회차를 열 수 없어요."); return; }
+  if (r.created) {
+    const d = await api(`/api/writer/works/${WORK.id}`);
+    if (d.ok) { WORK = d.work; WORK.chapters = d.chapters; }
+  }
+  openChapter(r.id);
 }
 
 function editOutline(n, el, after) {
@@ -1512,8 +1548,7 @@ function renderPlotList() {
          <div class="g-wrap" id="g-${no}">${guideHtml(GUIDE_CACHE[no])}</div>
          <div class="pl-acts">
            <button class="regen">🔄 가이드 새로</button>
-           ${ch ? `<button class="go">✍ 이 화 쓰기</button>`
-                : `<button class="go">✍ 이 화 쓰기</button>`}
+           <button class="go">${ch ? "✍ 이어 쓰기" : "✍ 이 화 쓰기"}</button>
          </div>`;
       pane.querySelector(".regen").onclick = () => loadGuide(no, true);
       pane.querySelector(".go").onclick = () => openChapterByNo(no);
@@ -1586,11 +1621,11 @@ async function openChapter(id) {
   $("#ed-next").disabled = CHAPTER.no >= Math.max(...nos, CHAPTER.no);
   edStatus();
 }
-/* 번호로 열기 — 아직 안 쓴 화면 새로 만들지 않고 안내한다 */
+/* 번호로 열기 — 아직 없는 회차면 빈 회차를 만들어서 바로 쓸 수 있게 연다 */
 function openChapterByNo(no) {
   const ch = (WORK.chapters || []).find((c) => c.no === no);
   if (ch) { openChapter(ch.id); return; }
-  notice(`${no}화는 아직 만들어지지 않았어요.\n회차 목록에서 먼저 만들어 주세요.`);
+  startWriting(no);
 }
 
 $("#ed-body").addEventListener("input", onEdit);

@@ -168,24 +168,51 @@ def _credit_pen_tx(c, user: str, product_id: str, tx_id: str) -> bool:
 
 
 def _body_gate(c, user: str):
-    """본문 쓰기 권한을 확인한다.
+    """'AI가 본문을 대신 써주는' 기능의 권한을 확인한다. (작가가 직접 쓰는 건 여기 안 걸린다)
       · 개인 집필 서버(WRITER_LAUNCH_MODE=0): 항상 허용, 펜 소모 없음.
-      · 판매 빌드(=1): 프로 구독 + 펜 1개 필요. 성공 시 호출부에서 펜을 차감한다.
+      · 판매 빌드(=1): 아예 없는 기능이다 — 본문은 작가가 직접 쓴다.
     반환: (ok, consume, error_dict|None)"""
     if not LAUNCH_MODE:
         return True, False, None
-    tier = _tier_name(c, user)
-    if not _limits(tier).get("body_writing"):
-        return False, False, {"ok": False, "need": "pro",
-                              "error": "본문 쓰기는 프로 구독에서만 이용할 수 있어요."}
-    if _pen_balance(c, user) <= 0:
-        return False, False, {"ok": False, "need": "pens",
-                              "error": "펜이 부족해요. 펜을 충전하면 본문 1편(≤5,000자)을 쓸 수 있어요."}
-    return True, True, None
+    return False, False, {
+        "ok": False, "need": "manual",
+        "error": "이 앱은 본문을 작가가 직접 씁니다. 회차를 열면 집필 가이드와 함께 쓸 수 있어요."}
 
 
 # 하루 AI 호출 상한 — 비용 폭탄/남용 방지 안전망 (정상 사용엔 넉넉).
 AI_DAILY_CAP = {"free": 40, "light": 250, "pro": 800}
+for _k, _v in AI_DAILY_CAP.items():
+    if _k in TIERS:
+        TIERS[_k]["ai_daily"] = _v
+
+# ── 판매(런치) 빌드의 플랜 = 판매 앱이 '실제로 하는 것'만 적는다 ──────────────
+# 판매 앱의 정체성: AI가 세계관·인물·플롯·회차별 집필 가이드를 짜주고,
+# 본문은 작가가 앱 안에서 직접 쓴다.
+#   → AI 본문 대행 / 펜 / 문체 학습은 판매 빌드에 '없다'. 그러니 플랜 문구에서도 뺀다.
+#     (없는 걸 팔면 스토어 심사에서도 걸리고, 산 사람이 못 찾는다.)
+#   → 직접 쓰기는 핵심 기능이라 모든 등급에 열려 있다. 등급은 'AI가 짜주는 양'을 나눈다.
+LAUNCH_TIER_COPY = {
+    "free": {
+        "pitch": "아이디어 한 줄이면 인물·플롯·회차 줄거리까지 AI가 잡아줘요. "
+                 "본문은 앱 안에서 직접 쓰고, 회차마다 집필 가이드를 받습니다.",
+        "highlight": "직접 쓰기 · 집필 가이드 무제한",
+    },
+    "light": {
+        "pitch": "20화까지 상세 줄거리를 한 번에. 광고 없이, 작품 10개를 나란히 굴리며 연재를 준비하세요.",
+        "highlight": "무료 대비 회차 6배 · 광고 없음",
+    },
+    "pro": {
+        "pitch": "70화 대작을 통째로 설계하고, 화당 450자 상세 줄거리로 흐름을 놓치지 않아요. "
+                 "작품 수 무제한, AI 사용량도 넉넉합니다.",
+        "highlight": "70화 설계 · 작품 무제한 · 하루 AI 800회",
+    },
+}
+if LAUNCH_MODE:
+    for _k, _over in LAUNCH_TIER_COPY.items():
+        TIERS[_k].update(_over)
+        TIERS[_k]["style_learning"] = False   # 문체 학습은 AI 본문용 — 판매 빌드엔 없다
+        TIERS[_k]["body_writing"] = False     # AI 본문 대행 없음
+        TIERS[_k]["monthly_pens"] = 0         # 펜도 없음
 
 
 def _ai_gate(c, user: str):
@@ -232,11 +259,14 @@ def writer_config(user: str = Header(default="solo", alias="X-User-Id")):
                 ent = json.loads(raw).get("expires_at")
             except Exception:
                 ent = None
-    # 본문 쓰기 노출 여부: 개인 서버는 항상, 판매 빌드는 프로(body_writing)만.
-    body_ok = (not LAUNCH_MODE) or bool(TIERS[t].get("body_writing"))
-    return {"launch_mode": LAUNCH_MODE, "writing_enabled": body_ok,
+    # 두 가지를 구분한다.
+    #  · writing_enabled — 작가가 '직접' 쓰는 에디터. 핵심 기능이라 모든 등급에 열려 있다.
+    #  · ai_body        — AI가 본문을 '대신' 써주는 기능. 판매 빌드에는 없다.
+    ai_body = not LAUNCH_MODE           # 개인 서버는 등급과 무관하게 허용(_body_gate와 동일 규칙)
+    return {"launch_mode": LAUNCH_MODE, "writing_enabled": True, "ai_body": ai_body,
+            "pens_enabled": not LAUNCH_MODE,
             "tier": t, "limits": TIERS[t], "tiers": TIERS, "expires_at": ent,
-            "pens": pens, "pen_needed": LAUNCH_MODE, "pen_packs": PEN_PACKS}
+            "pens": pens, "pen_needed": False, "pen_packs": ([] if LAUNCH_MODE else PEN_PACKS)}
 
 
 class TierBody(BaseModel):
@@ -1320,7 +1350,8 @@ def get_work(work_id: int, user: str = Header(default="solo", alias="X-User-Id")
         if not w:
             return {"ok": False, "error": "작품을 찾을 수 없어요."}
         chapters = [dict(r) for r in c.execute(
-            "SELECT id, no, title, summary, beat_idx, directive FROM chapters WHERE work_id=? ORDER BY no",
+            "SELECT id, no, title, summary, beat_idx, directive, "
+            "LENGTH(COALESCE(body,'')) AS chars FROM chapters WHERE work_id=? ORDER BY no",
             (work_id,)).fetchall()]
         return {"ok": True,
                 "work": {k: w.get(k) for k in ("id", "title", "genre", "premise", "ending",
@@ -2051,6 +2082,42 @@ def _generate_full_chapter(w: dict, no: int, beat: dict, prev: list, directive: 
                     title, text = t2 or title, x2      # 반복이 실제로 줄었을 때만 교체
                     summary = s2 or summary
     return title, text, summary, None
+
+
+class BlankChapterBody(BaseModel):
+    no: int = 0
+
+
+@router.post("/works/{work_id}/chapters/blank")
+def open_blank_chapter(work_id: int, body: BlankChapterBody,
+                       user: str = Header(default="solo", alias="X-User-Id")):
+    """작가가 '직접 쓸' 빈 회차를 연다 — AI를 안 쓰고, 펜도 안 쓰고, 등급 제한도 없다.
+    이 앱의 핵심 기능이라 무료도 쓸 수 있다. 이미 있는 회차면 그걸 그대로 돌려준다."""
+    with db.connect() as c:
+        w = _load_work(c, work_id, user)
+        if not w:
+            return {"ok": False, "error": "작품을 찾을 수 없어요."}
+        no = int(body.no or 0)
+        if no <= 0:                                   # 번호를 안 주면 다음 빈 회차
+            used = {r["no"] for r in c.execute(
+                "SELECT no FROM chapters WHERE work_id=?", (work_id,)).fetchall()}
+            no = next((n for n in range(1, (w["total_chapters"] or 0) + 1) if n not in used), 0)
+            if not no:
+                return {"ok": False, "error": "예정된 회차를 모두 열었어요. 총 회차 수를 늘려 주세요."}
+        if no > (w["total_chapters"] or 0):
+            return {"ok": False, "error": "총 회차 수를 넘는 회차예요. 총 회차 수를 먼저 늘려 주세요."}
+        row = c.execute("SELECT id FROM chapters WHERE work_id=? AND no=?",
+                        (work_id, no)).fetchone()
+        if row:
+            return {"ok": True, "id": row["id"], "no": no, "created": False}
+        plan = next((o for o in (w.get("outline") or []) if int(o.get("no", 0)) == no), None)
+        title = str((plan or {}).get("title", "")).strip() or f"{no}화"
+        ch_id = c.insert_id(
+            "INSERT INTO chapters (work_id, no, title, body, summary, state_json, directive, "
+            "beat_idx, created_at, updated_at) VALUES (?,?,?,'','','','',?,datetime('now'),datetime('now'))",
+            (work_id, no, title, beat_for(no, w["total_chapters"])),
+        )
+        return {"ok": True, "id": ch_id, "no": no, "created": True}
 
 
 @router.post("/works/{work_id}/chapters")
