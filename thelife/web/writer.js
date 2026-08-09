@@ -1091,11 +1091,54 @@ const WZ_TOTALS = [15, 25, 40, 70];
 const WZ_OTHER = "기타 (직접 입력)";
 let WZ = null;
 
-function startWizard() {
-  WZ = { i: 0, phase: "form", total: 25, sel: {}, other: {}, detail: {},
-         basic: {}, cast: [], castOpen: -1, draft: null, outline: [], paints: {} };
+/* ── 설정 중이던 내용은 기기에 자동 저장한다 ──────────────────────────────
+   화면을 당겨 새로고침하거나, 폰이 앱을 잠시 껐다 켜도 고르던 게 날아가면 안 된다.
+   페이지는 새로 뜨더라도 여기서 그대로 복구해 같은 단계로 돌려놓는다. */
+const WZ_KEY = "thelife_wizard";
+function wzSave() {
+  if (!WZ || WZ.phase === "gen") return;              // 생성 중인 상태는 저장하지 않는다
+  try {
+    const { paints, ...keep } = WZ;                   // 함수는 저장할 수 없다
+    localStorage.setItem(WZ_KEY, JSON.stringify({ at: Date.now(), wz: keep }));
+  } catch (e) { /* 저장 공간이 없으면 조용히 넘어간다 */ }
+}
+function wzSaved() {
+  try {
+    const d = JSON.parse(localStorage.getItem(WZ_KEY) || "null");
+    if (d && d.wz && typeof d.wz.i === "number" && d.wz.phase) return d.wz;
+  } catch (e) { /* 깨진 값은 없는 셈 친다 */ }
+  return null;
+}
+function wzClear() { try { localStorage.removeItem(WZ_KEY); } catch (e) {} }
+/* 글자를 칠 때마다 쓰지 않고 잠깐 모았다 저장한다 */
+let WZ_T = null;
+function wzSaveSoon() { clearTimeout(WZ_T); WZ_T = setTimeout(wzSave, 400); }
+/* 새로고침·앱 전환 직전에도 한 번 더 붙잡아 둔다 */
+window.addEventListener("pagehide", wzSave);
+window.addEventListener("beforeunload", wzSave);
+document.addEventListener("visibilitychange", () => { if (document.hidden) wzSave(); });
+
+function wzOpen(wz) {
+  WZ = Object.assign({ i: 0, phase: "form", total: 25, sel: {}, other: {}, detail: {},
+                       basic: {}, cast: [], castOpen: -1, draft: null, outline: [] }, wz || {});
+  WZ.paints = {};
+  WZ.live = true;                    // 지금 설정 중 → 새로고침하면 이 자리로 돌아온다
   view("w-wizard");
-  wzRender();
+  if (WZ.phase === "result") { renderWzResult(); wzGo("result"); }
+  else if (WZ.phase === "outline") { renderWzOutline(); wzGo("outline"); }
+  else { WZ.phase = "form"; wzRender(); }
+}
+function startWizard() {
+  const prev = wzSaved();
+  if (prev) {
+    const step = (prev.phase === "form") ? `${Math.min(prev.i + 1, WZ_SPEC.length)}단계` : "확인 단계";
+    if (confirm(`설정하던 작품이 있어요 (${step}).\n이어서 하시겠어요?\n\n[취소]를 누르면 처음부터 새로 시작해요.`)) {
+      wzOpen(prev); return;
+    }
+    wzClear();
+  }
+  wzOpen(null);
+  wzSave();
 }
 /* 지금까지 고른 것을 사람이 읽는 문장으로 (AI 추천의 참고 자료) */
 function wzContext() {
@@ -1141,6 +1184,7 @@ function wzRender() {
   else if (s.kind === "cast") wzRenderCast(box, s);
   else wzRenderPick(box, s, WZ.sel, WZ.other, WZ.detail, s.id);
   wzFoot(s);
+  wzSave();
   window.scrollTo(0, 0);
 }
 function wzFoot(s) {
@@ -1166,7 +1210,7 @@ function wzRenderText(box, s) {
                : `<input class="wz-in one" placeholder="${f.ph}">`);
     const el = wrap.querySelector("textarea,input");
     el.value = WZ.basic[f.k] || "";
-    el.oninput = () => { WZ.basic[f.k] = el.value; };
+    el.oninput = () => { WZ.basic[f.k] = el.value; wzSaveSoon(); };
     box.appendChild(wrap);
   });
   const t = document.createElement("div");
@@ -1179,7 +1223,7 @@ function wzRenderText(box, s) {
     b.className = "chip" + (WZ.total === n ? " on" : "");
     b.textContent = `${n}화`;
     // 그 자리에서 표시만 바꾼다 (다시 그리면 스크롤이 위로 튄다)
-    b.onclick = () => { WZ.total = n; tb.forEach((x) => x.el.classList.toggle("on", x.n === n)); };
+    b.onclick = () => { WZ.total = n; tb.forEach((x) => x.el.classList.toggle("on", x.n === n)); wzSave(); };
     tb.push({ el: b, n });
     tc.appendChild(b);
   });
@@ -1223,6 +1267,7 @@ function wzRenderPick(box, s, sel, other, detail, key) {
     if (v === null) return;
     other[key] = v.trim();
     paint();
+    wzSave();
   };
   wrap.appendChild(otEl);
   box.appendChild(wrap);
@@ -1233,7 +1278,7 @@ function wzRenderPick(box, s, sel, other, detail, key) {
       <input class="wz-in one" placeholder="${escapeHtml(s.detail)}">`;
     const el = detailBox.querySelector("input");
     el.value = detail[key] || "";
-    el.oninput = () => { detail[key] = el.value; };
+    el.oninput = () => { detail[key] = el.value; wzSaveSoon(); };
     box.appendChild(detailBox);
   }
   paint();
@@ -1241,6 +1286,7 @@ function wzRenderPick(box, s, sel, other, detail, key) {
   return paint;
 }
 function wzToggle(sel, key, val, pick) {
+  setTimeout(wzSave, 0);                  // 고른 뒤 상태를 바로 기기에 남긴다
   const arr = sel[key] || (sel[key] = []);
   const at = arr.indexOf(val);
   if (at >= 0) { arr.splice(at, 1); return; }
@@ -1260,6 +1306,7 @@ async function wzSuggest(s, target) {
   unbusy();
   if (!r.ok) { notice(r.error || "추천을 받지 못했어요."); return; }
   (target || WZ.sel)[s.id] = r.picked;
+  wzSave();
   // 표시만 그 자리에서 갱신 (화면을 다시 그리지 않아 보던 위치가 유지된다)
   if (WZ.paints[s.id]) WZ.paints[s.id]();
   else if (target) wzRenderCastDetail(); else wzRender();
@@ -1280,8 +1327,8 @@ function wzRenderCast(box, s) {
       </div>
       <button class="cast-more">자세히 ›</button>
       <button class="cast-del" title="삭제">✕</button>`;
-    el.querySelector(".cast-n").oninput = (e) => { c.name = e.target.value; };
-    el.querySelector(".cast-a").oninput = (e) => { c.age = e.target.value; };
+    el.querySelector(".cast-n").oninput = (e) => { c.name = e.target.value; wzSaveSoon(); };
+    el.querySelector(".cast-a").oninput = (e) => { c.age = e.target.value; wzSaveSoon(); };
     el.querySelector(".cast-more").onclick = () => { WZ.castOpen = i; wzRender(); };
     el.querySelector(".cast-del").onclick = () => {
       removeRowUndo(el, ".cast-list", () => c, () => {}, "인물");
@@ -1325,6 +1372,7 @@ function wzRenderCastDetail(box) {
 /* 선택 단계가 끝난 뒤의 화면 (생성 중 / 확인 / 회차) */
 function wzGo(phase) {
   WZ.phase = phase;
+  wzSave();
   const pane = { gen: "wzp-2", result: "wzp-3", outline: "wzp-4" }[phase];
   ["wzp-1", "wzp-2", "wzp-3", "wzp-4"].forEach((v) =>
     $(`#${v}`).classList.toggle("hidden", v !== pane));
@@ -1414,6 +1462,7 @@ async function wzGenerate() {
     return;
   }
   WZ.draft = r.draft || {};
+  wzSave();
   wzTasks([["세계관 만드는 중", "done"], ["인물 만드는 중", "done"], ["플롯 정리", "done"]]);
   renderWzResult();
   setTimeout(() => wzGo("result"), 350);
@@ -1430,6 +1479,7 @@ async function wzRedraw(field) {
   unbusy();
   if (!r.ok) { WZ.draft = saved; notice(r.error || "다시 만들지 못했어요."); return; }
   WZ.draft = r.draft || saved;
+  wzSave();
   renderWzResult();
 }
 function renderWzResult() {
@@ -1466,6 +1516,7 @@ async function wzOutline() {
     wzGo("result"); return;
   }
   WZ.outline = r.outline || [];
+  wzSave();
   renderWzOutline();
   wzGo("outline");
 }
@@ -1485,6 +1536,7 @@ async function wzFinish() {
   unbusy();
   if (!r.ok) { notice((r.error || "작품을 만들지 못했어요.") + (r.detail ? `\n\n${r.detail}` : "")); return; }
   WZ = null;
+  wzClear();
   await openWork(r.id);
   notice("작품이 만들어졌어요! 회차를 눌러 집필을 시작하세요.");
 }
@@ -1494,6 +1546,7 @@ $("#wz-back").onclick = () => {
   if (WZ.phase === "result") { WZ.phase = "form"; wzRender(); return; }
   if (WZ.castOpen >= 0) { WZ.castOpen = -1; wzRender(); return; }   // 인물 상세 → 목록
   if (WZ.i > 0) { WZ.i--; wzRender(); return; }                     // 앞 단계로
+  WZ.live = false; wzSave(); WZ = null;   // 내용은 남겨 두되 '하는 중'은 아니다
   showHome();
 };
 
@@ -1817,4 +1870,8 @@ async function deleteChapter() {
   }
 }
 
-showHome();
+/* 시작 — 설정하다 만 게 있으면(새로고침·앱 재시작) 그 자리로 돌려놓는다 */
+(function boot() {
+  const prev = wzSaved();
+  showHome().then(() => { if (prev && prev.live) wzOpen(prev); });
+})();

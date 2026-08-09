@@ -2,6 +2,10 @@
    테마 토큰을 body.writer에 재정의해 이 페이지만 밝은/어두운 테마를 갖는다.
    기본은 '밝게'. data-theme="dark"면 어둡게. */
 
+/* 화면을 아래로 당겼을 때 브라우저가 새로고침하지 않게 한다 —
+   설정을 짜다가 실수로 당기면 페이지가 다시 뜨면서 하던 게 끊긴다. (앱처럼 동작) */
+html:has(body.writer), body.writer { overscroll-behavior-y: contain; }
+
 body.writer {
   max-width: 720px;
   /* ── 밝은 테마 (기본) ── */
