@@ -103,8 +103,25 @@ def index():
 
 @app.get("/writer")
 def writer_page():
-    """형제 앱 — The Novelist (작가용 웹소설 집필 도구)."""
-    return FileResponse(WEB / "writer.html")
+    """형제 앱 — The Novelist (작가용 웹소설 집필 도구).
+    no-cache: 새로 배포하면 폰에서도 바로 새 화면이 뜨게 한다."""
+    return FileResponse(WEB / "writer.html", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/manifest.webmanifest")
+def manifest():
+    """홈 화면에 추가했을 때 앱 이름·아이콘·전체화면 설정."""
+    return FileResponse(WEB / "manifest.webmanifest",
+                        media_type="application/manifest+json")
+
+
+@app.get("/sw.js")
+def service_worker():
+    """서비스 워커는 '/' 범위를 제어해야 하므로 반드시 루트 경로에서 준다.
+    (/static/sw.js 로 주면 /writer 를 제어하지 못한다.)"""
+    return FileResponse(WEB / "sw.js", media_type="application/javascript",
+                        headers={"Cache-Control": "no-cache",
+                                 "Service-Worker-Allowed": "/"})
 
 
 @app.get("/privacy")
@@ -627,4 +644,16 @@ def leave_avatar(user: str = Header(default="solo", alias="X-User-Id")):
     return {"ok": True}
 
 
-app.mount("/static", StaticFiles(directory=WEB), name="static")
+class FreshStatic(StaticFiles):
+    """정적 파일에 'no-cache'를 붙인다.
+    기본값(헤더 없음)이면 브라우저가 임의로 캐시해, 새로 배포해도 폰에서 옛 화면이
+    계속 보인다. no-cache는 '쓰기 전에 서버에 물어보라'는 뜻이라 내용이 그대로면
+    304로 가볍게 끝나고, 바뀌었으면 즉시 새 파일을 받는다."""
+
+    async def get_response(self, path, scope):
+        resp = await super().get_response(path, scope)
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+
+app.mount("/static", FreshStatic(directory=WEB), name="static")

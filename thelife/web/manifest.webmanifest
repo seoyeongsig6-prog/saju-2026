@@ -1,0 +1,17 @@
+{
+  "name": "The Novelist — 웹소설 기획",
+  "short_name": "노벨리스트",
+  "description": "세계관·인물·플롯을 AI가 잡아주고, 쓰는 동안 옆에서 가이드하는 웹소설 집필 도구",
+  "start_url": "/writer",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f1ea",
+  "theme_color": "#f4f1ea",
+  "lang": "ko",
+  "icons": [
+    { "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

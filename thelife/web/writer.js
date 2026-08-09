@@ -22,6 +22,12 @@ const api = async (path, opts = {}) => {
   return r.json();
 };
 
+/* 홈 화면에 추가하면 앱처럼 실행되게 (오프라인 대비 + 전체화면).
+   서비스 워커는 '네트워크 먼저'라 고친 내용이 바로바로 반영된다. */
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+}
+
 let WORK = null, CHAPTER = null;
 
 /* 판매용 런치 버전 여부 — 서버 플래그.

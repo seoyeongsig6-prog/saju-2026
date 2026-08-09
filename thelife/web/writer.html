@@ -2,8 +2,21 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- viewport-fit=cover: 노치/홈바 영역까지 써서 진짜 앱처럼 보이게 -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>The Novelist</title>
+
+<!-- 홈 화면에 추가하면 앱처럼 실행된다 (주소창 없는 전체화면) -->
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#f4f1ea" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14151b" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="노벨리스트">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="icon" href="/static/icons/icon-192.png">
+
 <link rel="stylesheet" href="/static/style.css">
 <link rel="stylesheet" href="/static/writer.css">
 </head>
