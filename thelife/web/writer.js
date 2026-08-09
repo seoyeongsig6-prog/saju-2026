@@ -28,6 +28,22 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
 }
 
+/* 화면에 쓰는 아이콘 — 이모지는 기기·폰트에 따라 깨져서 직접 그린 SVG를 쓴다 */
+const ICO = {
+  home: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5"/><path d="M6 9.5V20h12V9.5"/></svg>',
+  menu: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></svg>',
+  gear: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.2M12 18.8V21M4.2 7.5l1.9 1.1M17.9 15.4l1.9 1.1M4.2 16.5l1.9-1.1M17.9 8.6l1.9-1.1"/></svg>',
+  book: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h6a2 2 0 0 1 2 2v13a2 2 0 0 0-2-2H4z"/><path d="M20 5h-6a2 2 0 0 0-2 2v13a2 2 0 0 1 2-2h6z"/></svg>',
+  pen: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><path d="M13 6l5 5-9 9H4v-5z"/></svg>',
+  spark: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l1.8 5.2L19 11l-5.2 1.8L12 18l-1.8-5.2L5 11l5.2-1.8z"/></svg>',
+  redo: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg>',
+  copy: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 5H6a2 2 0 0 0-2 2v9"/></svg>',
+  down: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="M7.5 11 12 15.5 16.5 11"/><path d="M5 20h14"/></svg>',
+  trash: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 7h15"/><path d="M9 7V5h6v2"/><path d="M6.5 7l1 13h9l1-13"/></svg>',
+  film: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M8 6v12M16 6v12M3 12h18"/></svg>',
+  check: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5 10 17.5 19 7"/></svg>',
+};
+
 let WORK = null, CHAPTER = null;
 
 /* 판매용 런치 버전 여부 — 서버 플래그.
@@ -287,7 +303,7 @@ function renderPenBar() {
   if (!bar) return;
   bar.classList.toggle("hidden", !PEN_NEEDED);   // 개인 서버(펜 불필요)에선 숨김
   if (!PEN_NEEDED) return;
-  bar.innerHTML = `<span class="pen-ic">🖊️</span> 남은 펜 <b>${PENS}</b>
+  bar.innerHTML = `남은 펜 <b>${PENS}</b>
     <span class="pen-sub">본문 1편 = 펜 1개</span>
     <button class="pen-charge" onclick="showPens()">＋ 충전</button>`;
   const pc = $("#pen-count"); if (pc) pc.textContent = PENS;
@@ -679,7 +695,7 @@ function renderChapters() {
   box.innerHTML = "";
   const written = WORK.chapters.length;
   if (!written) {
-    box.innerHTML = `<p class="hint">아직 쓴 회차가 없어요. 전체 플롯은 위 '전체 플롯 보기'에서 보고 다듬을 수 있어요.<br>
+    box.innerHTML = `<p class="hint">아직 쓴 회차가 없어요. 회차별 줄거리는 위 '줄거리 / 가이드 보기'에서 보고 고칠 수 있어요.<br>
       아래 '1화 쓰기'를 누르면 줄거리와 집필 가이드를 옆에 두고 바로 쓸 수 있어요.</p>`;
   }
   // 이미 쓴 회차만 목록에 보여준다 (예정 회차·비트 라벨은 표시하지 않음).
@@ -699,7 +715,7 @@ function renderChapters() {
   if (next <= (WORK.total_chapters || 0)) {
     const go = document.createElement("button");
     go.className = "ch-new primary";
-    go.innerHTML = `✍ ${next}화 쓰기`;
+    go.innerHTML = ICO.pen + `<span>${next}화 쓰기</span>`;
     go.onclick = () => startWriting(next);
     box.appendChild(go);
   }
@@ -1161,14 +1177,14 @@ function wzFoot(s) {
   const last = WZ.i >= wzStepCount() - 1;
   let ai = null;
   if (s.kind === "text") {
-    ai = { label: "✨ 나머지는 AI에게 맡기기", fn: wzAutoAll,
+    ai = { label: "나머지는 AI에게 맡기기", fn: wzAutoAll,
            hint: "장르부터 인물·플롯까지 AI가 정합니다. 만든 뒤에 하나씩 고칠 수 있어요." };
   } else if (s.kind === "cast") {
-    ai = { label: "✨ AI가 모든 인물 만들기", fn: wzCastAll };
+    ai = { label: "AI가 모든 인물 만들기", fn: wzCastAll };
   } else if (s.opts) {
-    ai = { label: `✨ AI가 ${s.title} 정하기`, fn: () => wzSuggest(s) };
+    ai = { label: `AI가 ${s.title} 정하기`, fn: () => wzSuggest(s) };
   }
-  wzBar(null, last ? "이대로 만들기 ✨" : "다음 →",
+  wzBar(null, last ? "이대로 만들기" : "다음 →",
         () => { if (last) wzGenerate(); else { WZ.i++; wzRender(); } }, ai);
 }
 /* 한 단계 뒤로 (하단 '이전'과 안드로이드 뒤로가기가 같이 쓴다) */
@@ -1382,7 +1398,7 @@ function wzRenderCastDetail(box) {
   });
   wzBar(() => { WZ.castOpen = -1; wzRender(); }, "다음 →",
         () => { WZ.castOpen = -1; wzRender(); },
-        { label: "✨ AI가 이 인물 설정하기", fn: () => wzCastOne(c) });
+        { label: "AI가 이 인물 설정하기", fn: () => wzCastOne(c) });
   window.scrollTo(0, 0);
 }
 /* 이 인물의 빈 항목을 한 번에 채운다 (개별 추천 버튼 대신) */
@@ -1408,14 +1424,14 @@ function wzGo(phase) {
   if (phase === "gen") { wzPad(); return; }          // 생성 중엔 버튼 없음
   if (phase === "result") {
     wzBar(null, "다음 (화별 줄거리 짜기) →", () => { wzSaveWorld(); wzGo("plan"); },
-          { label: "🔄 세계관 다시 만들기", fn: () => wzRedraw("world") });
+          { label: "세계관 다시 만들기", fn: () => wzRedraw("world") });
   }
   if (phase === "plan") {
     renderWzPlan();
     wzBar(null, "다음 →", wzPlanNext,
-          { label: "✨ AI가 전체 줄거리 짜기", fn: wzOutline });
+          { label: "AI가 전체 줄거리 짜기", fn: wzOutline });
   }
-  if (phase === "outline") wzBar(null, "완성! 작품 시작하기 🎉", wzFinish, null);
+  if (phase === "outline") wzBar(null, "완성! 작품 시작하기", wzFinish, null);
   window.scrollTo(0, 0);
 }
 /* 확인 화면에서 고친 세계관·결말을 기획에 되돌려 넣는다 */
@@ -1590,10 +1606,10 @@ async function wzRedraw(field) {
 function renderWzResult() {
   const d = WZ.draft || {};
   const box = $("#wz-result");
-  let h = `<div class="wzc"><h3>📖 제목</h3>
+  let h = `<div class="wzc"><h3>제목</h3>
       <input id="wzr-title" class="wz-in one" value="${escapeHtml(d.title || "")}" placeholder="제목">
       <p class="wzc-p">${escapeHtml(d.logline || "")}</p></div>
-    <div class="wzc"><h3>🌍 세계관</h3>
+    <div class="wzc"><h3>세계관</h3>
       <label class="wzc-l">배경</label>
       <textarea id="wzr-world" class="wz-in" rows="3">${escapeHtml(d.world_setting || "")}</textarea>
       <label class="wzc-l">핵심 규칙</label>
@@ -1603,7 +1619,7 @@ function renderWzResult() {
   const cast = [];
   if (d.protagonist && d.protagonist.name) cast.push(Object.assign({ role: "주인공" }, d.protagonist));
   (d.characters || []).forEach((c) => cast.push(c));
-  if (cast.length) h += `<div class="wzc-h">👥 인물 <small>앞 단계에서 정한 인물이에요</small></div>`;
+  if (cast.length) h += `<div class="wzc-h">인물 <small>앞 단계에서 정한 인물이에요</small></div>`;
   cast.forEach((c, i) => {
     const col = i === 0 ? "linear-gradient(135deg,#8b70ff,#6a54f0)"
       : ["linear-gradient(135deg,#d9559b,#c23f86)", "linear-gradient(135deg,#d64b43,#b03b34)",
@@ -1613,7 +1629,7 @@ function renderWzResult() {
       <p>${escapeHtml([c.relation, c.want && "욕망 " + c.want, c.need && "결핍 " + c.need,
         c.secret && "비밀 " + c.secret].filter(Boolean).join(" · "))}</p></div></div>`;
   });
-  h += `<div class="wzc"><h3>🎯 결말</h3>
+  h += `<div class="wzc"><h3>결말</h3>
       <textarea id="wzr-ending" class="wz-in" rows="3">${escapeHtml(d.ending || "")}</textarea></div>`;
   box.innerHTML = h;
   box.querySelectorAll("textarea,input").forEach((el) => { el.oninput = () => wzSaveSoon(); });
@@ -1646,7 +1662,7 @@ function renderWzOutline(r) {
          나머지 회차는 작품을 시작한 뒤 직접 채우거나, 요금제를 올리면 이어서 만들 수 있어요.</div>`
     : "";
   $("#wz-outline").innerHTML = capNote +
-    `<div class="wzc"><h3>🗺 총 ${WZ.outline.length || WZ.total}화 · 결말 고정</h3>
+    `<div class="wzc"><h3>총 ${WZ.outline.length || WZ.total}화 · 결말 고정</h3>
        <p style="color:var(--text)">${escapeHtml(d.ending || "")}</p></div>
      <div class="wzc" style="padding:6px 16px">${rows || "<p>줄거리가 비어 있어요.</p>"}</div>`;
 }
@@ -1714,7 +1730,7 @@ function renderPlotList() {
         : (ch && ch.summary ? escapeHtml(ch.summary) : "");
       pane.innerHTML =
         `<p class="pl-syn${syn ? "" : " empty"}">${syn || "아직 줄거리가 없어요."}</p>
-         <button class="pl-edit">✎ 줄거리 고치기</button>
+         <button class="pl-edit">줄거리 고치기</button>
          <span class="pl-gtag">본 화 구성 가이드</span>
          <div class="g-wrap" id="g-${no}">${guideHtml(GUIDE_CACHE[no])}</div>
          <div class="pl-acts">
@@ -1955,8 +1971,8 @@ function smpFoot(o, needAd) {
     b.className = primary ? "primary" : "ghost small";
     b.textContent = label; b.onclick = fn; foot.appendChild(b); return b;
   };
-  if (SAMPLE.left > 0 && !needAd) mk("🔄 다시 써보기", () => makeSample(o));
-  else mk("🎬 광고 보고 1건 더", () => watchAdForSample(o), true);
+  if (SAMPLE.left > 0 && !needAd) mk("다시 써보기", () => makeSample(o));
+  else mk("광고 보고 1건 더", () => watchAdForSample(o), true);
 }
 /* 광고를 끝까지 보면 예시 1건을 더 준다 */
 function watchAdForSample(o) {
@@ -2036,20 +2052,20 @@ document.querySelectorAll("#plot-sheet .st").forEach((b) => {
 function openMenu(where) {
   const box = $("#mn-body");
   box.innerHTML = "";
-  const add = (label, fn, cls) => {
+  const add = (label, fn, cls, icon) => {
     const b = document.createElement("button");
-    b.textContent = label;
+    b.innerHTML = (icon || "") + `<span>${escapeHtml(label)}</span>`;
     if (cls) b.className = cls;
     b.onclick = () => { closeMenu(); fn(); };
     box.appendChild(b);
   };
   if (where === "editor") {
-    add("📖 전체 플롯 / 가이드", () => guard(() => showPlot(CHAPTER.no)));
-    add("📋 본문 복사", async () => {
+    add("줄거리 / 가이드 보기", () => guard(() => showPlot(CHAPTER.no)), "", ICO.book);
+    add("본문 복사", async () => {
       await navigator.clipboard.writeText($("#ed-body").value);
       notice("본문을 복사했어요. 연재 플랫폼에 붙여넣으세요.");
     });
-    add("⬇ .txt로 받기", () => {
+    add(".txt로 받기", () => {
       const blob = new Blob([`${$("#ed-title").value}\n\n${$("#ed-body").value}`],
         { type: "text/plain;charset=utf-8" });
       const a = document.createElement("a");
@@ -2058,15 +2074,15 @@ function openMenu(where) {
       a.click();
     });
     const lastNo = WORK.chapters.length ? WORK.chapters[WORK.chapters.length - 1].no : 0;
-    if (CHAPTER && CHAPTER.no === lastNo) add("🗑 이 회차 삭제", deleteChapter, "danger");
+    if (CHAPTER && CHAPTER.no === lastNo) add("이 회차 삭제", deleteChapter, "danger", ICO.trash);
   } else if (where === "wizard") {
-    add("🏠 내 작품 목록", () => { if (WZ) { WZ.live = false; wzSave(); WZ = null; } showHome(); });
-    add("⚙ 설정", showSettings);
+    add("내 작품 목록", () => { if (WZ) { WZ.live = false; wzSave(); WZ = null; } showHome(); }, "", ICO.home);
+    add("설정", showSettings, "", ICO.gear);
   } else {
-    if (WORK) add("✍ 작품 메인", () => openWork(WORK.id));
-    if (WORK) add("📖 줄거리 / 가이드", () => showPlot());
-    add("🏠 내 작품 목록", showHome);
-    add("⚙ 설정", showSettings);
+    if (WORK) add("작품 메인", () => openWork(WORK.id), "", ICO.pen);
+    if (WORK) add("줄거리 / 가이드 보기", () => showPlot(), "", ICO.book);
+    add("내 작품 목록", showHome, "", ICO.home);
+    add("설정", showSettings, "", ICO.gear);
   }
   $("#menu-back").classList.remove("hidden");
   $("#menu-sheet").classList.remove("hidden");

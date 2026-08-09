@@ -1329,12 +1329,19 @@ def draft_outline(b: BuildBody, user: str = Header(default="solo", alias="X-User
     context = _assemble_brief(b)
     beats_guide = "\n".join(
         f"- {int(edge*100)}%까지: {name}" for name, edge in zip(BEATS, BEAT_EDGES))
+    # 초기 설정에서 고른 '이야기 구성 방식'(플롯 유형·시간 흐름·정보 전달·반전)을 반드시 지킨다
+    shape = (b.structure or "").strip()
+    shape_rule = (f"\n[반드시 지킬 구성 방식 — 작가가 고른 것]\n{shape}\n"
+                  "이 구성 방식대로 회차를 배열하라. 예를 들어 시간 흐름이 역순·교차라면 "
+                  "회차 순서도 그렇게 짜고, 반전 방식이 정해져 있으면 그 자리에 배치하라. "
+                  "아래 비트 가이드보다 이 구성 방식이 우선이다.\n" if shape else "")
     prompt = f"""당신은 웹소설 플롯 설계자다. 아래 기획을 바탕으로 {total}화 전체의 '회차별 전개'를 짜라.
 Save the Cat 15비트를 회차 진행률에 맞춰 배치하고, 반드시 고정된 결말로 수렴시켜라.
 
 [기획]
 {context}
 
+{shape_rule}
 [비트 배치 가이드 (진행률 기준)]
 {beats_guide}
 

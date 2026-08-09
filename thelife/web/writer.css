@@ -770,3 +770,17 @@ body.writer .wz-note-go { margin-left: 6px; padding: 4px 10px; border-radius: 8p
 .pl-ed { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
 .pl-ed .row2 { display: flex; gap: 8px; }
 .pl-ed .row2 button { flex: 1; }
+
+/* ── 아이콘 (이모지 대신 직접 그린 SVG — 기기·폰트에 상관없이 같게 보인다) ── */
+.ic { width: 20px; height: 20px; flex-shrink: 0; fill: none; stroke: currentColor;
+  stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+body.writer .top-ic { display: flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; padding: 0; border-radius: 12px; color: var(--text); }
+body.writer .icon-btn .ic { width: 19px; height: 19px; }
+body.writer .wk-plot { display: flex; align-items: center; justify-content: center; gap: 8px; }
+body.writer .wk-plot .ic { width: 18px; height: 18px; color: var(--accent); }
+body.writer .ch-new { display: flex; align-items: center; justify-content: center; gap: 8px; }
+body.writer .ch-new .ic { stroke: #fff; }
+.menu-body button { display: flex; align-items: center; gap: 11px; text-align: left; }
+.menu-body button .ic { color: var(--accent); }
+.menu-body button.danger .ic { color: var(--bad); }
