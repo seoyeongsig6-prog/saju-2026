@@ -424,6 +424,7 @@ async function showHome() {
   box.innerHTML = "";
   const works = d.works || [];
   $("#w-empty").classList.toggle("hidden", works.length > 0);
+  $("#w-new").textContent = works.length ? "새 작품 만들기" : "첫 작품 만들기";
   works.forEach((w) => {
     const el = document.createElement("button");
     el.className = "w-item";
