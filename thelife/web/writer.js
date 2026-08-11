@@ -817,8 +817,7 @@ function renderBible() {
   const bs = $("#brief-section");
   if (WORK.brief) {
     bs.classList.remove("hidden");
-    $("#brief-edit").value = WORK.brief;
-    $("#brief-view").innerHTML = briefHtml(WORK.brief);
+    renderBriefView();
   } else {
     bs.classList.add("hidden");
   }
@@ -847,17 +846,73 @@ function renderBible() {
   }).join("");
 }
 
-/* 작품 설명서를 읽기 좋게 — '## 제목' 단위로 접히는 카드로 */
-function briefHtml(txt) {
-  const parts = String(txt || "").split(/\n(?=##\s)/);
-  return parts.map((blk) => {
-    const m = blk.match(/^##\s*(.+)/);
-    const head = m ? m[1].trim() : "요약";
-    const body = (m ? blk.slice(m[0].length) : blk).trim();
-    if (!body) return "";
-    return `<details class="bv"><summary>${escapeHtml(head)}</summary>
-      <div>${escapeHtml(body).replace(/\n/g, "<br>")}</div></details>`;
-  }).join("");
+/* 작품 설명서 — 중복 원문 입력칸 없이, 접이식 항목 안에서 바로 편집한다. */
+function briefParts(txt) {
+  return String(txt || "").split(/\n(?=##\s)/).map((block) => {
+    const m = block.match(/^##\s*([^\n]+)/);
+    return {
+      hasHeading: !!m,
+      heading: m ? m[1].trim() : "작품 요약",
+      body: (m ? block.slice(m[0].length) : block).trim(),
+    };
+  }).filter((part) => part.heading || part.body);
+}
+
+function briefText(parts) {
+  return parts.map((part) => part.hasHeading
+    ? `## ${part.heading}\n${part.body}`.trim()
+    : part.body.trim()).filter(Boolean).join("\n\n");
+}
+
+function renderBriefView(openIndex = -1) {
+  const box = $("#brief-view");
+  if (!box) return;
+  const parts = briefParts(WORK.brief);
+  box.innerHTML = parts.map((part, idx) => `
+    <details class="bv" data-brief-index="${idx}"${idx === openIndex ? " open" : ""}>
+      <summary><span>${escapeHtml(part.heading)}</span>
+        <button class="brief-edit-btn" title="${escapeHtml(part.heading)} 수정" aria-label="${escapeHtml(part.heading)} 수정">${ICO.edit}</button>
+      </summary>
+      <div class="bv-body">${escapeHtml(part.body || "내용을 입력해 주세요.").replace(/\n/g, "<br>")}</div>
+    </details>`).join("");
+  box.querySelectorAll(".brief-edit-btn").forEach((btn) => {
+    btn.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      editBriefSection(Number(btn.closest(".bv").dataset.briefIndex));
+    };
+  });
+}
+
+function editBriefSection(index) {
+  const parts = briefParts(WORK.brief);
+  const part = parts[index];
+  const card = $("#brief-view").querySelector(`.bv[data-brief-index="${index}"]`);
+  if (!part || !card) return;
+  card.open = true;
+  card.classList.add("editing");
+  card.querySelector(".brief-edit-btn").classList.add("hidden");
+  card.querySelector(".bv-body").innerHTML = `
+    <div class="brief-inline-edit">
+      ${part.hasHeading ? '<input class="bie-heading" placeholder="항목 이름">' : ""}
+      <textarea class="bie-body" rows="7" placeholder="이 설정의 내용을 적어주세요."></textarea>
+      <div class="row2"><button class="primary bie-save">저장</button><button class="bie-cancel">취소</button></div>
+    </div>`;
+  if (part.hasHeading) card.querySelector(".bie-heading").value = part.heading;
+  card.querySelector(".bie-body").value = part.body;
+  card.querySelector(".bie-cancel").onclick = () => renderBriefView(index);
+  card.querySelector(".bie-save").onclick = async () => {
+    if (part.hasHeading) part.heading = card.querySelector(".bie-heading").value.trim() || part.heading;
+    part.body = card.querySelector(".bie-body").value.trim();
+    const brief = briefText(parts);
+    const r = await api(`/api/writer/works/${WORK.id}/brief`, {
+      method: "PUT", body: JSON.stringify({ brief }),
+    });
+    if (!r.ok) { notice(r.error || "저장하지 못했어요."); return; }
+    WORK.brief = brief;
+    renderBriefView(index);
+    notice("작품 설정을 저장했어요. 다음 집필부터 반영됩니다.");
+  };
 }
 
 /* ---------- 인물 관계도 (시각화) ---------- */
@@ -1055,17 +1110,6 @@ $("#bible-save-core").onclick = async () => {
   renderChapters();  // 총 회차 바뀌면 예정 회차 목록도 갱신
   notice("저장했어요. 이후 회차부터 반영됩니다.");
 };
-
-$("#brief-save").onclick = async () => {
-  const brief = $("#brief-edit").value;
-  const r = await api(`/api/writer/works/${WORK.id}/brief`, {
-    method: "PUT", body: JSON.stringify({ brief }),
-  });
-  if (!r.ok) { notice(r.error || "저장 실패"); return; }
-  WORK.brief = brief;
-  notice("설명서를 저장했어요. 이후 모든 회차가 이 내용을 절대 기준으로 씁니다.");
-};
-
 
 $("#wk-home").onclick = () => showHome();
 $("#wk-menu").onclick = () => openMenu("work");

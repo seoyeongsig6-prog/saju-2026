@@ -594,9 +594,9 @@ body.has-ad .wz-foot { bottom: calc(56px + env(safe-area-inset-bottom, 0px)); }
 }
 .brief-upload b { color: var(--accent); font-size: 15px; }
 .brief-upload input[type=file] { padding: 11px; font-size: 13px; }
-.brief-view { background: var(--panel); border: 1px solid var(--accent); border-radius: 12px;
-  padding: 13px 15px; margin-bottom: 10px; box-shadow: var(--shadow-sm); }
-.brief-view summary { cursor: pointer; color: var(--accent); font-size: 13px; font-weight: 600; }
+.brief-view { margin-bottom: 12px; }
+.brief-view summary { cursor: pointer; color: var(--text); font-size: 14px; font-weight: 700;
+  padding-right: 54px; }
 #brief-body { margin-top: 10px; font-size: 12.5px; color: var(--dim); white-space: pre-line;
   line-height: 1.85; max-height: 50vh; overflow-y: auto; }
 
@@ -767,12 +767,22 @@ body.writer .wz-note-go { margin-left: 6px; padding: 4px 10px; border-radius: 8p
 .bible-outline-empty { margin: 0 0 12px; }
 
 /* 작품 설정 — 설명서를 접어서 본다 */
-.brief-view { margin-bottom: 12px; }
 .bv { margin-bottom: 8px; border: 1px solid var(--line); border-radius: 12px;
-  background: var(--panel); overflow: hidden; }
+  background: var(--panel); overflow: hidden; position: relative; }
 .bv summary { padding: 13px 15px; font-size: 14px; font-weight: 700; cursor: pointer; }
-.bv > div { padding: 0 15px 14px; color: var(--dim); font-size: 13px; line-height: 1.85;
+.bv > .bv-body { padding: 0 15px 14px; color: var(--dim); font-size: 13px; line-height: 1.85;
   overflow-wrap: anywhere; }
+.brief-edit-btn { position: absolute; top: 5px; right: 7px; width: 38px; height: 38px;
+  display: grid; place-items: center; padding: 0; border: 0; border-radius: 10px;
+  background: transparent; color: var(--text); }
+.brief-edit-btn:hover, .brief-edit-btn:focus-visible { background: var(--panel2); }
+.brief-edit-btn .ic { width: 20px; height: 20px; stroke-width: 2.2; }
+.brief-inline-edit { display: flex; flex-direction: column; gap: 8px; padding-top: 2px; }
+.brief-inline-edit input, .brief-inline-edit textarea { width: 100%; }
+.brief-inline-edit textarea { min-height: 150px; resize: vertical; line-height: 1.75; }
+.brief-inline-edit .row2 { display: flex; gap: 8px; }
+.brief-inline-edit .row2 button { flex: 1; }
+.bv.editing summary { border-bottom: 1px solid var(--line-soft); margin-bottom: 12px; }
 
 /* 기억하기 — 삭제 표시와 글이 겹치지 않게 */
 .canon-list .canon-row { display: flex; align-items: flex-start; gap: 10px;
