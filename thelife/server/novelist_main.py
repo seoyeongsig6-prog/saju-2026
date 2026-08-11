@@ -3,12 +3,17 @@
 기존 The Life 게임 API와 화면을 전혀 등록하지 않는다. 판매 서비스는 이 모듈로
 시작하고, 게임 서비스만 ``server.main``을 계속 사용한다.
 """
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+
+# 이 진입점을 사용한 경우에는 Render 환경변수 설정 여부와 관계없이
+# 판매용 기능 경계를 먼저 확정한 뒤 writer 모듈을 불러온다.
+os.environ.setdefault("WRITER_LAUNCH_MODE", "1")
 
 from . import db, writer
 
