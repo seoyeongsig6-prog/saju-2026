@@ -51,12 +51,15 @@ let WORK = null, CHAPTER = null;
    body.nobody = 'AI가 본문을 대신 써주는' 기능 없음 → 그 UI만 숨긴다.
                  작가가 직접 쓰는 에디터는 모든 등급에서 항상 열려 있다(핵심 기능).
    body.nopen  = 펜(소모성 재화)을 안 쓰는 빌드 → 펜 잔액·충전 UI 숨김. */
-let LAUNCH = true, TIER = "free", LIMITS = null, TIERS_INFO = null, EXPIRES = null;
+let LAUNCH = true, DEMO_MODE = false, AI_CONNECTED = false;
+let TIER = "free", LIMITS = null, TIERS_INFO = null, EXPIRES = null;
 let AI_BODY = false, PENS = 0, PEN_NEEDED = false, PEN_PACKS = [];
-(async () => {
+const CONFIG_READY = (async () => {
   try {
     const cfg = await api("/api/writer/config");
     LAUNCH = !!(cfg && cfg.launch_mode);
+    DEMO_MODE = !!(cfg && cfg.demo_mode);
+    AI_CONNECTED = !!(cfg && cfg.ai_connected);
     AI_BODY = !!(cfg && cfg.ai_body);
     document.body.classList.toggle("launch", LAUNCH);
     document.body.classList.toggle("nobody", !AI_BODY);
@@ -65,6 +68,7 @@ let AI_BODY = false, PENS = 0, PEN_NEEDED = false, PEN_PACKS = [];
       TIER = cfg.tier || "free"; LIMITS = cfg.limits; TIERS_INFO = cfg.tiers; EXPIRES = cfg.expires_at;
       PENS = cfg.pens || 0; PEN_NEEDED = !!cfg.pen_needed; PEN_PACKS = cfg.pen_packs || [];
       if (cfg.sample) SAMPLE = cfg.sample;
+      if (DEMO_MODE) $("#btn-settings").textContent = "미리보기";
     }
     Ads.refresh();
     renderPenBar();
@@ -103,8 +107,7 @@ $("#btn-export").onclick = async () => {
   notice(`내 데이터(작품 ${(d.works || []).length}개)를 내려받았어요.`);
 };
 $("#btn-delacc").onclick = async () => {
-  if (!confirm("정말 모든 작품과 데이터를 영구 삭제할까요?\n되돌릴 수 없습니다.")) return;
-  if (!confirm("마지막 확인 — 정말 삭제합니다.")) return;
+  if (!await askAction("모든 작품과 데이터를 삭제할까요?\n삭제한 데이터는 되돌릴 수 없습니다.", "모두 삭제", "취소")) return;
   const r = await api("/api/writer/account", { method: "DELETE" });
   if (!r || !r.ok) { notice("삭제에 실패했어요. 잠시 후 다시 시도해 주세요."); return; }
   notice("모든 데이터를 삭제했어요.");
@@ -118,11 +121,12 @@ function renderSettingsPlan() {
   const L = LIMITS;
   const works = L.max_works >= 100000 ? "무제한" : L.max_works + "개";
   const expTxt = EXPIRES ? ` <span class="plan-exp">~${String(EXPIRES).slice(0, 10)}까지</span>` : "";
+  const sample = L.sample_daily ? `본문 예시 ${L.sample_daily}회/일` : "본문 예시 없음";
   bar.innerHTML = `
     <div class="plan-now">현재 플랜 <b>${L.label}</b>${expTxt}
-      <span class="plan-lim">AI 회차 ${L.max_chapters}화 · 화당 ${L.syn_chars}자 · 인물 ${L.max_characters}명 · 작품 ${works}${L.style_learning ? " · 문체학습" : ""}</span></div>
+      <span class="plan-lim">AI 회차 설계 ${L.max_chapters}화 · 화당 ${L.syn_chars}자 · 인물 ${L.max_characters}명 · 작품 ${works} · ${sample}</span></div>
     <button class="plan-upgrade" id="see-plans">구독 플랜 보기 · 변경</button>`;
-  $("#see-plans").onclick = showPlans;
+  $("#see-plans").onclick = () => showPlans("settings");
 }
 
 /* ---------- 구독 플랜 비교 화면 ---------- */
@@ -149,7 +153,23 @@ const IC = {
 function _feat(icon, label, val, off) {
   return `<li class="${off ? "off" : ""}">${icon}<span>${label}</span><b>${val}</b></li>`;
 }
-function showPlans() { view("w-plans"); renderPlans(); }
+let PLAN_BACK = "settings";
+function showPlans(from) {
+  PLAN_BACK = from || "settings";
+  view("w-plans");
+  $("#plans-hint").textContent = PLAN_BACK === "plot"
+    ? "1,000자 본문 예시는 라이트 플랜부터 사용할 수 있어요."
+    : "작품 규모와 필요한 AI 도움에 맞춰 선택하세요.";
+  renderPlans();
+}
+function leavePlans() {
+  if (PLAN_BACK === "plot" && WORK) showPlot(PLOT_OPEN);
+  else if (PLAN_BACK === "wizard" && WZ) { view("w-wizard"); wzRender(); }
+  else if (PLAN_BACK === "work" && WORK) openWork(WORK.id);
+  else if (PLAN_BACK === "home") showHome();
+  else showSettings();
+}
+$("#plans-back").onclick = leavePlans;
 function renderPlans() {
   const box = $("#plans-list");
   if (!box || !TIERS_INFO) return;
@@ -165,7 +185,9 @@ function renderPlans() {
       _feat(IC.pen, "화당 줄거리", P.syn_chars + "자"),
       _feat(IC.users, "AI 인물 생성", P.max_characters + "명"),
       _feat(IC.stack, "작품 수", works),
-      _feat(IC.write, "직접 쓰기 · 집필 가이드", "✓"),
+      _feat(IC.write, "직접 본문 쓰기", "무제한"),
+      _feat(IC.book, "회차별 집필 가이드", "포함"),
+      _feat(IC.spark, "본문 예시 · 약 1,000자", P.sample_daily ? `하루 ${P.sample_daily}회` : "—", !P.sample_daily),
       P.ai_daily ? _feat(IC.spark, "하루 AI 사용", P.ai_daily + "회") : "",
       anyStyle ? _feat(IC.spark, "문체 학습", P.style_learning ? "✓" : "—", !P.style_learning) : "",
       anyBody ? _feat(IC.pen, "AI 본문 대행", P.body_writing ? "✓" : "—", !P.body_writing) : "",
@@ -271,7 +293,13 @@ const Ads = {
     // 네이티브: AdMob.showInterstitial();
   },
 };
-$("#ad-upsell").onclick = () => { showHome(); notice("라이트·프로 요금제로 올리면 광고가 사라지고 더 많은 회차·인물을 생성할 수 있어요."); };
+$("#ad-upsell").onclick = () => {
+  const open = ["w-wizard", "w-plot", "w-work", "w-home", "w-settings"]
+    .find((id) => !$("#" + id).classList.contains("hidden"));
+  const from = ({ "w-wizard": "wizard", "w-plot": "plot", "w-work": "work",
+                  "w-home": "home", "w-settings": "settings" })[open] || "settings";
+  showPlans(from);
+};
 
 /* ---------- 테마 (밝게/어둡게 — 기본 밝게, 설정 화면에서 전환) ---------- */
 function applyTheme(t) {
@@ -293,7 +321,26 @@ function view(id) {
   ["w-home", "w-settings", "w-plans", "w-pens", "w-wizard", "w-build", "w-work", "w-plot", "w-editor"]
     .forEach((v) =>
     $(`#${v}`).classList.toggle("hidden", v !== id));
+  const focus = ["w-wizard", "w-build", "w-editor"].includes(id);
+  document.body.classList.toggle("focus-mode", focus);
+  const active = ({ "w-home": "home", "w-work": "home", "w-plot": "home",
+                    "w-settings": "settings", "w-plans": "plans", "w-pens": "settings" })[id] || "";
+  document.querySelectorAll("#app-nav [data-nav]").forEach((b) => {
+    const on = b.dataset.nav === active;
+    b.classList.toggle("active", on);
+    if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+  });
 }
+
+document.querySelectorAll("#app-nav [data-nav]").forEach((b) => {
+  b.onclick = () => {
+    const to = b.dataset.nav;
+    if (to === "home") { showHome(); return; }
+    if (to === "new") { startWizard(); return; }
+    if (to === "plans") { showPlans("home"); return; }
+    if (to === "settings") { showSettings(); return; }
+  };
+});
 
 /* ---------- 펜 충전 화면 ---------- */
 function showPens() { view("w-pens"); renderPens(); }
@@ -346,19 +393,25 @@ function notice(t) {
   $("#notice-undo").classList.add("hidden");
   $("#notice").classList.remove("hidden");
 }
-/* 삭제 후 되돌리기 — onUndo를 실행하는 버튼이 함께 뜬다 */
-function noticeUndo(t, onUndo) {
-  $("#notice-text").textContent = t;
-  const u = $("#notice-undo");
-  u.classList.remove("hidden");
-  u.onclick = async () => {
-    u.classList.add("hidden");
-    $("#notice").classList.add("hidden");
-    await onUndo();
-  };
-  $("#notice").classList.remove("hidden");
-}
 $("#notice-close").onclick = () => $("#notice").classList.add("hidden");
+function askAction(text, okLabel = "확인", cancelLabel = "취소") {
+  return new Promise((resolve) => {
+    const modal = $("#action-confirm");
+    const ok = $("#action-confirm-ok");
+    const cancel = $("#action-confirm-cancel");
+    $("#action-confirm-text").textContent = text;
+    ok.textContent = okLabel;
+    cancel.textContent = cancelLabel;
+    const finish = (answer) => {
+      modal.classList.add("hidden");
+      ok.onclick = null; cancel.onclick = null;
+      resolve(answer);
+    };
+    ok.onclick = () => finish(true);
+    cancel.onclick = () => finish(false);
+    modal.classList.remove("hidden");
+  });
+}
 function busy(t) { $("#busy-text").textContent = t; $("#busy").classList.remove("hidden"); }
 function unbusy() { $("#busy").classList.add("hidden"); }
 
@@ -373,8 +426,12 @@ async function showHome() {
   works.forEach((w) => {
     const el = document.createElement("button");
     el.className = "w-item";
-    el.innerHTML = `<span class="del" data-id="${w.id}">✕</span><b>${w.title}</b>
-      <small>${w.genre} · ${w.written}/${w.total_chapters}화</small>`;
+    const pct = Math.min(100, Math.round((w.written / Math.max(1, w.total_chapters)) * 100));
+    el.innerHTML = `<span class="del" data-id="${w.id}" aria-label="작품 삭제">✕</span>
+      <span class="work-copy"><small>${escapeHtml(w.genre)}</small><b>${escapeHtml(w.title)}</b>
+      <span class="work-progress"><i style="width:${pct}%"></i></span>
+      <em>${w.written}/${w.total_chapters}화 집필 · ${pct}%</em></span>
+      <span class="work-enter">이어 쓰기</span>`;
     el.onclick = (ev) => {
       if (ev.target.classList.contains("del")) return delWork(w.id, w.title);
       openWork(w.id);
@@ -383,17 +440,10 @@ async function showHome() {
   });
 }
 async function delWork(id, title) {
-  if (!confirm(`『${title}』을(를) 삭제할까요?`)) return;
+  if (!await askAction(`『${title}』 작품을 삭제할까요?`, "삭제", "취소")) return;
   const r = await api(`/api/writer/works/${id}`, { method: "DELETE" });
+  if (!r || !r.ok) { notice((r && r.error) || "삭제하지 못했어요."); return; }
   await showHome();
-  if (r && r.undo) {
-    noticeUndo(`『${title}』을(를) 삭제했어요.`, async () => {
-      const rr = await api(`/api/writer/trash/${r.undo}/restore`, { method: "POST" });
-      if (!rr.ok) { notice(rr.error || "되돌리기 실패"); return; }
-      await showHome();
-      notice("되돌렸어요.");
-    });
-  }
 }
 /* ---------- 새 작품 = 작품설명서 빌더로 바로 ---------- */
 const bdVal = (id) => $("#" + id).value.trim();
@@ -456,17 +506,10 @@ const readOutlineRow = (r) => ({
   no: Number(r.querySelector(".o-no").value) || "", title: r.querySelector(".o-title").value,
   content: r.querySelector(".o-content").value,
 });
-function removeRowUndo(el, boxId, reader, adder, label) {
-  const box = $(boxId);
-  const idx = [...box.children].indexOf(el);
-  const data = reader(el);
+async function removeRowConfirm(el, label) {
+  if (!await askAction(`이 ${label} 항목을 삭제할까요?`, "삭제", "취소")) return false;
   el.remove();
-  noticeUndo(`${label}을(를) 삭제했어요.`, () => {
-    adder(data);
-    const added = box.lastElementChild;
-    const ref = box.children[idx];
-    if (ref && ref !== added) box.insertBefore(added, ref);
-  });
+  return true;
 }
 
 function bdAddChar(d = {}) {
@@ -490,7 +533,7 @@ function bdAddChar(d = {}) {
   el.querySelector(".c-secret").value = d.secret || "";
   wireOther(el.querySelector(".c-role"), el.querySelector(".c-role-other"));
   wireOther(el.querySelector(".c-rel"), el.querySelector(".c-rel-other"));
-  el.querySelector(".row-del").onclick = () => removeRowUndo(el, "#bd-chars", readChar, bdAddChar, "인물");
+  el.querySelector(".row-del").onclick = () => removeRowConfirm(el, "인물");
   $("#bd-chars").appendChild(el);
 }
 
@@ -501,7 +544,7 @@ function bdAddCanon(d = {}) {
     <div class="row2"><input class="cn-name" placeholder="이름"><input class="cn-desc" placeholder="설명 (선택)"></div>`;
   el.querySelector(".cn-name").value = d.name || "";
   el.querySelector(".cn-desc").value = d.desc || "";
-  el.querySelector(".row-del").onclick = () => removeRowUndo(el, "#bd-canon", readCanonRow, bdAddCanon, "고유명사");
+  el.querySelector(".row-del").onclick = () => removeRowConfirm(el, "고유명사");
   $("#bd-canon").appendChild(el);
 }
 
@@ -514,7 +557,7 @@ function bdAddOutline(d = {}) {
   el.querySelector(".o-no").value = d.no || "";
   el.querySelector(".o-title").value = d.title || "";
   el.querySelector(".o-content").value = d.content || "";
-  el.querySelector(".row-del").onclick = () => removeRowUndo(el, "#bd-outline", readOutlineRow, bdAddOutline, "회차");
+  el.querySelector(".row-del").onclick = () => removeRowConfirm(el, "회차");
   $("#bd-outline").appendChild(el);
 }
 
@@ -620,8 +663,8 @@ async function bdDraft() {
 }
 
 $("#bd-ai-draft").onclick = bdDraft;
-$("#bd-ai-redraft").onclick = () => {
-  if (!confirm("주인공·인물·세계관·문체 등 AI가 채운 부분을 비우고 처음부터 다시 생성할까요?\n(로그라인·결말·문체 표본은 그대로 둡니다)")) return;
+$("#bd-ai-redraft").onclick = async () => {
+  if (!await askAction("AI가 채운 내용을 비우고 처음부터 다시 만들까요?\n로그라인·결말·문체 표본은 유지됩니다.", "다시 만들기", "취소")) return;
   bdResetGenerated();
   bdDraft();
 };
@@ -632,7 +675,7 @@ $("#bd-ai-outline").onclick = async () => {
     notice("회차 전개를 짜려면 로그라인·세계관·결말 중 하나는 채워주세요."); return;
   }
   if ($("#bd-outline").children.length &&
-      !confirm("이미 짜둔 회차 전개를 지우고 새로 생성할까요?")) return;
+      !await askAction("이미 만든 회차 전개를 지우고 새로 만들까요?", "다시 만들기", "취소")) return;
   busy(`AI가 ${b.total_chapters}화 전개를 짜는 중… (30초~1분)`);
   const r = await api("/api/writer/brief/outline", { method: "POST", body: JSON.stringify(b) });
   unbusy();
@@ -672,7 +715,8 @@ async function openWork(id) {
   view("w-work");
   $("#wk-title").textContent = "작품";
   $("#wk-name").textContent = WORK.title;
-  $("#wk-progress").textContent = `${d.chapters.length}/${WORK.total_chapters}화`;
+  const written = d.chapters.filter((ch) => (ch.chars || 0) > 0).length;
+  $("#wk-progress").textContent = `${written}/${WORK.total_chapters}화 집필`;
   renderChapters();
   renderBible();
   renderPenBar();
@@ -693,7 +737,7 @@ const escapeHtml = (s) => (s || "").replace(/[&<>"]/g,
 function renderChapters() {
   const box = $("#ch-list");
   box.innerHTML = "";
-  const written = WORK.chapters.length;
+  const written = WORK.chapters.filter((ch) => (ch.chars || 0) > 0).length;
   if (!written) {
     box.innerHTML = `<p class="hint">아직 쓴 회차가 없어요. 회차별 줄거리는 위 '줄거리 / 가이드 보기'에서 보고 고칠 수 있어요.<br>
       아래 '1화 쓰기'를 누르면 줄거리와 집필 가이드를 옆에 두고 바로 쓸 수 있어요.</p>`;
@@ -920,18 +964,11 @@ function renderCanon() {
     row.innerHTML = `<span class="cn-t"><b>${escapeHtml(k)}</b>${canon[k] ? ` — ${escapeHtml(canon[k])}` : ""}</span>
       <button class="del" title="삭제">✕</button>`;
     row.querySelector(".del").onclick = async () => {
-      const val = canon[k];
-      await api(`/api/writer/works/${WORK.id}/canon/${encodeURIComponent(k)}`, { method: "DELETE" });
+      if (!await askAction(`'${k}' 항목을 삭제할까요?`, "삭제", "취소")) return;
+      const r = await api(`/api/writer/works/${WORK.id}/canon/${encodeURIComponent(k)}`, { method: "DELETE" });
+      if (!r || !r.ok) { notice((r && r.error) || "삭제하지 못했어요."); return; }
       delete WORK.canon[k];
       renderCanon();
-      noticeUndo(`'${k}'을(를) 사전에서 지웠어요.`, async () => {
-        const r = await api(`/api/writer/works/${WORK.id}/canon`, {
-          method: "POST", body: JSON.stringify({ name: k, value: val }),
-        });
-        if (!r.ok) { notice(r.error || "되돌리기 실패"); return; }
-        WORK.canon = r.canon;
-        renderCanon();
-      });
     };
     box.appendChild(row);
   });
@@ -1079,11 +1116,11 @@ function wzOpen(wz) {
   else if (WZ.phase === "outline") { renderWzOutline(); wzGo("outline"); }
   else { WZ.phase = "form"; wzRender(); }
 }
-function startWizard() {
+async function startWizard() {
   const prev = wzSaved();
   if (prev) {
     const step = (prev.phase === "form") ? `${Math.min(prev.i + 1, WZ_SPEC.length)}단계` : "확인 단계";
-    if (confirm(`설정하던 작품이 있어요 (${step}).\n이어서 하시겠어요?\n\n[취소]를 누르면 처음부터 새로 시작해요.`)) {
+    if (await askAction(`설정하던 작품이 있어요 (${step}).\n이어서 하시겠어요?`, "이어서 하기", "새로 시작")) {
       wzOpen(prev); return;
     }
     wzClear();
@@ -1119,14 +1156,21 @@ function wzRender() {
   $("#wz-kicker").textContent = (s.group ? s.group + " · " : "") +
     (s.n ? `${s.n}번` : "기본");
   $("#wz-title").textContent = s.title;
-  $("#wz-sub").textContent = s.sub ||
-    (s.kind ? "" : (s.pick === 0 ? "여러 개 고를 수 있어요."
-      : s.pick > 1 ? `최대 ${s.pick}개까지 고를 수 있어요.` : "하나만 고르세요."));
+  const sub = s.sub || (s.kind ? "" : (s.pick === 0 ? "여러 개 고를 수 있어요."
+    : s.pick > 1 ? `최대 ${s.pick}개까지 고를 수 있어요.` : "하나만 고르세요."));
+  $("#wz-sub").textContent = sub;
+  $("#wz-sub").classList.remove("cast-summary");
+  $("#wz-sub").classList.toggle("hidden", !sub);
   // 진행 표시 (전체 단계 대비)
-  const prog = Math.round(((WZ.i + 1) / wzStepCount()) * 4);
-  document.querySelectorAll("#w-wizard .wz-dot").forEach((d) =>
-    d.classList.toggle("on", +d.dataset.s <= Math.max(1, prog)));
-  $("#wz-count").textContent = `${WZ.i + 1}/${wzStepCount()}`;
+  const stageOf = (x) => x.kind === "text" ? 1 : x.kind === "cast" ? 3
+    : x.group === "스토리 방식" ? 4 : 2;
+  const stage = stageOf(s);
+  const peers = WZ_SPEC.filter((x) => stageOf(x) === stage);
+  const within = peers.indexOf(s) + 1;
+  document.querySelectorAll("#w-wizard .wz-steps > span").forEach((d) =>
+    d.classList.toggle("on", +d.dataset.s <= stage));
+  $("#wz-count").textContent = `${within}/${peers.length}`;
+  $("#wz-kicker").textContent = ["작품의 뼈대", "분위기와 문체", "등장인물", "이야기 구조"][stage - 1];
   const box = $("#wz-step-body");
   box.innerHTML = "";
   WZ.paints = {};                     // 지운 화면의 옛 갱신함수는 버린다
@@ -1151,16 +1195,6 @@ window.addEventListener("resize", wzPad);
 function wzBar(prevFn, nextLabel, nextFn, ai) {
   const foot = $("#wz-foot");
   foot.innerHTML = "";
-  const row = document.createElement("div");
-  row.className = "wz-row";
-  const prev = document.createElement("button");
-  prev.className = "btn-prev"; prev.textContent = "← 이전";
-  prev.onclick = prevFn || (() => wzBackStep());
-  const next = document.createElement("button");
-  next.className = "btn-main"; next.textContent = nextLabel;
-  next.onclick = nextFn;
-  row.appendChild(prev); row.appendChild(next);
-  foot.appendChild(row);
   if (ai) {
     const b = document.createElement("button");
     b.className = "btn-ghost2"; b.textContent = ai.label; b.onclick = ai.fn;
@@ -1171,18 +1205,29 @@ function wzBar(prevFn, nextLabel, nextFn, ai) {
       foot.appendChild(h);
     }
   }
+  const row = document.createElement("div");
+  row.className = "wz-row";
+  const prev = document.createElement("button");
+  prev.className = "btn-prev"; prev.textContent = "‹";
+  prev.setAttribute("aria-label", "이전");
+  prev.onclick = prevFn || (() => wzBackStep());
+  const next = document.createElement("button");
+  next.className = "btn-main"; next.textContent = nextLabel.replace(/\s*→$/, "");
+  next.onclick = nextFn;
+  row.appendChild(prev); row.appendChild(next);
+  foot.appendChild(row);
   wzPad();
 }
 function wzFoot(s) {
   const last = WZ.i >= wzStepCount() - 1;
   let ai = null;
   if (s.kind === "text") {
-    ai = { label: "나머지는 AI에게 맡기기", fn: wzAutoAll,
+    ai = { label: "AI로 나머지 채우기", fn: wzAutoAll,
            hint: "장르부터 인물·플롯까지 AI가 정합니다. 만든 뒤에 하나씩 고칠 수 있어요." };
   } else if (s.kind === "cast") {
-    ai = { label: "AI가 모든 인물 만들기", fn: wzCastAll };
+    ai = { label: "AI로 모든 인물 만들기", fn: wzCastAll };
   } else if (s.opts) {
-    ai = { label: `AI가 ${s.title} 정하기`, fn: () => wzSuggest(s) };
+    ai = { label: `AI로 ${s.title} 고르기`, fn: () => wzSuggest(s) };
   }
   wzBar(null, last ? "이대로 만들기" : "다음 →",
         () => { if (last) wzGenerate(); else { WZ.i++; wzRender(); } }, ai);
@@ -1198,18 +1243,32 @@ function wzBackStep() {
   WZ.live = false; wzSave(); WZ = null;
   showHome();
 }
-/* 인물 전체를 AI에게 — 이름만 있으면 나머지 항목을 한 번에 채운다 */
+/* 주인공부터 요금제에서 제공하는 인원수까지 한 번에 만든다 */
 async function wzCastAll() {
-  const named = WZ.cast.filter((c) => (c.name || "").trim());
-  if (!named.length) { notice("인물 이름을 먼저 하나 이상 적어 주세요."); return; }
-  for (const c of named) {
-    for (const cs of WZ_CAST_SPEC) {
-      if ((c.sel[cs.id] || []).length || c.other[cs.id]) continue;
-      await wzSuggest(cs, c.sel, true);
-    }
+  const hasCast = WZ.cast.some((c) => (c.name || "").trim() ||
+    Object.values(c.sel || {}).some((values) => Array.isArray(values) && values.length) ||
+    Object.values(c.other || {}).some((value) => String(value || "").trim()));
+  if (hasCast && !await askAction("현재 인물 설정을 AI가 만든 인물진으로 바꿀까요?", "모든 인물 만들기", "취소")) return;
+  const specs = WZ_CAST_SPEC.map((cs) => ({ id: cs.id, question: cs.title,
+    options: (cs.opts || []).map((o) => typeof o === "string" ? o : o.v),
+    pick: cs.pick === 0 ? 3 : (cs.pick || 1) }));
+  busy("주인공과 등장인물을 만드는 중…");
+  const r = await api("/api/writer/brief/cast-fill", { method: "POST",
+    body: JSON.stringify({ context: wzContext(), create_all: true, specs }) });
+  unbusy();
+  if (!r.ok) {
+    notice((r.error || "인물 설정을 채우지 못했어요.") + (r.detail ? `\n\n${r.detail}` : ""));
+    return;
   }
+  const made = (r.characters || []).filter((row) => row && row.name).map((row) => ({
+    name: row.name, age: row.age || "", description: row.description || "",
+    sel: row.fields || {}, other: {}, detail: {},
+  }));
+  if (!made.length) { notice("인물을 만들지 못했어요. 다시 시도해 주세요."); return; }
+  WZ.cast = made;
+  WZ.castOpen = -1;
+  wzSave();
   wzRender();
-  notice("인물 설정을 채웠어요. 각 인물을 열어 고칠 수 있어요.");
 }
 /* 남은 단계를 건너뛰고 바로 만든다 — 고른 게 있으면 그대로 살려서 쓴다 */
 function wzAutoAll() {
@@ -1241,10 +1300,25 @@ function wzRenderText(box, s) {
     b.className = "chip" + (WZ.total === n ? " on" : "");
     b.textContent = `${n}화`;
     // 그 자리에서 표시만 바꾼다 (다시 그리면 스크롤이 위로 튄다)
-    b.onclick = () => { WZ.total = n; tb.forEach((x) => x.el.classList.toggle("on", x.n === n)); wzSave(); };
+    b.onclick = () => {
+      WZ.total = n;
+      tb.forEach((x) => x.el.classList.toggle("on", x.n === n));
+      updateLimitHelp();
+      wzSave();
+    };
     tb.push({ el: b, n });
     tc.appendChild(b);
   });
+  const cap = (LIMITS && LIMITS.max_chapters) || 0;
+  const help = document.createElement("p");
+  help.className = "wz-limit-help";
+  const updateLimitHelp = () => {
+    help.innerHTML = WZ.total > cap
+      ? `현재 <b>${escapeHtml(LIMITS.label)}</b> 플랜은 AI 회차 설계를 <b>${cap}화까지</b> 제공합니다. 나머지 회차는 직접 설계할 수 있어요.`
+      : `현재 플랜에서 ${WZ.total}화까지 AI 회차 설계를 이용할 수 있어요.`;
+  };
+  updateLimitHelp();
+  t.appendChild(help);
 }
 /* ── 보기 고르기 (칩 또는 설명 카드) ── */
 function wzRenderPick(box, s, sel, other, detail, key) {
@@ -1322,14 +1396,19 @@ async function wzSuggest(s, target, quiet) {
       pick: s.pick === 0 ? 3 : (s.pick || 1), context: wzContext() }),
   });
   if (!quiet) unbusy();
-  if (!r.ok) { if (!quiet) notice(r.error || "추천을 받지 못했어요."); return; }
+  if (!r.ok) {
+    const message = (r.error || "추천을 받지 못했어요.") + (r.detail ? `\n\n${r.detail}` : "");
+    if (!quiet) notice(message);
+    return { ok: false, error: message };
+  }
   (target || WZ.sel)[s.id] = r.picked;
   wzSave();
-  if (quiet) return;
+  if (quiet) return { ok: true, demo: !!r.demo };
   // 표시만 그 자리에서 갱신 (화면을 다시 그리지 않아 보던 위치가 유지된다)
   if (WZ.paints[s.id]) WZ.paints[s.id]();
   else if (target) wzRenderCastDetail(); else wzRender();
   if (r.reason) notice(`AI 추천: ${r.picked.join(", ")}\n\n${r.reason}`);
+  return { ok: true, demo: !!r.demo };
 }
 
 /* ── 인물 설정 ── */
@@ -1342,16 +1421,16 @@ function wzRenderCast(box, s) {
     el.className = "cast-row";
     const done = WZ_CAST_SPEC.filter((cs) => (c.sel[cs.id] || []).length || c.other[cs.id]).length;
     el.innerHTML = `<div class="cast-main">
-        <b class="cast-nm">${escapeHtml(c.name || "이름 없음")}</b>
-        <span class="cast-meta">${escapeHtml([c.age, wzCastRole(c)].filter(Boolean).join(" · ") || "기본 정보를 채워 주세요")}</span>
-        <span class="cast-done">${done}/${WZ_CAST_SPEC.length} 항목</span>
+        <div class="cast-name-row"><b class="cast-nm">${escapeHtml(c.name || "새 인물")}</b>
+          <span class="cast-done">${done} / ${WZ_CAST_SPEC.length}</span></div>
+        <span class="cast-meta">${escapeHtml([c.age, wzCastRole(c)].filter(Boolean).join(" · ") || "이름과 역할을 정해 주세요")}</span>
       </div>
-      <button class="cast-more">자세히 ›</button>
-      <button class="cast-del" title="삭제">✕</button>`;
+      <button class="cast-more">설정</button>
+      <button class="cast-del" title="삭제" aria-label="인물 삭제">✕</button>`;
     el.querySelector(".cast-more").onclick = () => { WZ.castOpen = i; wzRender(); };
-    el.querySelector(".cast-del").onclick = () => {
-      removeRowUndo(el, ".cast-list", () => c, () => {}, "인물");
-      WZ.cast.splice(i, 1); wzRender();
+    el.querySelector(".cast-del").onclick = async () => {
+      if (!await askAction(c.name ? `'${c.name}' 인물을 삭제할까요?` : "이 인물을 삭제할까요?", "삭제", "취소")) return;
+      WZ.cast.splice(i, 1); wzSave(); wzRender();
     };
     list.appendChild(el);
   });
@@ -1359,7 +1438,11 @@ function wzRenderCast(box, s) {
   const add = document.createElement("button");
   add.className = "btn-ghost2";
   add.textContent = "＋ 인물 추가";
-  add.onclick = () => { WZ.cast.push({ name: "", age: "", sel: {}, other: {}, detail: {} }); wzRender(); };
+  add.onclick = () => {
+    WZ.cast.push({ name: "", age: "", sel: {}, other: {}, detail: {} });
+    WZ.castOpen = WZ.cast.length - 1;
+    wzRender();
+  };
   box.appendChild(add);
 }
 /* 역할(관계)은 10번 항목에서 고른 값 */
@@ -1369,15 +1452,45 @@ function wzCastRole(c) {
   if (c.other[k]) a.push(c.other[k]);
   return a.join(", ");
 }
+function wzLocalCastSummary(c) {
+  const pick = (id, fallback) => {
+    const values = (c.sel[id] || []).slice();
+    if (c.other[id]) values.push(c.other[id]);
+    return values.join(", ") || fallback;
+  };
+  const name = (c.name || "이 인물").trim();
+  const role = pick("role", "등장인물");
+  const personality = pick("personality", "자신만의 성격");
+  const want = pick("want", "자신의 목표");
+  const fear = pick("fear", "실패");
+  const secret = pick("secret", "감춰 둔 사정");
+  const facade = pick("facade", "겉으로 드러나는 모습");
+  const truth = pick("truth", "내면의 실제 모습");
+  const title = (WZ.basic.title || "이 작품").trim();
+  const logline = (WZ.basic.logline || "").trim();
+  if (!(c.name || "").trim() || !wzCastRole(c)) return "";
+  return `${name}, 『${title}』에서 ${role} 역할로 움직이는 캐릭터입니다. ` +
+    `${logline ? `‘${logline}’라는 중심 사건 속에서 ` : "작품의 중심 사건 속에서 "}` +
+    `가장 원하는 것은 ${want}이고 가장 두려운 것은 ${fear}이라 중요한 선택 앞에서 흔들립니다. ` +
+    `${personality} 성향은 다른 인물과의 충돌과 뜻밖의 결정을 만듭니다. ` +
+    `겉으로는 ${facade}처럼 보이지만 실제로는 ${truth}에 가깝습니다. 숨긴 비밀은 ${secret}이며, ` +
+    `이 비밀이 이야기의 방향을 바꿉니다.`;
+}
 function wzRenderCastDetail(box) {
   box = box || $("#wz-step-body");
   box.innerHTML = "";
   WZ.paints = {};
   const c = WZ.cast[WZ.castOpen];
   if (!c) { WZ.castOpen = -1; wzRender(); return; }
-  $("#wz-kicker").textContent = "인물 · 자세히";
+  if (!c.description) {
+    c.description = wzLocalCastSummary(c);
+    if (c.description) wzSaveSoon();
+  }
+  $("#wz-kicker").textContent = "인물 설정";
   $("#wz-title").textContent = c.name || "이 인물";
-  $("#wz-sub").textContent = "이름·나이·역할을 먼저 정하고, 나머지는 골라 주세요.";
+  $("#wz-sub").textContent = c.description || "";
+  $("#wz-sub").classList.add("cast-summary");
+  $("#wz-sub").classList.toggle("hidden", !c.description);
   // 기본 정보 — 모든 인물이 먼저 갖는 것
   const basic = document.createElement("div");
   basic.className = "cast-basic";
@@ -1483,7 +1596,7 @@ function renderWzPlan() {
   }
 }
 /* 직접 채운 게 있으면 그대로 쓰고, 다 비었으면 AI에게 맡긴다 */
-function wzPlanNext() {
+async function wzPlanNext() {
   const n = wzPlanRows();
   const mine = [];
   for (let i = 1; i <= n; i++) {
@@ -1494,7 +1607,7 @@ function wzPlanNext() {
   }
   if (!mine.length) { wzOutline(); return; }          // 하나도 안 채웠으면 AI가
   if (mine.length < n) {
-    if (!confirm(`${n}화 중 ${mine.length}화만 채우셨어요.\n나머지는 AI가 채울까요?\n\n[취소]를 누르면 채운 것만 씁니다.`)) {
+    if (!await askAction(`${n}화 중 ${mine.length}화만 채웠어요.\n나머지는 AI가 채울까요?`, "AI로 채우기", "이대로 사용")) {
       WZ.outline = mine; renderWzOutline(); wzGo("outline"); return;
     }
     wzOutline(); return;
@@ -1519,7 +1632,8 @@ function wzCastOut() {
     };
     out.push({ name: c.name.trim(), age: (c.age || "").trim(), role: pick("role"),
       personality: pick("personality"), want: pick("want"), fear: pick("fear"),
-      secret: pick("secret"), facade: pick("facade"), truth: pick("truth"), need: "", relation: "" });
+      secret: pick("secret"), facade: pick("facade"), truth: pick("truth"),
+      description: c.description || "", need: "", relation: "" });
   });
   return out;
 }
@@ -1545,7 +1659,8 @@ function wzBody(extra) {
     structure: structure,
     protagonist: (d.protagonist && d.protagonist.name) ? d.protagonist
       : (lead ? { name: lead.name, age: lead.age, personality: lead.personality,
-                  want: lead.want, need: lead.fear, secret: lead.secret } : {}),
+                  want: lead.want, need: lead.fear, secret: lead.secret,
+                  description: lead.description || "" } : {}),
     characters: (d.characters && d.characters.length) ? d.characters : cast,
     canon: d.canon || [],
     outline: (WZ.outline && WZ.outline.length) ? WZ.outline : wzPlanOut(),
@@ -1583,6 +1698,7 @@ async function wzGenerate() {
     return;
   }
   WZ.draft = r.draft || {};
+  WZ.demo = !!r.demo;
   wzSave();
   wzTasks([["배경 만드는 중", "done"], ["규칙·금기 정리", "done"], ["결말 고정", "done"]]);
   renderWzResult();
@@ -1606,7 +1722,8 @@ async function wzRedraw(field) {
 function renderWzResult() {
   const d = WZ.draft || {};
   const box = $("#wz-result");
-  let h = `<div class="wzc"><h3>제목</h3>
+  let h = WZ.demo ? `<div class="wz-demo-note">미리보기용 예시 기획입니다. 실제 앱에서는 연결된 AI가 작품 설정에 맞춰 생성합니다.</div>` : "";
+  h += `<div class="wzc"><h3>제목</h3>
       <input id="wzr-title" class="wz-in one" value="${escapeHtml(d.title || "")}" placeholder="제목">
       <p class="wzc-p">${escapeHtml(d.logline || "")}</p></div>
     <div class="wzc"><h3>세계관</h3>
@@ -1645,6 +1762,7 @@ async function wzOutline() {
     wzGo(back === "gen" ? "plan" : back); return;
   }
   WZ.outline = r.outline || [];
+  WZ.demo = !!r.demo;
   wzSave();
   renderWzOutline(r);
   wzGo("outline");
@@ -1656,12 +1774,14 @@ function renderWzOutline(r) {
       <span>${escapeHtml(o.content || "")}</span></div></div>`).join("");
   const cap = (r && r.capped) || ((LIMITS && LIMITS.max_chapters) || WZ.total) < WZ.total;
   const lim = (LIMITS && LIMITS.max_chapters) || WZ.total;
+  const demoNote = WZ.demo
+    ? `<div class="wz-demo-note">미리보기용 예시 회차입니다. 실제 앱에서는 연결된 AI가 설정에 맞춰 생성합니다.</div>` : "";
   const capNote = cap
     ? `<div class="wz-note">현재 <b>${escapeHtml((LIMITS && LIMITS.label) || "")}</b> 요금제라
          AI 줄거리는 <b>${lim}화까지</b>만 만들어졌어요 (고른 총 회차 ${WZ.total}화).
          나머지 회차는 작품을 시작한 뒤 직접 채우거나, 요금제를 올리면 이어서 만들 수 있어요.</div>`
     : "";
-  $("#wz-outline").innerHTML = capNote +
+  $("#wz-outline").innerHTML = demoNote + capNote +
     `<div class="wzc"><h3>총 ${WZ.outline.length || WZ.total}화 · 결말 고정</h3>
        <p style="color:var(--text)">${escapeHtml(d.ending || "")}</p></div>
      <div class="wzc" style="padding:6px 16px">${rows || "<p>줄거리가 비어 있어요.</p>"}</div>`;
@@ -1704,8 +1824,8 @@ function plotRows() {
 }
 function renderPlotList() {
   const rows = plotRows();
-  $("#pl-meta").textContent =
-    `총 ${rows.length}화 · ${WORK.chapters.length}화 집필됨 — 제목을 누르면 줄거리와 가이드가 열려요`;
+  const writtenCount = (WORK.chapters || []).filter((ch) => (ch.chars || 0) > 0).length;
+  $("#pl-meta").textContent = `총 ${rows.length}화 · ${writtenCount}화 집필 완료`;
   $("#pl-menu").title = "메뉴";
   const box = $("#pl-list");
   box.innerHTML = "";
@@ -1714,10 +1834,14 @@ function renderPlotList() {
     const title = (ch && ch.title) || (o && o.title) || `${no}화`;
     const el = document.createElement("div");
     el.className = "pl-item" + (open ? " open" : "");
+    const preview = (o && o.content) || (ch && ch.summary) || "아직 줄거리가 없어요.";
+    const done = ch && (ch.chars || 0) > 0;
     el.innerHTML =
       `<button class="pl-head"><span class="pl-no">${no}화</span>
-         <span class="pl-t">${escapeHtml(title)}</span>
-         <span class="pl-chev">${open ? "▲" : "▼"}</span></button>`;
+         <span class="pl-copy"><span class="pl-t">${escapeHtml(title)}</span>
+         <small>${escapeHtml(preview.slice(0, 72))}</small></span>
+         <span class="pl-state ${done ? "done" : ""}">${done ? "집필 완료" : "미집필"}</span>
+         <span class="pl-chev">${open ? "접기" : "열기"}</span></button>`;
     el.querySelector(".pl-head").onclick = () => {
       PLOT_OPEN = open ? 0 : no;       // 같은 걸 누르면 접기, 다른 걸 누르면 그것만 열기
       renderPlotList();
@@ -1734,12 +1858,12 @@ function renderPlotList() {
          <span class="pl-gtag">본 화 구성 가이드</span>
          <div class="g-wrap" id="g-${no}">${guideHtml(GUIDE_CACHE[no])}</div>
          <div class="pl-acts">
-           <button class="smp${SAMPLE.base > 0 ? "" : " off"}">AI가 이번화 본문 예시로 쓰기</button>
+            <button class="smp${SAMPLE.base > 0 ? "" : " off"}">1,000자 본문 예시</button>
            <button class="go">${ch ? "이어 쓰기" : "쓰기"}</button>
          </div>`;
       if (!GUIDE_CACHE[no]) loadGuide(no);
       pane.querySelector(".smp").onclick = () => {
-        if (SAMPLE.base <= 0) { notice("라이트 버전 이상에서만 제공됩니다."); showPlans(); return; }
+        if (SAMPLE.base <= 0) { showPlans("plot"); return; }
         makeSample({ work_id: WORK.id, no, title: `${no}화 본문 예시` });
       };
       pane.querySelector(".go").onclick = () => openChapterByNo(no);
@@ -1880,7 +2004,7 @@ async function saveChapter(quiet) {
   const mine = (WORK.chapters || []).find((c) => c.id === CHAPTER.id);
   if (mine) { mine.title = $("#ed-title").value; }
   edStatus("저장됨");
-  if (!quiet) notice("저장했어요.");
+  if (!quiet) edStatus("저장 완료");
   return true;
 }
 $("#ed-save").onclick = () => saveChapter();
@@ -1903,11 +2027,12 @@ function guard(go) {
   $("#cf-cancel").onclick = () => $("#confirm").classList.add("hidden");
 }
 function stepChapter(delta) {
-  const list = (WORK.chapters || []).slice().sort((a, b) => a.no - b.no);
-  const i = list.findIndex((c) => c.id === CHAPTER.id);
-  const t = list[i + delta];
-  if (!t) { notice(delta > 0 ? "마지막 회차예요." : "첫 회차예요."); return; }
-  guard(() => openChapter(t.id));
+  const target = CHAPTER.no + delta;
+  const total = Math.max(WORK.total_chapters || 0, ...plotRows().map((r) => r.no), 0);
+  if (target < 1 || target > total) {
+    notice(delta > 0 ? "마지막 회차예요." : "첫 회차예요."); return;
+  }
+  guard(() => openChapterByNo(target));
 }
 $("#ed-prev").onclick = () => stepChapter(-1);
 $("#ed-next").onclick = () => stepChapter(1);
@@ -1928,6 +2053,7 @@ window.addEventListener("beforeunload", (e) => {
 const SAMPLE_NOTE = "이 예시는 작품을 쓰는데 도움이 되도록 설정된 내용을 반영한 본문 예시입니다. " +
   "전체적인 흐름과는 다소 차이가 날 수 있으며, 본문 작성에 참고용으로 이용 바랍니다.";
 let SAMPLE = { used: 0, base: 1, extra: 0, left: 1 };
+let SAMPLE_TEXT = "";
 
 function smpLeftText() {
   const total = SAMPLE.base + SAMPLE.extra;
@@ -1949,6 +2075,7 @@ $("#smp-back").onclick = closeSmp;
 /* 예시 만들기 — opts: {body, work_id, no, title} */
 async function makeSample(opts) {
   const o = opts || {};
+  SAMPLE_TEXT = "";
   const payload = Object.assign({}, o.body || {}, { work_id: o.work_id || 0, no: o.no || 0 });
   openSmp(o.title || (o.no ? `${o.no}화 본문 예시` : "본문 예시"));
   $("#smp-body").innerHTML = `<p class="smp-wait">설정을 반영해 쓰는 중…</p>`;
@@ -1960,7 +2087,8 @@ async function makeSample(opts) {
     smpFoot(o, r.need === "ad");
     return;
   }
-  $("#smp-body").innerHTML = `<div class="smp-text">${escapeHtml(r.text).replace(/\n/g, "<br>")}</div>`;
+  SAMPLE_TEXT = r.text || "";
+  $("#smp-body").innerHTML = `<div class="smp-text">${escapeHtml(SAMPLE_TEXT).replace(/\n/g, "<br>")}</div>`;
   smpFoot(o, false);
 }
 function smpFoot(o, needAd) {
@@ -1971,6 +2099,10 @@ function smpFoot(o, needAd) {
     b.className = primary ? "primary" : "ghost small";
     b.textContent = label; b.onclick = fn; foot.appendChild(b); return b;
   };
+  if (SAMPLE_TEXT) mk("예시 복사", async () => {
+    try { await navigator.clipboard.writeText(SAMPLE_TEXT); notice("본문 예시를 복사했어요."); }
+    catch (e) { notice("복사하지 못했어요. 글을 길게 눌러 복사해 주세요."); }
+  }, true);
   if (SAMPLE.left > 0 && !needAd) mk("다시 써보기", () => makeSample(o));
   else mk("광고 보고 1건 더", () => watchAdForSample(o), true);
 }
@@ -2035,8 +2167,8 @@ function renderSheet(which) {
     `<p class="pl-syn${o && o.content ? "" : " empty"}">${o && o.content ? escapeHtml(o.content) : "아직 줄거리가 없어요."}</p>
      <span class="pl-gtag">가이드</span>
      <div class="g-wrap" id="g-${no}">${guideHtml(GUIDE_CACHE[no])}</div>
-     <div class="pl-acts"><button class="regen">🔄 가이드 새로</button>
-       <button class="go">📖 전체 플롯 열기</button></div>`;
+     <div class="pl-acts"><button class="regen">가이드 새로 만들기</button>
+       <button class="go">전체 회차 설계</button></div>`;
   box.querySelector(".regen").onclick = () => loadGuide(no, true);
   box.querySelector(".go").onclick = () => { closeSheet(); guard(() => showPlot(no)); };
   if (!GUIDE_CACHE[no]) loadGuide(no);
@@ -2095,21 +2227,13 @@ $("#mn-close").onclick = closeMenu;
 $("#menu-back").onclick = closeMenu;
 
 async function deleteChapter() {
-  if (!confirm("이 회차를 삭제할까요?")) return;
+  if (!await askAction("이 회차를 삭제할까요?", "삭제", "취소")) return;
   const wid = WORK.id, cid = CHAPTER.id;
   const r = await api(`/api/writer/chapters/${cid}`, { method: "DELETE" });
   if (!r.ok) { notice(r.error); return; }
   try { localStorage.removeItem(draftKey(cid)); } catch (e) {}
   DIRTY = false;
   await openWork(wid);
-  if (r.undo) {
-    noticeUndo("회차를 삭제했어요.", async () => {
-      const rr = await api(`/api/writer/trash/${r.undo}/restore`, { method: "POST" });
-      if (!rr.ok) { notice(rr.error || "되돌리기 실패"); return; }
-      await openWork(wid);
-      notice("되돌렸어요.");
-    });
-  }
 }
 
 /* ── 뒤로가기 — 브라우저/안드로이드 버튼으로 한 화면씩 되돌아간다 ── */
@@ -2122,15 +2246,17 @@ function goBack() {
   if (open === "w-editor") { guard(() => openWork(WORK.id)); return; }
   if (open === "w-plot") { openWork(WORK.id); return; }
   if (open === "w-wizard") { wzBackStep(); return; }
-  if (open === "w-plans") { showSettings(); return; }
+  if (open === "w-plans") { leavePlans(); return; }
   if (open === "w-pens") { showBack(); return; }
   showHome();
 }
 window.addEventListener("popstate", () => { history.pushState(null, ""); goBack(); });
 
 /* 시작 — 설정하다 만 게 있으면(새로고침·앱 재시작) 그 자리로 돌려놓는다 */
-(function boot() {
+(async function boot() {
+  await CONFIG_READY;
   const prev = wzSaved();
   history.pushState(null, "");          // 뒤로가기를 잡아둘 한 칸
-  showHome().then(() => { if (prev && prev.live) wzOpen(prev); });
+  await showHome();
+  if (prev && prev.live) wzOpen(prev);
 })();

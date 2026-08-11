@@ -29,6 +29,7 @@ router = APIRouter(prefix="/api/writer")
 # 기본은 '꺼짐'(전체 기능). 판매용 서버에서만 WRITER_LAUNCH_MODE=1 로 켠다.
 # (기본값이 켜짐이면 개인 집필 서버가 코드 배포만으로 기능을 잃어 위험하다.)
 LAUNCH_MODE = os.environ.get("WRITER_LAUNCH_MODE", "0") == "1"
+DEMO_MODE = os.environ.get("NOVELIST_DEMO_MODE", "0") == "1"
 _LAUNCH_OFF = {"ok": False, "error": "이 버전에서는 제공하지 않는 기능이에요."}
 
 
@@ -184,6 +185,9 @@ def _body_gate(c, user: str):
 # 한국시간 자정에 리셋된다. 광고로 늘어나는 총량은 아래 AI_DAILY_CAP이 막아준다.
 SAMPLE_BASE = {"free": 0, "light": 3, "pro": 10}
 SAMPLE_CHARS = 1000
+for _k, _v in SAMPLE_BASE.items():
+    if _k in TIERS:
+        TIERS[_k]["sample_daily"] = _v
 
 # 하루 AI 호출 상한 — 비용 폭탄/남용 방지 안전망 (정상 사용엔 넉넉).
 AI_DAILY_CAP = {"free": 40, "light": 250, "pro": 800}
@@ -201,16 +205,16 @@ LAUNCH_TIER_COPY = {
     "free": {
         "pitch": "아이디어 한 줄이면 인물·플롯·회차 줄거리까지 AI가 잡아줘요. "
                  "본문은 앱 안에서 직접 쓰고, 회차마다 집필 가이드를 받습니다.",
-        "highlight": "직접 쓰기 · 집필 가이드 무제한",
+        "highlight": "직접 집필 · 회차별 가이드",
     },
     "light": {
-        "pitch": "20화까지 상세 줄거리를 한 번에. 광고 없이, 작품 10개를 나란히 굴리며 연재를 준비하세요.",
-        "highlight": "무료 대비 회차 6배 · 광고 없음",
+        "pitch": "20화까지 상세 줄거리를 한 번에. 광고 없이, 하루 3번의 1,000자 본문 예시로 문을 열어 보세요.",
+        "highlight": "20화 설계 · 본문 예시 하루 3회 · 광고 없음",
     },
     "pro": {
         "pitch": "70화 대작을 통째로 설계하고, 화당 450자 상세 줄거리로 흐름을 놓치지 않아요. "
-                 "작품 수 무제한, AI 사용량도 넉넉합니다.",
-        "highlight": "70화 설계 · 작품 무제한 · 하루 AI 800회",
+                 "작품 수 무제한, 하루 10번의 1,000자 본문 예시를 제공합니다.",
+        "highlight": "70화 설계 · 본문 예시 하루 10회 · 작품 무제한",
     },
 }
 if LAUNCH_MODE:
@@ -281,7 +285,9 @@ def writer_config(user: str = Header(default="solo", alias="X-User-Id")):
     ai_body = not LAUNCH_MODE           # 개인 서버는 등급과 무관하게 허용(_body_gate와 동일 규칙)
     with db.connect() as c:
         quota = _sample_quota(c, user)
-    return {"launch_mode": LAUNCH_MODE, "writing_enabled": True, "ai_body": ai_body,
+    return {"launch_mode": LAUNCH_MODE, "demo_mode": DEMO_MODE,
+            "ai_connected": not llm.is_mock,
+            "writing_enabled": True, "ai_body": ai_body,
             "pens_enabled": not LAUNCH_MODE, "sample": quota, "sample_chars": SAMPLE_CHARS,
             "tier": t, "limits": TIERS[t], "tiers": TIERS, "expires_at": ent,
             "pens": pens, "pen_needed": False, "pen_packs": ([] if LAUNCH_MODE else PEN_PACKS)}
@@ -911,6 +917,7 @@ class ProtIn(BaseModel):
     need: str = ""
     secret: str = ""
     arc: str = ""
+    description: str = ""
 
 
 class CharIn(BaseModel):
@@ -926,6 +933,7 @@ class CharIn(BaseModel):
     fear: str = ""              # 가장 두려워하는 것
     facade: str = ""            # 사람들에게 보이는 모습
     truth: str = ""             # 자신의 실제 모습
+    description: str = ""       # 작품 속에서 맡는 기능과 갈등을 설명하는 인물 소개
 
 
 class CanonIn(BaseModel):
@@ -985,11 +993,13 @@ def _assemble_brief(b: BuildBody) -> str:
     out.append(_sec("세계관", world))
 
     p = b.protagonist
-    if any(x.strip() for x in (p.name, p.personality, p.want, p.need, p.secret, p.arc, p.job, p.age)):
+    if any(x.strip() for x in (p.name, p.personality, p.want, p.need, p.secret,
+                               p.arc, p.job, p.age, p.description)):
         tags = " · ".join(x.strip() for x in (p.age, p.job) if x.strip())
         pl = [f"{p.name.strip() or '주인공'}{' (' + tags + ')' if tags else ''}"]
         for label, val in (("성격", p.personality), ("욕망(want)", p.want),
-                           ("결핍(need)", p.need), ("비밀", p.secret), ("성장 아크", p.arc)):
+                           ("결핍(need)", p.need), ("비밀", p.secret), ("성장 아크", p.arc),
+                           ("작품 속 인물 설명", p.description)):
             if val.strip():
                 pl.append(f"{label}: {val.strip()}")
         out.append(_sec("주인공", "\n".join(pl)))
@@ -1003,7 +1013,8 @@ def _assemble_brief(b: BuildBody) -> str:
             for label, val in (("역할", ch.role), ("관계", ch.relation), ("성격", ch.personality),
                                ("원하는 것", ch.want), ("두려워하는 것", ch.fear),
                                ("결핍", ch.need), ("숨기는 것", ch.secret),
-                               ("남에게 보이는 모습", ch.facade), ("실제 모습", ch.truth)):
+                               ("남에게 보이는 모습", ch.facade), ("실제 모습", ch.truth),
+                               ("작품 속 인물 설명", ch.description)):
                 if val.strip():
                     parts.append(f"{label}: {val.strip()}")
             lines.append(" / ".join(parts))
@@ -1034,48 +1045,26 @@ def _assemble_brief(b: BuildBody) -> str:
 
 @router.post("/works/build")
 def build_work(b: BuildBody, user: str = Header(default="solo", alias="X-User-Id")):
-    """상세 빌더로 만든 작품설명서로 설계도를 만들고 작품을 생성한다."""
+    """앞 단계에서 확정한 기획을 그대로 저장해 작품을 생성한다.
+
+    초안과 회차 설계에서 이미 AI를 사용했으므로 마지막 저장 단계에서는 AI를
+    다시 호출하지 않는다. 이렇게 해야 응답 형식 오류나 일시적인 API 장애 때문에
+    완성한 기획 전체를 잃는 일이 없다.
+    """
     _cap_build(b)
     brief = _assemble_brief(b)
     if not (b.logline.strip() or b.ending.strip()):
         return {"ok": False, "error": "최소한 로그라인이나 결말 중 하나는 있어야 이야기가 방향을 잡아요."}
     if len(brief) < 200:
         return {"ok": False, "error": "설명서 내용이 아직 짧아요. 세계관·주인공·결말 등을 더 채워주세요 (최소 200자)."}
-    with db.connect() as c:  # 요금제 작품 수 상한 + 하루 AI 상한
+    with db.connect() as c:  # 요금제 작품 수 상한
         lim = _limits(_tier_name(c, user))
         made = c.execute("SELECT COUNT(*) AS n FROM works WHERE user_id=?", (user,)).fetchone()["n"]
         if made >= lim["max_works"]:
             return {"ok": False,
                     "error": f"{lim['label']} 요금제에서는 작품을 {lim['max_works']}개까지 만들 수 있어요.",
                     "detail": "기존 작품을 지우거나 상위 요금제로 올려 주세요.", "limit": "works"}
-        ok, _cap = _ai_gate(c, user)
-        if not ok:
-            return _AI_BUSY
-    if llm.is_mock:
-        return {"ok": False, "error": "AI가 연결되어 있지 않아 설계도를 만들 수 없어요.",
-                "detail": "API 키가 없거나 사용량 한도/잔액이 소진됐을 수 있어요 "
-                          "(ANTHROPIC_API_KEY / GEMINI_API_KEY, LLM_PROVIDER 확인)."}
-
     total = max(5, b.total_chapters)
-    plan, last_raw = None, ""
-    for _ in range(2):
-        last_raw = llm.write(_brief_setup_prompt(brief, b.genre, total), mock_text="", max_tokens=16000)
-        plan = parse_llm_json(last_raw)
-        if plan and plan.get("characters") and plan.get("beats"):
-            break
-        plan = None
-    if plan is None:
-        hint = (f"AI 호출 오류 — {llm.last_error}. 사용량 한도/크레딧을 확인하세요."
-                if llm.last_error else f"형식 오류 (응답 앞부분: {last_raw[:150] or '빈 응답'})")
-        return {"ok": False, "error": "설계도 생성에 실패했어요. 설명서는 반영되지 않았어요.", "detail": hint}
-
-    beats = plan.get("beats") or []
-    by_idx = {int(x.get("idx", i)): x for i, x in enumerate(beats) if isinstance(x, dict)}
-    beats = [{"idx": i, "name": n, "summary": (by_idx.get(i) or {}).get("summary", "")}
-             for i, n in enumerate(BEATS)]
-
-    if isinstance(plan.get("characters"), list):  # 요금제 인물 수 상한
-        plan["characters"] = plan["characters"][:lim["max_characters"]]
 
     # 회차별 전개 — 작가가 빌더에서 짠 것이 절대 기준. 없으면 조립 텍스트에서 추출.
     outline = [{"no": o.no, "title": o.title.strip(), "content": o.content.strip()}
@@ -1085,6 +1074,50 @@ def build_work(b: BuildBody, user: str = Header(default="solo", alias="X-User-Id
         outline = extract_outline(brief)
     if outline:
         total = max(outline[-1]["no"], total)
+
+    # 인물과 관계도 사용자가 확정한 값을 그대로 옮긴다.
+    characters = []
+    seen_names = set()
+    p = b.protagonist
+    if p.name.strip():
+        pname = p.name.strip()
+        seen_names.add(pname)
+        characters.append({
+            "name": pname, "archetype": "주인공", "role": p.job.strip() or "주인공",
+            "want": p.want.strip(), "need": p.need.strip(), "secret": p.secret.strip(),
+            "personality": p.personality.strip(), "arc": p.arc.strip(), "age": p.age.strip(),
+            "description": p.description.strip(),
+        })
+    relations = []
+    for ch in b.characters:
+        name = ch.name.strip()
+        if not name or name in seen_names:
+            continue
+        seen_names.add(name)
+        characters.append({
+            "name": name, "archetype": "", "role": ch.role.strip(),
+            "want": ch.want.strip(), "need": ch.need.strip(), "secret": ch.secret.strip(),
+            "personality": ch.personality.strip(), "fear": ch.fear.strip(),
+            "facade": ch.facade.strip(), "truth": ch.truth.strip(), "age": ch.age.strip(),
+            "description": ch.description.strip(),
+        })
+        if ch.relation.strip():
+            relations.append({"a": p.name.strip() or "주인공", "b": name,
+                              "type": ch.relation.strip(), "tension": ""})
+    characters = characters[:lim["max_characters"]]
+    allowed_names = {ch["name"] for ch in characters}
+    relations = [r for r in relations if r["b"] in allowed_names]
+
+    # 15비트는 회차 설계를 위치에 따라 묶어 보여 주는 목차다. 새 내용을 만들지 않는다.
+    beat_lines = [[] for _ in BEATS]
+    for item in outline:
+        idx = beat_for(int(item["no"]), total)
+        text = f"{item['no']}화 {item['title']}".strip()
+        if item["content"]:
+            text += f": {item['content']}"
+        beat_lines[idx].append(text)
+    beats = [{"idx": i, "name": name, "summary": "\n".join(beat_lines[i])}
+             for i, name in enumerate(BEATS)]
 
     canon = {cc.name.strip(): cc.desc.strip() for cc in b.canon if cc.name.strip()}
     sample = b.style_sample.strip()
@@ -1097,11 +1130,11 @@ def build_work(b: BuildBody, user: str = Header(default="solo", alias="X-User-Id
             "total_chapters, style_sample, style_profile, characters_json, relations_json, "
             "beats_json, outline_json, canon_json, chars_per_chapter, created_at) "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))",
-            (user, plan.get("title") or b.title or "무제", plan.get("genre") or b.genre or "웹소설",
-             brief[:BRIEF_MAX], plan.get("premise") or b.logline, plan.get("ending") or b.ending,
-             plan.get("style") or b.style, total, sample[:6000], profile,
-             json.dumps(plan.get("characters", []), ensure_ascii=False),
-             json.dumps(plan.get("relations", []), ensure_ascii=False),
+            (user, b.title.strip() or "무제", b.genre.strip() or "웹소설",
+             brief[:BRIEF_MAX], b.logline.strip(), b.ending.strip(),
+             b.style.strip(), total, sample[:6000], profile,
+             json.dumps(characters, ensure_ascii=False),
+             json.dumps(relations, ensure_ascii=False),
              json.dumps(beats, ensure_ascii=False),
              json.dumps(outline, ensure_ascii=False),
              json.dumps(canon, ensure_ascii=False), cpc),
@@ -1109,14 +1142,61 @@ def build_work(b: BuildBody, user: str = Header(default="solo", alias="X-User-Id
     return {"ok": True, "id": work_id, "outline_chapters": len(outline)}
 
 
+def _demo_brief(b: BuildBody, max_characters: int) -> dict:
+    """로컬 화면 점검용 기획안. 실제 배포에서는 명시적으로 켜지 않는다."""
+    premise = b.logline.strip() or "주인공이 익숙한 일상을 뒤흔드는 사건과 마주한다."
+    genre = b.genre.strip() or "장편소설"
+    lead = b.protagonist
+    named = [c for c in b.characters if c.name.strip()]
+    if not lead.name.strip():
+        chosen = next((c for c in named if "주인공" in c.role), named[0] if named else None)
+        if chosen:
+            lead = ProtIn(name=chosen.name, age=chosen.age, job=chosen.role,
+                          personality=chosen.personality, want=chosen.want,
+                          need=chosen.need or chosen.fear, secret=chosen.secret,
+                          arc=chosen.truth)
+
+    lead_name = lead.name.strip() or "주인공"
+    protagonist = {
+        "name": lead_name, "age": lead.age.strip(), "job": lead.job.strip() or "주인공",
+        "personality": lead.personality.strip() or "쉽게 물러서지 않지만 속마음을 감춘다",
+        "want": lead.want.strip() or "사건의 진실을 밝혀 자신의 삶을 되찾는 것",
+        "need": lead.need.strip() or "혼자 해결하려는 태도에서 벗어나 타인을 믿는 것",
+        "secret": lead.secret.strip() or "사건의 시작과 자신이 관련되어 있다는 사실",
+        "arc": lead.arc.strip() or "회피하던 진실을 받아들이고 스스로 선택한다",
+    }
+    characters = []
+    for c in named:
+        if c.name.strip() == lead_name:
+            continue
+        characters.append({
+            "name": c.name.strip(), "age": c.age.strip(), "role": c.role.strip() or "조력자",
+            "relation": c.relation.strip() or f"{lead_name}의 선택에 영향을 주는 인물",
+            "personality": c.personality.strip(), "want": c.want.strip(),
+            "need": c.need.strip(), "secret": c.secret.strip(), "fear": c.fear.strip(),
+            "facade": c.facade.strip(), "truth": c.truth.strip(),
+        })
+    characters = characters[:max(0, max_characters - 1)]
+    canon = [{"name": x.name.strip(), "desc": x.desc.strip()}
+             for x in b.canon if x.name.strip()]
+    return {
+        "title": b.title.strip() or f"{lead_name}의 선택", "genre": genre,
+        "logline": premise,
+        "intent": b.intent.strip() or "한 번의 선택이 관계와 삶을 어떻게 바꾸는지 따라간다.",
+        "world_setting": b.world_setting.strip() or f"{premise} 이 사건이 현실처럼 작동하는 {genre}의 무대.",
+        "world_rules": b.world_rules.strip() or "모든 선택에는 되돌릴 수 없는 대가가 따르며, 얻은 정보는 다음 사건의 조건이 된다.",
+        "taboos": b.taboos.strip() or "인물은 확인하지 않은 진실을 함부로 공개할 수 없다.",
+        "protagonist": protagonist, "characters": characters, "canon": canon,
+        "style": b.style.strip() or "간결한 문장과 장면 중심의 전개",
+        "ending": b.ending.strip() or f"{lead_name}은 진실을 받아들이고 처음과 다른 선택을 내린다.",
+    }
+
+
 @router.post("/brief/draft")
 def draft_brief(b: BuildBody, user: str = Header(default="solo", alias="X-User-Id")):
     """지금까지 작가가 채운 내용을 존중하며, 빈 칸을 일관되게 채운 상세 기획을 짓는다.
     작가가 칸을 비우고 다시 누르면 그 칸만 새로 생성된다 (새로고침).
     요금제에 따라 자동 생성하는 인물 수가 달라진다."""
-    if llm.is_mock:
-        return {"ok": False, "error": "AI가 연결되어 있지 않아요.",
-                "detail": "API 키/사용량 한도를 확인해 주세요."}
     if not (b.logline.strip() or b.genre.strip() or b.keywords.strip()):
         return {"ok": False, "error": "장르·로그라인·키워드 중 하나는 알려주세요. 거기서 상세 기획을 지어드릴게요."}
     _cap_build(b)
@@ -1125,6 +1205,12 @@ def draft_brief(b: BuildBody, user: str = Header(default="solo", alias="X-User-I
         if not ok:
             return _AI_BUSY
         maxc = _limits(_tier_name(c, user))["max_characters"]
+    if llm.is_mock:
+        if not DEMO_MODE:
+            return {"ok": False, "error": "AI 연결이 필요해요.",
+                    "detail": "배포 환경의 AI 연결 상태를 확인해 주세요."}
+        return {"ok": True, "draft": _demo_brief(b, maxc),
+                "max_characters": maxc, "demo": True}
     filled = _assemble_brief(b)
     # 작가가 앞 단계에서 인물을 이미 만들었으면 새 인물을 지어내지 않는다 (설계상 인물은 작가의 몫)
     has_cast = bool((b.protagonist and (b.protagonist.name or "").strip())
@@ -1188,6 +1274,167 @@ class SuggestBody(BaseModel):
     context: str = ""             # 지금까지의 선택(제목·로그라인·장르 등)
 
 
+class CastFillBody(BaseModel):
+    context: str = ""
+    characters: list[dict] = []
+    create_all: bool = False
+    specs: list[dict] = []
+
+
+@router.post("/brief/cast-fill")
+def fill_cast(b: CastFillBody, user: str = Header(default="solo", alias="X-User-Id")):
+    """기존 인물의 빈 칸을 채우거나, 주인공부터 전체 인물을 한 번에 만든다."""
+    def clean_fields(raw_fields):
+        fields = []
+        for raw_f in (raw_fields or [])[:12]:
+            if not isinstance(raw_f, dict):
+                continue
+            opts = [str(o).strip() for o in (raw_f.get("options") or []) if str(o).strip()][:60]
+            if not opts:
+                continue
+            fields.append({"id": str(raw_f.get("id", ""))[:60],
+                           "question": str(raw_f.get("question", ""))[:120],
+                           "options": opts,
+                           "pick": max(1, min(int(raw_f.get("pick") or 1), 5))})
+        return fields
+
+    with db.connect() as c:
+        max_characters = _limits(_tier_name(c, user))["max_characters"]
+
+    clean = []
+    if b.create_all:
+        fields = clean_fields(b.specs)
+        clean = [{"index": i, "name": "", "fields": fields} for i in range(max_characters)]
+    else:
+        for raw_ch in (b.characters or [])[:12]:
+            if not isinstance(raw_ch, dict):
+                continue
+            fields = clean_fields(raw_ch.get("fields"))
+            if fields:
+                clean.append({"index": int(raw_ch.get("index", len(clean))),
+                              "name": str(raw_ch.get("name", ""))[:80], "fields": fields})
+    if not clean:
+        return {"ok": False, "error": "채울 인물 항목이 없어요."}
+
+    if llm.is_mock:
+        if not DEMO_MODE:
+            return {"ok": False, "error": "AI 연결이 필요해요.",
+                    "detail": "배포 환경의 AI 연결 상태를 확인해 주세요."}
+        is_wind_story = "바람" in (b.context or "")
+        names = (["하늬", "샛바람", "마파람", "높새", "갈바람", "된바람", "실바람", "돌개", "솔바람", "눈바람"]
+                 if is_wind_story else
+                 ["서윤", "민재", "하린", "도현", "수아", "지후", "예린", "태오", "나연", "현우"])
+        role_targets = ["주인공", "조력자", "라이벌", "적대자", "동료", "친구", "가족", "연인", "스승", "사건의 열쇠를 가진 인물"]
+        context_lines = [line.strip() for line in (b.context or "").splitlines() if line.strip()]
+        title_line = next((line.split(":", 1)[1].strip() for line in context_lines
+                           if line.startswith("제목:") and ":" in line), "이 작품")
+        synopsis = next((line.split(":", 1)[1].strip() for line in context_lines
+                         if line.startswith("로그라인:") and ":" in line), "작품의 중심 사건")
+        result = []
+        for i, ch in enumerate(clean):
+            chosen = {}
+            for f in ch["fields"]:
+                opts = f["options"]
+                if f["id"] == "role":
+                    target = role_targets[min(i, len(role_targets) - 1)]
+                    chosen[f["id"]] = [target if target in opts else opts[min(i, len(opts) - 1)]]
+                else:
+                    chosen[f["id"]] = [opts[(i + j) % len(opts)] for j in range(min(f["pick"], len(opts)))]
+            row = {"index": ch["index"], "fields": chosen}
+            if b.create_all:
+                name = names[i % len(names)]
+                role = (chosen.get("role") or ["등장인물"])[0]
+                personality = ", ".join(chosen.get("personality") or [])
+                want = (chosen.get("want") or ["자신의 목표"])[0]
+                fear = (chosen.get("fear") or ["실패"])[0]
+                secret = (chosen.get("secret") or ["감춰 둔 사정"])[0]
+                facade = (chosen.get("facade") or ["겉으로 보이는 모습"])[0]
+                truth = (chosen.get("truth") or ["내면의 실제 모습"])[0]
+                description = (
+                    f"{name}, 『{title_line}』에서 {role} 역할로 움직이는 {'의지를 지닌 바람' if is_wind_story else '인물'}이다. "
+                    f"‘{synopsis}’라는 중심 사건 속에서 가장 원하는 것은 {want}이고, 가장 두려운 것은 {fear}이라 중요한 선택 앞에서 흔들린다. "
+                    f"{personality} 성향 때문에 다른 인물들과 쉽게 충돌하거나 뜻밖의 결정을 내린다. "
+                    f"겉으로는 {facade}처럼 보이지만 실제로는 {truth}에 가깝다. 숨긴 비밀은 {secret}이며, 이것이 사건의 방향을 바꾼다."
+                )
+                age = (f"{120 + i * 70}년" if is_wind_story else str(24 + i * 3))
+                row.update({"name": name, "age": age, "description": description})
+            result.append(row)
+        return {"ok": True, "characters": result, "demo": True}
+
+    with db.connect() as c:
+        ok, _cap = _ai_gate(c, user)
+        if not ok:
+            return _AI_BUSY
+    compact = [{"index": ch["index"], "name": ch["name"],
+                "fields": [{"id": f["id"], "question": f["question"],
+                            "options": f["options"], "pick": f["pick"]}
+                           for f in ch["fields"]]} for ch in clean]
+    create_rule = (f"- 서로 구분되는 인물 {len(clean)}명을 새로 만들어라. index 0은 반드시 주인공이다.\n"
+                   "- 각 인물에 자연스러운 한국어 이름과 숫자로 된 나이를 반드시 넣어라."
+                   if b.create_all else "- 전달된 인물의 이름은 바꾸지 말고 빈 설정만 채워라.")
+    prompt = f"""당신은 프로 웹소설 인물 기획자다. 작품 맥락과 인물별 보기를 보고 인물진을 완성하라.
+
+[작품 맥락]
+{(b.context or '아직 없음')[:3000]}
+
+[인물과 선택 가능한 보기]
+{json.dumps(compact, ensure_ascii=False, separators=(',', ':'))}
+
+규칙:
+{create_rule}
+- 작품 속 인물이 인간이라고 가정하지 마라. 로그라인의 주체가 바람·동물·사물·정령이라면 이름, 나이,
+  정체성, 행동 방식도 반드시 그 존재에 맞춰 만들어라. 특히 작품 고유의 소재를 평범한 인간 캐릭터로 바꾸지 마라.
+- 반드시 각 field의 options 안에 있는 문구만 정확히 골라라.
+- pick 수만큼 고르되, 같은 인물의 선택이 서로 모순되지 않게 하라.
+- 각 인물의 description은 3~5문장으로 충분히 써라. 작품의 제목·로그라인·장르·세계관을 직접 반영하고,
+  선택한 역할·성격·욕망·두려움·비밀·겉모습·실제 모습을 모두 연결해 이 인물이 작품에서 무엇을 하고
+  어떤 갈등을 만드는지 구체적으로 설명하라. 어느 작품에나 붙일 수 있는 일반적인 소개는 금지한다.
+- 모든 index와 field id를 빠짐없이 반환하라.
+- 아래 형식의 JSON만 출력하라.
+{{"characters":[{{"index":0,"name":"서윤","age":"29","description":"작품과 설정을 반영한 인물 설명","fields":{{"role":["주인공"],"personality":["침착하다"]}}}}]}}"""
+    raw = llm.write(prompt, mock_text="", max_tokens=5000)
+    data = parse_llm_json(raw)
+    rows = data.get("characters") if isinstance(data, dict) else None
+    if not isinstance(rows, list):
+        return {"ok": False, "error": "인물 설정을 채우지 못했어요.",
+                "detail": llm.last_error or "AI 응답 형식을 확인해 주세요."}
+
+    specs = {ch["index"]: {f["id"]: f for f in ch["fields"]} for ch in clean}
+    result = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        try:
+            idx = int(row.get("index"))
+        except (TypeError, ValueError):
+            continue
+        chosen = {}
+        for fid, values in (row.get("fields") or {}).items():
+            spec = specs.get(idx, {}).get(str(fid))
+            if not spec:
+                continue
+            if not isinstance(values, list):
+                values = [values]
+            valid = [str(v) for v in values if str(v) in spec["options"]][:spec["pick"]]
+            if valid:
+                chosen[str(fid)] = valid
+        if chosen:
+            item = {"index": idx, "fields": chosen}
+            if b.create_all:
+                name = str(row.get("name", "")).strip()[:80]
+                if not name:
+                    continue
+                description = str(row.get("description", "")).strip()[:1600]
+                if not description:
+                    continue
+                item.update({"name": name, "age": str(row.get("age", "")).strip()[:20],
+                             "description": description})
+            result.append(item)
+    if not result:
+        return {"ok": False, "error": "인물 설정을 채우지 못했어요. 다시 시도해 주세요."}
+    return {"ok": True, "characters": result}
+
+
 @router.post("/brief/suggest")
 def suggest_choice(b: SuggestBody, user: str = Header(default="solo", alias="X-User-Id")):
     """단계별 설계에서 'AI에게 추천받기' — 지금까지의 설정에 가장 어울리는 보기를 고른다.
@@ -1195,13 +1442,17 @@ def suggest_choice(b: SuggestBody, user: str = Header(default="solo", alias="X-U
     opts = [o.strip() for o in (b.options or []) if o.strip()][:60]
     if not opts:
         return {"ok": False, "error": "고를 보기가 없어요."}
+    n = max(1, min(int(b.pick or 1), 5))
     if llm.is_mock:
-        return {"ok": True, "picked": opts[:max(1, b.pick)], "reason": "(예시 추천)"}
+        if not DEMO_MODE:
+            return {"ok": False, "error": "AI 연결이 필요해요.",
+                    "detail": "배포 환경의 AI 연결 상태를 확인해 주세요."}
+        return {"ok": True, "picked": opts[:n],
+                "reason": "미리보기용 예시 추천입니다.", "demo": True}
     with db.connect() as c:
         ok, _cap = _ai_gate(c, user)
         if not ok:
             return _AI_BUSY
-    n = max(1, min(int(b.pick or 1), 5))
     prompt = f"""당신은 프로 웹소설 기획자다. 아래 작품에 가장 어울리는 '{b.question}'을 고르라.
 
 [지금까지 정해진 것]
@@ -1312,9 +1563,6 @@ def write_sample(b: SampleBody, user: str = Header(default="solo", alias="X-User
 def draft_outline(b: BuildBody, user: str = Header(default="solo", alias="X-User-Id")):
     """지금까지 채운 설정을 바탕으로 회차별 전개(1화~N화)를 통째로 생성한다.
     요금제에 따라 '몇 화까지'와 '화당 줄거리 깊이(글자수)'가 달라진다."""
-    if llm.is_mock:
-        return {"ok": False, "error": "AI가 연결되어 있지 않아요.",
-                "detail": "API 키/사용량 한도를 확인해 주세요."}
     if not (b.logline.strip() or b.ending.strip() or b.world_setting.strip()):
         return {"ok": False, "error": "회차 전개를 짜려면 최소한 로그라인·세계관·결말 중 하나는 채워주세요."}
     _cap_build(b)
@@ -1326,6 +1574,28 @@ def draft_outline(b: BuildBody, user: str = Header(default="solo", alias="X-User
     requested = max(1, min(b.total_chapters, 200))
     total = min(requested, lim["max_chapters"])   # 요금제 상한까지만 생성
     syn = lim["syn_chars"]                          # 화당 줄거리 목표 글자수
+    if llm.is_mock:
+        if not DEMO_MODE:
+            return {"ok": False, "error": "AI 연결이 필요해요.",
+                    "detail": "배포 환경의 AI 연결 상태를 확인해 주세요."}
+        titles = ["사건의 시작", "첫 번째 선택", "되돌릴 수 없는 변화",
+                  "숨겨진 진실", "결말을 향한 선택"]
+        premise = b.logline.strip() or b.world_setting.strip()
+        ending = b.ending.strip() or "주인공이 진실을 받아들이고 자신의 선택을 내린다."
+        outline = []
+        for no in range(1, total + 1):
+            title = titles[min(len(titles) - 1, (no - 1) * len(titles) // max(1, total))]
+            if no == 1:
+                content = f"{premise} 일상을 깨뜨리는 구체적인 사건이 벌어지고, 주인공은 외면할 수 없는 단서를 얻는다."
+            elif no == total:
+                content = f"쌓인 갈등과 비밀이 한자리에서 충돌한다. {ending}"
+            else:
+                content = "이전 선택의 대가가 드러나며 갈등이 커진다. 주인공은 새로운 정보를 얻고 더 위험한 다음 선택을 한다."
+            outline.append({"no": no, "title": title, "content": content})
+        return {"ok": True, "outline": outline, "capped": requested > total,
+                "tier_max": lim["max_chapters"], "syn_chars": syn,
+                "tier_label": lim["label"], "requested": requested,
+                "missing": [], "demo": True}
     context = _assemble_brief(b)
     beats_guide = "\n".join(
         f"- {int(edge*100)}%까지: {name}" for name, edge in zip(BEATS, BEAT_EDGES))
@@ -1481,8 +1751,9 @@ def list_works(user: str = Header(default="solo", alias="X-User-Id")):
         out = []
         for r in c.execute("SELECT id, title, genre, total_chapters FROM works "
                            "WHERE user_id=? ORDER BY id DESC", (user,)).fetchall():
-            n = c.execute("SELECT COUNT(*) AS n FROM chapters WHERE work_id=?",
-                          (r["id"],)).fetchone()["n"]
+            n = c.execute("SELECT COUNT(*) AS n FROM chapters "
+                          "WHERE work_id=? AND LENGTH(TRIM(COALESCE(body,'')))>0",
+                           (r["id"],)).fetchone()["n"]
             out.append({**dict(r), "written": n})
         return {"works": out}
 

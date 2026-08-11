@@ -3,39 +3,28 @@ services:
     name: thelife
     runtime: python
     rootDir: thelife
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn server.main:app --host 0.0.0.0 --port $PORT
-    envVars:
-      - key: GEMINI_API_KEY
-        sync: false
-      # 데이터 영구 보관(재배포·수면에도 유지) — Neon 등 PostgreSQL 연결 문자열.
-      # 이게 있어야 업데이트/재배포 시 이용자 데이터가 사라지지 않는다.
-      - key: DATABASE_URL
-        sync: false
-      # 인앱 결제(RevenueCat) — 앱을 팔기 시작할 때만 필요. 없으면 결제는 fail-closed.
-      - key: REVENUECAT_SECRET        # RevenueCat v1 시크릿 API 키
-        sync: false
-      - key: REVENUECAT_WEBHOOK_AUTH  # 웹훅 Authorization 헤더로 받을 임의 비밀문자열
-        sync: false
-
-  # ─────────────────────────────────────────────────────────────────────────
-  # 앱 전용 미리보기 — 판매용(launch) 모드를 '항상' 켜 둔 별도 서비스.
-  # 개인 집필용(위 thelife)과 URL이 분리돼, 광고·펜·본문 게이트가 있는
-  # 앱 화면을 언제든 따로 확인할 수 있다. (앱 관리·심사 준비용)
-  #  · WRITER_LAUNCH_MODE=1 로 항상 판매용 앱 모드.
-  #  · DATABASE_URL 은 일부러 비움 → 개인 집필 DB와 완전히 분리(미리보기 데이터는 임시).
-  #  · 결제(RevenueCat)는 미연결 — UI만 미리보기(실결제는 실제 스토어 앱에서).
-  - type: web
-    name: thelife-appview
-    runtime: python
-    rootDir: thelife
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn server.main:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn server.novelist_main:app --host 0.0.0.0 --port $PORT
     envVars:
-      - key: WRITER_LAUNCH_MODE      # 판매용 앱 모드 ON (핵심)
+      # 판매용 소설 앱 전용 모드. 전체 AI 본문 생성은 막고 기획·가이드 기능만 제공합니다.
+      - key: WRITER_LAUNCH_MODE
         value: "1"
-      - key: GEMINI_API_KEY          # 미리보기에서 AI를 쓰려면 (없으면 목업)
+
+      # Render 대시보드에서 실제 값을 보관합니다. 저장소에는 비밀값을 넣지 않습니다.
+      - key: GEMINI_API_KEY
         sync: false
-      - key: ADMIN_SECRET            # 프로/펜을 테스트로 부여할 때 (선택)
+      - key: DATABASE_URL
+        sync: false
+
+      # AI 공급자와 모델. 대시보드 값이 있으면 그 값이 우선 적용됩니다.
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: GEMINI_MODEL
+        value: gemini-3.6-flash
+
+      # 결제를 연결할 때 사용하는 선택 항목입니다. 없으면 결제 요청은 안전하게 거절됩니다.
+      - key: REVENUECAT_SECRET
+        sync: false
+      - key: REVENUECAT_WEBHOOK_AUTH
         sync: false

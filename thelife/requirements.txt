@@ -6,5 +6,6 @@ anthropic
 google-generativeai
 psycopg[binary]
 python-multipart
+tzdata
 python-docx
 pypdf
