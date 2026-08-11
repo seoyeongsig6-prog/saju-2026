@@ -40,6 +40,7 @@ const ICO = {
   copy: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 5H6a2 2 0 0 0-2 2v9"/></svg>',
   down: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="M7.5 11 12 15.5 16.5 11"/><path d="M5 20h14"/></svg>',
   trash: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 7h15"/><path d="M9 7V5h6v2"/><path d="M6.5 7l1 13h9l1-13"/></svg>',
+  edit: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4.2L19 9.2 14.8 5 4 15.8z"/><path d="m12.8 7 4.2 4.2"/><path d="M4 20h16"/></svg>',
   film: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M8 6v12M16 6v12M3 12h18"/></svg>',
   check: '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5 10 17.5 19 7"/></svg>',
 };
@@ -828,12 +829,13 @@ function renderBible() {
     const el = document.createElement("div");
     el.className = "b-char";
     el.innerHTML = `
-      <button class="edit-ch" title="편집">✎</button>
-      <b>${c.name}</b><span class="arch">${c.archetype || ""}</span>
-      <p>${c.role || ""}<br>욕망 — ${c.want || ""} · 결핍 — ${c.need || ""}<br>비밀 — ${c.secret || ""}</p>`;
+      <button class="edit-ch" title="인물 수정" aria-label="${escapeHtml(c.name || "인물")} 수정">${ICO.edit}</button>
+      <b>${escapeHtml(c.name || "")}</b><span class="arch">${escapeHtml(c.archetype || "")}</span>
+      <p>${escapeHtml(c.role || "")}<br>욕망 — ${escapeHtml(c.want || "")} · 결핍 — ${escapeHtml(c.need || "")}<br>비밀 — ${escapeHtml(c.secret || "")}</p>`;
     el.querySelector(".edit-ch").onclick = () => editChar(el, idx);
     box.appendChild(el);
   });
+  renderBibleOutline();
   $("#bible-rels").innerHTML = WORK.relations.map((r) => `
     <div class="b-rel"><b>${r.a} ↔ ${r.b}</b> · ${r.type || ""} — ${r.tension || ""}</div>`).join("");
   renderRelGraph();
@@ -1217,6 +1219,29 @@ function wzBar(prevFn, nextLabel, nextFn, ai) {
   row.appendChild(prev); row.appendChild(next);
   foot.appendChild(row);
   wzPad();
+}
+
+function renderBibleOutline() {
+  const box = $("#bible-outline");
+  if (!box) return;
+  box.innerHTML = "";
+  const outline = [...(WORK.outline || [])].sort((a, b) => Number(a.no) - Number(b.no));
+  if (!outline.length) {
+    box.innerHTML = '<p class="hint bible-outline-empty">아직 만들어진 회차별 줄거리가 없어요.</p>';
+    return;
+  }
+  outline.forEach((o) => {
+    const no = Number(o.no);
+    const el = document.createElement("div");
+    el.className = "b-outline";
+    el.innerHTML = `
+      <button class="edit-ch" title="${no}화 줄거리 수정" aria-label="${no}화 줄거리 수정">${ICO.edit}</button>
+      <span class="b-outline-no">${no}화</span>
+      <b>${escapeHtml(o.title || `${no}화`)}</b>
+      <p>${escapeHtml(o.content || "아직 줄거리가 없어요.")}</p>`;
+    el.querySelector(".edit-ch").onclick = () => editOutline(no, el, renderBible);
+    box.appendChild(el);
+  });
 }
 function wzFoot(s) {
   const last = WZ.i >= wzStepCount() - 1;
@@ -1770,7 +1795,9 @@ async function wzOutline() {
 function renderWzOutline(r) {
   const d = WZ.draft || {};
   const rows = (WZ.outline || []).map((o) =>
-    `<div class="wz-ep"><span class="n">${o.no}화</span><div><b>${escapeHtml(o.title || "")}</b>
+    `<div class="wz-ep" data-outline-no="${Number(o.no)}">
+      <button class="edit-ch" title="${Number(o.no)}화 줄거리 수정" aria-label="${Number(o.no)}화 줄거리 수정">${ICO.edit}</button>
+      <span class="n">${o.no}화</span><div><b>${escapeHtml(o.title || "")}</b>
       <span>${escapeHtml(o.content || "")}</span></div></div>`).join("");
   const cap = (r && r.capped) || ((LIMITS && LIMITS.max_chapters) || WZ.total) < WZ.total;
   const lim = (LIMITS && LIMITS.max_chapters) || WZ.total;
@@ -1784,7 +1811,37 @@ function renderWzOutline(r) {
   $("#wz-outline").innerHTML = demoNote + capNote +
     `<div class="wzc"><h3>총 ${WZ.outline.length || WZ.total}화 · 결말 고정</h3>
        <p style="color:var(--text)">${escapeHtml(d.ending || "")}</p></div>
+     <div class="wz-edit-help">${ICO.edit}<span>연필 버튼을 누르면 AI가 만든 줄거리를 바로 수정할 수 있어요.</span></div>
      <div class="wzc" style="padding:6px 16px">${rows || "<p>줄거리가 비어 있어요.</p>"}</div>`;
+  $("#wz-outline").querySelectorAll(".wz-ep .edit-ch").forEach((btn) => {
+    btn.onclick = () => {
+      const el = btn.closest(".wz-ep");
+      editWzOutline(Number(el.dataset.outlineNo), el);
+    };
+  });
+}
+
+function editWzOutline(no, el) {
+  const o = (WZ.outline || []).find((x) => Number(x.no) === no) || { title: "", content: "" };
+  el.classList.add("editing");
+  el.innerHTML = `
+    <div class="plan-ed">
+      <div class="plan-ed-h">${no}화 줄거리 수정</div>
+      <input class="pe-title" placeholder="이 화 제목">
+      <textarea class="pe-content" rows="5" placeholder="이 화에서 누가 무엇을 하고, 어떤 변화가 생기는지 적어주세요."></textarea>
+      <div class="row2"><button class="primary pe-save">저장</button><button class="pe-cancel">취소</button></div>
+    </div>`;
+  el.querySelector(".pe-title").value = o.title || "";
+  el.querySelector(".pe-content").value = o.content || "";
+  el.querySelector(".pe-cancel").onclick = () => renderWzOutline();
+  el.querySelector(".pe-save").onclick = () => {
+    const title = el.querySelector(".pe-title").value.trim();
+    const content = el.querySelector(".pe-content").value.trim();
+    WZ.outline = (WZ.outline || []).filter((x) => Number(x.no) !== no)
+      .concat([{ no, title, content }]).sort((a, b) => Number(a.no) - Number(b.no));
+    wzSave();
+    renderWzOutline();
+  };
 }
 async function wzFinish() {
   busy("작품을 만드는 중…");
