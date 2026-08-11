@@ -978,6 +978,47 @@ body.writer:not(.focus-mode).has-ad .wview {
   body.has-ad:not(.focus-mode) .ad-banner { bottom: calc(66px + env(safe-area-inset-bottom, 0px)); }
 }
 
+/* 새 작품 설계 — 입력 영역이 배경에 묻히지 않도록 한 단계 또렷하게 */
+#w-wizard .wz-pane input,
+#w-wizard .wz-pane select,
+#w-wizard .wz-pane textarea {
+  min-height: 50px;
+  padding: 14px 15px;
+  border: 1.5px solid color-mix(in srgb, var(--text) 22%, var(--bg));
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, .045);
+  color: var(--text);
+  transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
+}
+#w-wizard .wz-pane textarea {
+  min-height: 104px;
+  line-height: 1.7;
+}
+#w-wizard .wz-pane input::placeholder,
+#w-wizard .wz-pane textarea::placeholder {
+  color: color-mix(in srgb, var(--text) 48%, var(--bg));
+  opacity: 1;
+}
+#w-wizard .wz-pane input:hover,
+#w-wizard .wz-pane select:hover,
+#w-wizard .wz-pane textarea:hover {
+  border-color: color-mix(in srgb, var(--text) 38%, var(--bg));
+}
+#w-wizard .wz-pane input:focus,
+#w-wizard .wz-pane select:focus,
+#w-wizard .wz-pane textarea:focus {
+  border-color: var(--text);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 10%, transparent),
+    0 5px 16px rgba(0, 0, 0, .065);
+}
+#w-wizard .wzc-l,
+#w-wizard .wz-label {
+  color: var(--text);
+  font-weight: 800;
+}
+
 .wz-demo-note {
   margin: 0 0 14px; padding: 12px 14px; border-radius: 14px;
   background: var(--panel2); color: var(--dim); font-size: 12px; line-height: 1.55;
