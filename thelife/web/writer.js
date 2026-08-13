@@ -48,7 +48,7 @@ const ICO = {
 let WORK = null, CHAPTER = null;
 
 /* 판매용 런치 버전 여부 — 서버 플래그.
-   body.launch = 판매 빌드(자연어 설정 수정·회당글자수 등 제외 항목 숨김).
+   body.launch = 판매 빌드(자연어 설정 수정 등 제외 항목 숨김).
    body.nobody = 'AI가 본문을 대신 써주는' 기능 없음 → 그 UI만 숨긴다.
                  작가가 직접 쓰는 에디터는 모든 등급에서 항상 열려 있다(핵심 기능).
    body.nopen  = 펜(소모성 재화)을 안 쓰는 빌드 → 펜 잔액·충전 UI 숨김. */
@@ -84,7 +84,7 @@ function handleBodyNeed(r) {
     return true;
   }
   if (r && r.need === "pens") {
-    notice("펜이 부족해요. 펜을 충전하면 본문 1편(≤5,000자)을 쓸 수 있어요.");
+    notice("이 앱에서는 AI 본문 대행을 제공하지 않아요. 본문을 직접 작성해 주세요.");
     showPens();
     return true;
   }
@@ -591,7 +591,6 @@ function bdCollect() {
   return {
     title: bdVal("bd-title"), genre: bdGenre(),
     total_chapters: Number($("#bd-total").value) || 25,
-    chars_per_chapter: Number($("#bd-cpc").value) || 5000,
     keywords: bdVal("bd-keywords"),
     logline: bdVal("bd-logline"), intent: bdVal("bd-intent"),
     world_setting: bdVal("bd-world"), world_rules: bdVal("bd-rules"), taboos: bdVal("bd-taboos"),
@@ -813,7 +812,6 @@ function renderBible() {
   $("#bible-title").value = WORK.title || "";
   $("#bible-ending").value = WORK.ending || "";
   $("#bible-total").value = WORK.total_chapters || 25;
-  $("#bible-cpc").value = String(WORK.chars_per_chapter || 5000);
   const bs = $("#brief-section");
   if (WORK.brief) {
     bs.classList.remove("hidden");
@@ -1089,20 +1087,19 @@ function editChar(el, idx) {
 
 async function saveBible() {
   const total = Number($("#bible-total").value) || WORK.total_chapters || 25;
-  const cpc = Number($("#bible-cpc").value) || WORK.chars_per_chapter || 5000;
   const r = await api(`/api/writer/works/${WORK.id}/bible`, {
     method: "PUT",
     body: JSON.stringify({
       title: $("#bible-title").value.trim(),
       ending: $("#bible-ending").value.trim(),
       characters: WORK.characters, relations: WORK.relations, beats: WORK.beats,
-      total_chapters: total, chars_per_chapter: cpc,
+      total_chapters: total,
     }),
   });
   if (!r.ok) { notice(r.error || "저장 실패"); return; }
   WORK.title = $("#bible-title").value.trim(); $("#wk-title").textContent = WORK.title;
   WORK.ending = $("#bible-ending").value.trim();
-  WORK.total_chapters = total; WORK.chars_per_chapter = cpc;
+  WORK.total_chapters = total;
   $("#wk-progress").textContent = `${WORK.chapters.length}/${total}화`;
 }
 $("#bible-save-core").onclick = async () => {

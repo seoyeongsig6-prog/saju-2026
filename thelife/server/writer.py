@@ -67,7 +67,7 @@ PRODUCT_TIER = {
     "novelist.pro.monthly": "pro", "novelist.pro.yearly": "pro",
 }
 
-# 소모성 '펜' 상품 ID → 지급 개수. 펜 1개 = 본문 1편(≤5,000자).
+# 소모성 '펜' 상품 ID → 지급 개수. 펜 1개 = 본문 1편.
 PEN_PRODUCTS = {
     "novelist.pen.1": 1,
     "novelist.pens.10": 10,
@@ -117,7 +117,7 @@ def _limits(name: str) -> dict:
 
 
 # ─────────────────────────── 펜(소모성 재화) ───────────────────────────
-# 펜 1개 = 본문 1편(≤5,000자). 서버가 잔액의 유일한 소스 오브 트루스다.
+# 펜 1개 = 본문 1편. 서버가 잔액의 유일한 소스 오브 트루스다.
 #  · 프로 구독자는 매달 monthly_pens 개를 자동 지급받는다.
 #  · 스토어에서 펜을 사면 RevenueCat 웹훅(NON_RENEWING_PURCHASE)이 잔액을 올린다.
 def _pen_balance(c, user: str) -> int:
@@ -951,7 +951,6 @@ class BuildBody(BaseModel):
     title: str = ""
     genre: str = ""
     total_chapters: int = 25
-    chars_per_chapter: int = 5000
     keywords: str = ""
     logline: str = ""            # 로그라인
     intent: str = ""             # 기획 의도
@@ -977,8 +976,7 @@ def _assemble_brief(b: BuildBody) -> str:
     """구조화된 빌더 입력을 사람이 읽는 정식 기획안 텍스트로 조립한다.
     회차별 전개는 'N화. 제목' 형식으로 써서 extract_outline과도 호환된다."""
     out = [f"# {b.title.strip() or '무제'}\n"
-           f"장르: {b.genre.strip() or '미정'} · 총 {max(5, b.total_chapters)}화 · "
-           f"회당 목표 {b.chars_per_chapter or 5000}자\n"
+           f"장르: {b.genre.strip() or '미정'} · 총 {max(5, b.total_chapters)}화\n"
            + (f"키워드: {b.keywords.strip()}\n" if b.keywords.strip() else "") + "\n"]
     out.append(_sec("로그라인", b.logline))
     out.append(_sec("기획 의도", b.intent))
@@ -1123,13 +1121,12 @@ def build_work(b: BuildBody, user: str = Header(default="solo", alias="X-User-Id
     sample = b.style_sample.strip()
     profile = analyze_style(sample) if len(sample) >= 300 else ""
 
-    cpc = max(1000, min(int(b.chars_per_chapter or 5000), 8000))
     with db.connect() as c:
         work_id = c.insert_id(
             "INSERT INTO works (user_id, title, genre, brief, premise, ending, style, "
             "total_chapters, style_sample, style_profile, characters_json, relations_json, "
-            "beats_json, outline_json, canon_json, chars_per_chapter, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))",
+            "beats_json, outline_json, canon_json, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))",
             (user, b.title.strip() or "무제", b.genre.strip() or "웹소설",
              brief[:BRIEF_MAX], b.logline.strip(), b.ending.strip(),
              b.style.strip(), total, sample[:6000], profile,
@@ -1137,7 +1134,7 @@ def build_work(b: BuildBody, user: str = Header(default="solo", alias="X-User-Id
              json.dumps(relations, ensure_ascii=False),
              json.dumps(beats, ensure_ascii=False),
              json.dumps(outline, ensure_ascii=False),
-             json.dumps(canon, ensure_ascii=False), cpc),
+             json.dumps(canon, ensure_ascii=False)),
         )
     return {"ok": True, "id": work_id, "outline_chapters": len(outline)}
 
@@ -1737,6 +1734,11 @@ def _load_work(c, work_id: int, user: str):
     if not row:
         return None
     w = dict(row)
+    # 예전에 만든 작품의 기획안에도 남아 있는 회당 글자 수 목표를 노출하거나
+    # 이후 AI 기획 작업의 참고 정보로 사용하지 않는다.
+    w["brief"] = re.sub(
+        r"\s*(?:·\s*)?회당 목표\s*[\d,]+\s*자", "", w.get("brief") or ""
+    )
     w["characters"] = json.loads(w.get("characters_json") or "[]")
     w["relations"] = json.loads(w.get("relations_json") or "[]")
     w["beats"] = json.loads(w.get("beats_json") or "[]")
@@ -1772,7 +1774,7 @@ def get_work(work_id: int, user: str = Header(default="solo", alias="X-User-Id")
                 "work": {k: w.get(k) for k in ("id", "title", "genre", "premise", "ending",
                                                "style", "total_chapters", "characters",
                                                "relations", "beats", "brief", "outline", "canon",
-                                               "style_profile", "style_sample", "chars_per_chapter")},
+                                               "style_profile", "style_sample")},
                 "chapters": chapters}
 
 
@@ -1783,7 +1785,6 @@ class BibleBody(BaseModel):
     relations: list = []
     beats: list = []
     total_chapters: int = 0       # 0이면 그대로 둔다
-    chars_per_chapter: int = 0    # 0이면 그대로 둔다
 
 
 def _normalize_beats(beats: list) -> list:
@@ -1806,17 +1807,15 @@ def edit_bible(work_id: int, body: BibleBody,
             return {"ok": False, "error": "작품을 찾을 수 없어요."}
         total = body.total_chapters if body.total_chapters and body.total_chapters >= 5 \
             else w["total_chapters"]
-        cpc = max(1000, min(body.chars_per_chapter, 8000)) if body.chars_per_chapter \
-            else (w.get("chars_per_chapter") or 5000)
         c.execute(
             "UPDATE works SET title=?, ending=?, characters_json=?, relations_json=?, "
-            "beats_json=?, total_chapters=?, chars_per_chapter=? WHERE id=?",
+            "beats_json=?, total_chapters=? WHERE id=?",
             (body.title.strip() or w["title"],
              body.ending.strip() or w["ending"],
              json.dumps(body.characters or w["characters"], ensure_ascii=False),
              json.dumps(body.relations or w["relations"], ensure_ascii=False),
              json.dumps(_normalize_beats(body.beats or w["beats"]), ensure_ascii=False),
-             total, cpc, work_id),
+             total, work_id),
         )
     return {"ok": True}
 
