@@ -2314,8 +2314,13 @@ window.addEventListener("popstate", () => { history.pushState(null, ""); goBack(
 /* 시작 — 설정하다 만 게 있으면(새로고침·앱 재시작) 그 자리로 돌려놓는다 */
 (async function boot() {
   await CONFIG_READY;
-  const prev = wzSaved();
+  await showHome();
   history.pushState(null, "");          // 뒤로가기를 잡아둘 한 칸
   await showHome();
-  if (prev && prev.live) wzOpen(prev);
 })();
+
+/* 브라우저가 이전 화면을 통째로 복원한 경우에도 작품 목록에서 시작한다.
+   작성 중인 새 작품은 지우지 않고 '새 작품 만들기'에서 이어서 열 수 있다. */
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) showHome();
+});
