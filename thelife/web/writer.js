@@ -187,7 +187,6 @@ function renderPlans() {
       _feat(IC.users, "AI 인물 생성", P.max_characters + "명"),
       _feat(IC.stack, "작품 수", works),
       _feat(IC.write, "직접 본문 쓰기", "무제한"),
-      _feat(IC.book, "회차별 집필 가이드", "포함"),
       _feat(IC.spark, "본문 예시 · 약 1,000자", P.sample_daily ? `하루 ${P.sample_daily}회` : "—", !P.sample_daily),
       P.ai_daily ? _feat(IC.spark, "하루 AI 사용", P.ai_daily + "회") : "",
       anyStyle ? _feat(IC.spark, "문체 학습", P.style_learning ? "✓" : "—", !P.style_learning) : "",
@@ -741,8 +740,8 @@ function renderChapters() {
   box.innerHTML = "";
   const written = WORK.chapters.filter((ch) => (ch.chars || 0) > 0).length;
   if (!written) {
-    box.innerHTML = `<p class="hint">아직 쓴 회차가 없어요. 회차별 줄거리는 위 '줄거리 / 가이드 보기'에서 보고 고칠 수 있어요.<br>
-      아래 '1화 쓰기'를 누르면 줄거리와 집필 가이드를 옆에 두고 바로 쓸 수 있어요.</p>`;
+    box.innerHTML = `<p class="hint">아직 쓴 회차가 없어요. 회차별 줄거리는 위 '회차별 줄거리'에서 보고 고칠 수 있어요.<br>
+      아래 '1화 쓰기'를 누르면 바로 집필을 시작할 수 있어요.</p>`;
   }
   // 이미 쓴 회차만 목록에 보여준다 (예정 회차·비트 라벨은 표시하지 않음).
   WORK.chapters.forEach((ch) => {
@@ -1115,7 +1114,7 @@ $("#bible-save-core").onclick = async () => {
 $("#wk-home").onclick = () => showHome();
 $("#wk-menu").onclick = () => openMenu("work");
 
-/* ---------- 줄거리 / 가이드 보기 ---------- */
+/* ---------- 회차별 줄거리 보기 ---------- */
 $("#btn-plot").onclick = () => showPlot();
 
 /* ══════════ 새 작품 — 단계별 설계 (위저드) ══════════
@@ -1904,10 +1903,9 @@ $("#wz-home").onclick = () => {
 };
 $("#wz-menu").onclick = () => openMenu("wizard");
 
-/* ══════════ 전체 플롯 / 가이드 (아코디언) ══════════
-   제목을 누르면 그 화의 줄거리와 집필 가이드가 펼쳐지고, 다른 제목을 누르면 접힌다. */
+/* ══════════ 회차별 줄거리 (아코디언) ══════════
+   제목을 누르면 그 화의 줄거리가 펼쳐지고, 다른 제목을 누르면 접힌다. */
 let PLOT_OPEN = 0;                     // 지금 펼쳐진 화 번호 (0=없음)
-const GUIDE_CACHE = {};                // {no: guide}
 
 function showPlot(focusNo) {
   view("w-plot");
@@ -1947,7 +1945,6 @@ function renderPlotList() {
     el.querySelector(".pl-head").onclick = () => {
       PLOT_OPEN = open ? 0 : no;       // 같은 걸 누르면 접기, 다른 걸 누르면 그것만 열기
       renderPlotList();
-      if (!open) loadGuide(no);
     };
     if (open) {
       const pane = document.createElement("div");
@@ -1957,13 +1954,10 @@ function renderPlotList() {
       pane.innerHTML =
         `<p class="pl-syn${syn ? "" : " empty"}">${syn || "아직 줄거리가 없어요."}</p>
          <button class="pl-edit">줄거리 고치기</button>
-         <span class="pl-gtag">본 화 구성 가이드</span>
-         <div class="g-wrap" id="g-${no}">${guideHtml(GUIDE_CACHE[no])}</div>
          <div class="pl-acts">
             <button class="smp${SAMPLE.base > 0 ? "" : " off"}">1,000자 본문 예시</button>
            <button class="go">${ch ? "이어 쓰기" : "쓰기"}</button>
          </div>`;
-      if (!GUIDE_CACHE[no]) loadGuide(no);
       pane.querySelector(".smp").onclick = () => {
         if (SAMPLE.base <= 0) { showPlans("plot"); return; }
         makeSample({ work_id: WORK.id, no, title: `${no}화 본문 예시` });
@@ -1998,35 +1992,6 @@ function editPlotSyn(pane, no) {
     renderPlotList();
     notice("줄거리를 저장했어요.");
   };
-}
-const GUIDE_ORDER = ["목표", "연결", "갈등", "인물", "사건", "맺음"];
-function guideHtml(g) {
-  if (!g) return `<p class="g-v" style="padding:8px 0">가이드를 불러오는 중…</p>`;
-  let h = GUIDE_ORDER.map((k) => g[k]
-    ? `<div class="g-row"><span class="g-k">${k}</span><span class="g-v">${escapeHtml(g[k])}</span></div>`
-    : "").join("");
-  if (g["반복주의"]) {
-    h += `<div class="g-row warn"><span class="g-k">반복 주의</span>
-            <span class="g-v">${escapeHtml(g["반복주의"])}</span></div>`;
-  }
-  return h || `<p class="g-v" style="padding:8px 0">가이드가 없어요.</p>`;
-}
-async function loadGuide(no, force) {
-  const slot = $(`#g-${no}`);
-  if (slot && (force || !GUIDE_CACHE[no])) {
-    slot.innerHTML = `<p class="g-v" style="padding:8px 0">가이드를 ${force ? "새로 만드는" : "불러오는"} 중…</p>`;
-  }
-  const r = await api(`/api/writer/works/${WORK.id}/guide`, {
-    method: "POST", body: JSON.stringify({ no, force: !!force }),
-  });
-  if (!r.ok) {
-    const s = $(`#g-${no}`);
-    if (s) s.innerHTML = `<p class="g-v" style="padding:8px 0">${escapeHtml(r.error || "가이드를 못 만들었어요.")}</p>`;
-    return;
-  }
-  GUIDE_CACHE[no] = r.guide;
-  const s2 = $(`#g-${no}`);
-  if (s2) s2.innerHTML = guideHtml(r.guide);
 }
 $("#pl-home").onclick = () => openWork(WORK.id);
 $("#pl-menu").onclick = () => openMenu("plot");
@@ -2267,15 +2232,10 @@ function renderSheet(which) {
   const o = byNo[no];
   box.innerHTML =
     `<p class="pl-syn${o && o.content ? "" : " empty"}">${o && o.content ? escapeHtml(o.content) : "아직 줄거리가 없어요."}</p>
-     <span class="pl-gtag">가이드</span>
-     <div class="g-wrap" id="g-${no}">${guideHtml(GUIDE_CACHE[no])}</div>
-     <div class="pl-acts"><button class="regen">가이드 새로 만들기</button>
-       <button class="go">전체 회차 설계</button></div>`;
-  box.querySelector(".regen").onclick = () => loadGuide(no, true);
+     <div class="pl-acts"><button class="go">전체 회차 줄거리 보기</button></div>`;
   box.querySelector(".go").onclick = () => { closeSheet(); guard(() => showPlot(no)); };
-  if (!GUIDE_CACHE[no]) loadGuide(no);
 }
-$("#ed-plot").onclick = () => openSheet("guide");
+$("#ed-plot").onclick = () => openSheet("current");
 $("#sh-close").onclick = closeSheet;
 $("#sheet-back").onclick = closeSheet;
 document.querySelectorAll("#plot-sheet .st").forEach((b) => {
@@ -2294,7 +2254,7 @@ function openMenu(where) {
     box.appendChild(b);
   };
   if (where === "editor") {
-    add("줄거리 / 가이드 보기", () => guard(() => showPlot(CHAPTER.no)), "", ICO.book);
+    add("회차별 줄거리", () => guard(() => showPlot(CHAPTER.no)), "", ICO.book);
     add("본문 복사", async () => {
       await navigator.clipboard.writeText($("#ed-body").value);
       notice("본문을 복사했어요. 연재 플랫폼에 붙여넣으세요.");
@@ -2314,7 +2274,7 @@ function openMenu(where) {
     add("설정", showSettings, "", ICO.gear);
   } else {
     if (WORK) add("작품 메인", () => openWork(WORK.id), "", ICO.pen);
-    if (WORK) add("줄거리 / 가이드 보기", () => showPlot(), "", ICO.book);
+    if (WORK) add("회차별 줄거리", () => showPlot(), "", ICO.book);
     add("내 작품 목록", showHome, "", ICO.home);
     add("설정", showSettings, "", ICO.gear);
   }

@@ -252,13 +252,6 @@ input.wz-in.one { width: 100%; padding: 13px 14px; border-radius: 13px; font-siz
 .pl-pane { padding: 13px 14px 15px; }
 .pl-syn { font-size: 13.5px; line-height: 1.75; margin: 0 0 12px; }
 .pl-syn.empty { color: var(--dim); }
-.pl-gtag { display: inline-block; font-size: 11px; font-weight: 800; color: var(--accent);
-  background: var(--accent-soft); padding: 3px 10px; border-radius: 999px; margin-bottom: 10px; }
-.g-row { display: flex; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line-soft); }
-.g-k { font-size: 12.5px; font-weight: 800; min-width: 46px; color: var(--text); }
-.g-v { font-size: 12.5px; line-height: 1.7; color: var(--dim); flex: 1; }
-.g-row.warn .g-k { color: var(--bad); }
-.g-row.warn .g-v { color: var(--bad); }
 .pl-acts { display: flex; gap: 8px; margin-top: 12px; }
 .pl-acts button { flex: 1; padding: 10px; border-radius: 10px; font-size: 12.5px; font-weight: 700;
   border: 1px solid var(--line); background: var(--panel2); color: var(--text); }
