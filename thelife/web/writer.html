@@ -25,12 +25,11 @@
 <!-- 홈 (내 작품) -->
 <div id="w-home" class="wview">
   <div class="app-bar">
-    <div><span class="app-eyebrow">THE NOVELIST</span><div class="app-brand">나의 서재</div><p class="app-tagline">기획하고, 쓰고, 완성하는 작업실</p></div>
+    <div><span class="app-eyebrow">THE NOVELIST</span><div class="app-brand">나의 서재</div><p class="app-tagline">상상한 세계가 글이 되는 시간</p></div>
     <button id="btn-settings" class="plan-pill" aria-label="설정" title="설정">무료 플랜</button>
   </div>
   <div id="w-list" class="w-list"></div>
   <div id="w-empty" class="w-empty hidden">
-    <div class="empty-mark">첫 문장</div>
     <p>아직 시작한 작품이 없어요.</p>
     <small>아이디어를 작품 설계로 바꾸고 바로 집필을 시작해 보세요.</small>
   </div>
@@ -246,7 +245,7 @@
 
   <!-- 작품 메인 -->
   <div id="wt-chapters" class="wtabpane">
-    <button id="btn-plot" class="wk-plot"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h6a2 2 0 0 1 2 2v13a2 2 0 0 0-2-2H4z"/><path d="M20 5h-6a2 2 0 0 0-2 2v13a2 2 0 0 1 2-2h6z"/></svg><span>회차별 줄거리</span></button>
+    <button id="btn-plot" class="wk-plot"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h6a2 2 0 0 1 2 2v13a2 2 0 0 0-2-2H4z"/><path d="M20 5h-6a2 2 0 0 0-2 2v13a2 2 0 0 1 2-2h6z"/></svg><span>작품 줄거리</span></button>
     <div id="ch-list" class="ch-list"></div>
     <div id="pen-bar" class="pen-bar hidden"></div>
   </div>
@@ -299,10 +298,11 @@
   </div>
   <div class="wz-top">
     <div class="wz-steps">
-      <span data-s="1"><i class="wz-dot"></i><b>기본</b></span>
+      <span data-s="1"><i class="wz-dot"></i><b>세계관</b></span>
       <span data-s="2"><i class="wz-dot"></i><b>분위기</b></span>
       <span data-s="3"><i class="wz-dot"></i><b>인물</b></span>
       <span data-s="4"><i class="wz-dot"></i><b>구조</b></span>
+      <span data-s="5"><i class="wz-dot"></i><b>줄거리</b></span>
     </div>
     <span class="wz-count" id="wz-count">1/4</span>
   </div>
@@ -326,17 +326,17 @@
 
   <!-- 3단계: 결과 확인 -->
   <div class="wz-pane hidden" id="wzp-3">
-    <div class="wz-kicker">확인</div>
-    <h1 class="wz-q sm">세계관을 이렇게 만들었어요</h1>
-    <p class="wz-sub">직접 고쳐 쓸 수 있어요. 고친 내용은 그대로 저장됩니다.</p>
+    <div class="wz-kicker">작품의 세계관</div>
+    <h1 class="wz-q sm">작품의 세계관</h1>
+    <p class="wz-sub">각 내용을 직접 수정하거나 AI로 새로운 세계관을 만들 수 있습니다.</p>
     <div id="wz-result"></div>
   </div>
 
   <!-- 화별 줄거리 구성 (작가가 직접 짜거나 AI에게 맡긴다) -->
   <div class="wz-pane hidden" id="wzp-5">
     <div class="wz-kicker">화별 줄거리</div>
-    <h1 class="wz-q sm">회차별 줄거리를 짜요</h1>
-    <p class="wz-sub">직접 채워도 되고, 아래 버튼으로 AI에게 맡겨도 돼요.</p>
+    <h1 class="wz-q sm">작품 줄거리</h1>
+    <p class="wz-sub">작품의 총 회차를 정하고 줄거리를 만드세요.<br>AI로 모든 줄거리를 완성할 수 있습니다. (기본 20화)</p>
     <div id="wz-plan-note" class="wz-note"></div>
     <div id="wz-plan-list"></div>
   </div>
@@ -356,7 +356,7 @@
 <div id="w-plot" class="wview hidden">
   <div class="app-top">
     <button class="top-ic" id="pl-home" title="작품" aria-label="작품"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5"/><path d="M6 9.5V20h12V9.5"/></svg></button>
-    <b class="top-title">회차 설계</b>
+    <b class="top-title">작품 줄거리</b>
     <button class="top-ic" id="pl-menu" title="메뉴" aria-label="메뉴"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></svg></button>
   </div>
   <div id="pl-meta" class="pl-meta"></div>
@@ -404,6 +404,31 @@
   <p id="smp-note" class="smp-note"></p>
   <div id="smp-body" class="sheet-body smp-body"></div>
   <div id="smp-foot" class="smp-foot"></div>
+</div>
+
+<!-- AI와 함께 짜기 — 화면을 떠나지 않는 자연어 대화 시트 -->
+<div id="world-ai-back" class="sheet-back hidden"></div>
+<div id="world-ai-sheet" class="sheet world-ai-sheet hidden">
+  <div class="sheet-grip"></div>
+  <div class="sheet-head"><b id="world-ai-title">AI와 함께 짜기</b><button id="world-ai-close" class="sh-x">✕</button></div>
+  <div class="sheet-body">
+    <p id="world-ai-help" class="world-ai-help">생각하는 이야기를 간단하게 써주세요.<br>작성된 스토리를 확장해 세계관을 만들어 드립니다.</p>
+    <div id="world-ai-fields"></div>
+    <p id="world-ai-quota" class="world-ai-quota"></p>
+    <button id="world-ai-start" class="primary big">시작하기</button>
+  </div>
+</div>
+
+<!-- AI 사용 횟수 소진 안내 -->
+<div id="world-ai-limit" class="modal hidden">
+  <div class="modal-card ai-limit-card">
+    <h2>앗!</h2>
+    <p>이용 가능한 횟수를 모두 사용하셨습니다.<br>플랜을 업그레이드하거나 이용권을 구매해 주세요.</p>
+    <div class="notice-actions">
+      <button id="world-ai-plans" class="primary">플랜보기</button>
+      <button id="world-ai-exit" class="ghost">나가기</button>
+    </div>
+  </div>
 </div>
 
 <!-- 메뉴 시트 (☰) -->

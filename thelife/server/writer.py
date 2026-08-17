@@ -189,6 +189,13 @@ for _k, _v in SAMPLE_BASE.items():
     if _k in TIERS:
         TIERS[_k]["sample_daily"] = _v
 
+# 'AI와 함께 짜기'는 긴 기획 생성이라 별도 횟수로 안내하고 관리한다.
+# 질문 생성은 이 1회에 포함되며, 한국시간 자정에 다시 채워진다.
+WORLD_BASE = {"free": 1, "light": 3, "pro": 10}
+for _k, _v in WORLD_BASE.items():
+    if _k in TIERS:
+        TIERS[_k]["world_daily"] = _v
+
 # 하루 AI 호출 상한 — 비용 폭탄/남용 방지 안전망 (정상 사용엔 넉넉).
 AI_DAILY_CAP = {"free": 40, "light": 250, "pro": 800}
 for _k, _v in AI_DAILY_CAP.items():
@@ -251,6 +258,24 @@ def _sample_quota(c, user: str) -> dict:
             "left": max(0, base + extra - used), "day": day}
 
 
+def _world_quota(c, user: str) -> dict:
+    """AI와 함께 짜기 사용량. 추후 이용권 구매분은 extra 키에 더할 수 있다."""
+    day = db.real_now().date().isoformat()
+    base = WORLD_BASE.get(_tier_name(c, user), 1)
+    used = int(db.kv_get(c, f"worldq:{user}:{day}", "0") or "0")
+    extra = int(db.kv_get(c, f"worldextra:{user}:{day}", "0") or "0")
+    return {"used": used, "base": base, "extra": extra,
+            "left": max(0, base + extra - used), "day": day}
+
+
+def _world_spend(c, user: str) -> dict | None:
+    q = _world_quota(c, user)
+    if q["left"] <= 0:
+        return None
+    db.kv_set(c, f"worldq:{user}:{q['day']}", str(q["used"] + 1))
+    return _world_quota(c, user)
+
+
 def _clamp(s: str, n: int) -> str:
     return (s or "")[:n]
 
@@ -261,7 +286,7 @@ def _cap_build(b: "BuildBody") -> None:
     b.canon = (b.canon or [])[:60]
     b.outline = (b.outline or [])[:210]
     for f in ("logline", "intent", "world_setting", "world_rules", "taboos",
-              "style", "style_sample", "ending", "genre", "title", "keywords"):
+              "style", "style_sample", "ending", "genre", "title", "keywords", "ai_context"):
         setattr(b, f, _clamp(getattr(b, f, ""), 6000 if f in ("style_sample",) else 3000))
 
 
@@ -285,10 +310,12 @@ def writer_config(user: str = Header(default="solo", alias="X-User-Id")):
     ai_body = not LAUNCH_MODE           # 개인 서버는 등급과 무관하게 허용(_body_gate와 동일 규칙)
     with db.connect() as c:
         quota = _sample_quota(c, user)
+        world_quota = _world_quota(c, user)
     return {"launch_mode": LAUNCH_MODE, "demo_mode": DEMO_MODE,
             "ai_connected": not llm.is_mock,
             "writing_enabled": True, "ai_body": ai_body,
             "pens_enabled": not LAUNCH_MODE, "sample": quota, "sample_chars": SAMPLE_CHARS,
+            "world_quota": world_quota,
             "tier": t, "limits": TIERS[t], "tiers": TIERS, "expires_at": ent,
             "pens": pens, "pen_needed": False, "pen_packs": ([] if LAUNCH_MODE else PEN_PACKS)}
 
@@ -965,6 +992,8 @@ class BuildBody(BaseModel):
     ending: str = ""
     structure: str = ""          # 이야기 구성 방식 (시간 흐름·정보 전달·반전·플롯 유형)
     outline: list[OutlineIn] = []
+    ai_context: str = ""         # AI와 함께 짜기에서 사용자가 답한 자연어
+    choice_options: dict[str, list[str]] = {}
 
 
 def _sec(title: str, body: str) -> str:
@@ -1189,79 +1218,117 @@ def _demo_brief(b: BuildBody, max_characters: int) -> dict:
     }
 
 
+class WorldQuestionsBody(BaseModel):
+    idea: str = ""
+
+
+@router.post("/brief/world-questions")
+def world_questions(b: WorldQuestionsBody,
+                    user: str = Header(default="solo", alias="X-User-Id")):
+    """AI와 함께 짜기 1회를 시작하고, 선택지가 아닌 짧은 자연어 질문을 최대 3개 만든다."""
+    idea = b.idea.strip()[:3000]
+    if len(idea) < 10:
+        return {"ok": False, "error": "생각하는 이야기를 조금 더 자세히 써주세요."}
+    with db.connect() as c:
+        quota = _world_spend(c, user)
+        if not quota:
+            return {"ok": False, "need": "world_quota", "world_quota": _world_quota(c, user)}
+        ok, _cap = _ai_gate(c, user)
+        if not ok:
+            return {**_AI_BUSY, "world_quota": quota}
+    if llm.is_mock:
+        if not DEMO_MODE:
+            return {"ok": False, "error": "AI 연결이 필요해요.", "world_quota": quota}
+        return {"ok": True, "questions": ["이 이야기의 중심 존재는 누구인가요?",
+                                             "가장 큰 사건이나 갈등은 무엇인가요?",
+                                             "독자가 마지막에 어떤 감정을 느끼길 바라나요?"],
+                "world_quota": quota, "demo": True}
+    prompt = f"""당신은 웹소설 기획 인터뷰어다. 아래 아이디어를 더 선명하게 만들 질문을 작성하라.
+
+[아이디어]
+{idea}
+
+규칙:
+- 답을 고르게 하지 말고 사용자가 자유롭게 문장으로 답할 질문만 쓴다.
+- 이미 적힌 내용을 다시 묻지 않는다.
+- 제목·로그라인·배경·스토리·결말을 만들 때 꼭 필요한 질문만 최대 3개.
+- 짧고 쉬운 한국어로 쓴다.
+- JSON만 출력: {{"questions":["질문1","질문2","질문3"]}}"""
+    raw = llm.write(prompt, mock_text="", max_tokens=700)
+    data = parse_llm_json(raw) or {}
+    questions = [str(q).strip()[:160] for q in (data.get("questions") or []) if str(q).strip()][:3]
+    if not questions:
+        questions = ["이 이야기에서 가장 중요한 사건은 무엇인가요?",
+                     "주인공이 마지막에 반드시 이루어야 할 일은 무엇인가요?"]
+    return {"ok": True, "questions": questions, "world_quota": quota}
+
+
 @router.post("/brief/draft")
 def draft_brief(b: BuildBody, user: str = Header(default="solo", alias="X-User-Id")):
-    """지금까지 작가가 채운 내용을 존중하며, 빈 칸을 일관되게 채운 상세 기획을 짓는다.
-    작가가 칸을 비우고 다시 누르면 그 칸만 새로 생성된다 (새로고침).
-    요금제에 따라 자동 생성하는 인물 수가 달라진다."""
-    if not (b.logline.strip() or b.genre.strip() or b.keywords.strip()):
-        return {"ok": False, "error": "장르·로그라인·키워드 중 하나는 알려주세요. 거기서 상세 기획을 지어드릴게요."}
+    """인물을 만들지 않고 제목·로그라인·배경·스토리·결말 다섯 항목만 구성한다."""
+    if not (b.logline.strip() or b.ai_context.strip() or b.keywords.strip()):
+        return {"ok": False, "error": "생각하는 이야기를 먼저 알려주세요."}
     _cap_build(b)
     with db.connect() as c:
         ok, _cap = _ai_gate(c, user)
         if not ok:
             return _AI_BUSY
-        maxc = _limits(_tier_name(c, user))["max_characters"]
     if llm.is_mock:
         if not DEMO_MODE:
             return {"ok": False, "error": "AI 연결이 필요해요.",
                     "detail": "배포 환경의 AI 연결 상태를 확인해 주세요."}
-        return {"ok": True, "draft": _demo_brief(b, maxc),
-                "max_characters": maxc, "demo": True}
-    filled = _assemble_brief(b)
-    # 작가가 앞 단계에서 인물을 이미 만들었으면 새 인물을 지어내지 않는다 (설계상 인물은 작가의 몫)
-    has_cast = bool((b.protagonist and (b.protagonist.name or "").strip())
-                    or [c2 for c2 in (b.characters or []) if (getattr(c2, "name", "") or "").strip()])
-    cast_rule = ("- characters·protagonist는 **작가가 적은 인물을 그대로** 옮겨라. "
-                 "새 인물을 만들지 마라. 빈 칸(욕망·결핍·비밀 등)만 채워라."
-                 if has_cast else
-                 "- characters는 **정확히 {n}명**. 적대자·조력자·애정상대 등 원형을 고루, "
-                 "각 인물의 want와 need는 어긋나게(입체성), 관계(relation)를 분명히.".format(n=maxc))
-    schema = {
-        "title": "제목 (없으면 창작)",
-        "logline": "로그라인 한두 문장",
-        "intent": "기획 의도 2~3문장 (독자·재미 포인트)",
-        "world_setting": "시대·공간 배경",
-        "world_rules": "핵심 규칙·시스템 (여러 줄, 각 줄 하나의 규칙)",
-        "taboos": "이 세계의 금기·제약",
-        "protagonist": {"name": "", "age": "", "job": "", "personality": "성격",
-                        "want": "외적 욕망", "need": "내적 결핍", "secret": "비밀", "arc": "성장 아크"},
-        "characters": [{"name": "", "role": "역할", "relation": "주인공과의 관계",
-                        "want": "욕망", "need": "결핍", "secret": "비밀"}],
-        "canon": [{"name": "채널명·조직명·지명·별명 등", "desc": "설명"}],
-        "style": "문체 지침 한 줄",
-        "ending": "고정된 결말",
-    }
-    prompt = f"""당신은 프로 웹소설 기획자다. 아래는 작가가 지금까지 채운 기획이다.
-이걸 바탕으로 '매우 상세한' 완성 기획을 JSON으로 지어라.
+        demo = _demo_brief(b, 0)
+        return {"ok": True, "draft": {"title": demo.get("title", ""),
+                                         "logline": demo.get("logline", ""),
+                                         "world_setting": demo.get("world_setting", ""),
+                                         "intent": demo.get("intent", ""),
+                                         "ending": demo.get("ending", ""),
+                                         "choices": {"genre": ["판타지"], "era": ["현재"],
+                                                     "place": ["대도시"], "mood": ["기묘한"]}},
+                "demo": True}
+    options = {k: [str(v) for v in vals[:60]] for k, vals in (b.choice_options or {}).items()
+               if k in {"genre", "era", "place", "mood"} and isinstance(vals, list)}
+    prompt = f"""당신은 프로 웹소설 기획자다. 사용자의 아이디어와 답변을 바탕으로 작품의 기본만 구성하라.
 
-[작가가 지금까지 채운 내용 — 이미 적힌 것은 작가의 의도다]
-{filled}
+[사용자가 쓴 아이디어와 답변]
+{(b.ai_context or b.logline or b.keywords)[:6000]}
 
-[장르] {b.genre or '자유'}
-[총 회차] {max(5, b.total_chapters)}화
+[이미 직접 입력한 내용 — 비어 있지 않으면 존중]
+제목: {b.title}
+로그라인: {b.logline}
+배경: {b.world_setting}
+스토리: {b.intent}
+결말: {b.ending}
 
-JSON 스키마 (다른 텍스트 없이 압축 JSON만):
-{json.dumps(schema, ensure_ascii=False, separators=(",", ":"))}
+[자동 선택할 보기]
+{json.dumps(options, ensure_ascii=False)}
 
-핵심 규칙:
-- **작가가 이미 쓴 항목은 그 의도와 표현을 최대한 존중하라.** 로그라인·세계관·주인공·
-  결말 등 작가가 채운 값은 그대로 옮기고(사소한 다듬기만 허용), 임의로 뒤집지 마라.
-- **비어 있는 항목만 새로 지어라.** 채운 내용과 모순 없이, 구체적이고 일관되게.
-{cast_rule}
-- world_rules는 이 작품만의 독창적 설정을 구체적으로.
-- canon은 표기가 흔들리면 안 되는 고유명사 3~6개.
-- ending은 하나의 도달점으로 고정(열린 결말 금지).
-- 역사물이면 실존 인물의 인명·호칭·관계를 실제대로.
-- 상투적이지 않게, 그러나 장르 독자가 좋아하는 코드는 지켜라. JSON만 출력."""
-    raw = llm.write(prompt, mock_text="", max_tokens=8000)
+JSON만 출력:
+{{"title":"작품 제목","logline":"작품을 한 문장으로 설명","world_setting":"시대와 공간을 포함한 배경","intent":"도입부터 결말 직전까지의 중심 스토리","ending":"명확한 결말","choices":{{"genre":["보기 그대로"],"era":["보기 그대로"],"place":["보기 그대로"],"mood":["보기 그대로"]}}}}
+
+규칙:
+- 오직 위 다섯 항목만 만든다. 인물·관계·세부 규칙은 만들지 않는다.
+- 사용자가 이미 정한 소재와 주체를 평범한 인간 이야기로 바꾸지 않는다.
+- 제목·로그라인·배경·스토리·결말이 서로 모순되지 않게 한다.
+- choices는 각 항목의 보기 안에서만 고른다. genre·place는 최대 3개, mood는 최대 3개, era는 1개.
+- 맞춤법과 문장을 스스로 점검한 뒤 압축 JSON만 출력한다."""
+    raw = llm.write(prompt, mock_text="", max_tokens=4200)
     data = parse_llm_json(raw)
     if not isinstance(data, dict):
-        return {"ok": False, "error": "기획 초안 생성에 실패했어요. 한 번 더 시도해 주세요.",
+        return {"ok": False, "error": "작품의 세계관을 만들지 못했어요. 다시 시도해 주세요.",
                 "detail": (llm.last_error or (raw[:150] or "빈 응답"))}
-    if isinstance(data.get("characters"), list):  # 요금제 상한까지만
-        data["characters"] = data["characters"][:maxc]
-    return {"ok": True, "draft": data, "max_characters": maxc}
+    clean = {k: str(data.get(k, "")).strip()[:3000]
+             for k in ("title", "logline", "world_setting", "intent", "ending")}
+    raw_choices = data.get("choices") if isinstance(data.get("choices"), dict) else {}
+    clean_choices = {}
+    for key, vals in options.items():
+        picked = raw_choices.get(key, [])
+        if not isinstance(picked, list):
+            picked = [picked]
+        limit = 1 if key == "era" else 3
+        clean_choices[key] = [str(v) for v in picked if str(v) in vals][:limit]
+    clean["choices"] = clean_choices
+    return {"ok": True, "draft": clean}
 
 
 class SuggestBody(BaseModel):
@@ -1276,6 +1343,61 @@ class CastFillBody(BaseModel):
     characters: list[dict] = []
     create_all: bool = False
     specs: list[dict] = []
+
+
+class StructureFillBody(BaseModel):
+    context: str = ""
+    specs: list[dict] = []
+
+
+@router.post("/brief/structure-fill")
+def fill_structure(b: StructureFillBody,
+                   user: str = Header(default="solo", alias="X-User-Id")):
+    """시간·정보·반전·플롯 네 항목을 한 번의 AI 호출로 고른다."""
+    specs = []
+    for raw in (b.specs or [])[:4]:
+        if not isinstance(raw, dict):
+            continue
+        opts = [str(v).strip() for v in (raw.get("options") or []) if str(v).strip()][:60]
+        if opts:
+            specs.append({"id": str(raw.get("id", ""))[:30],
+                          "title": str(raw.get("title", ""))[:80], "options": opts})
+    if not specs:
+        return {"ok": False, "error": "선택할 이야기 구조가 없어요."}
+    if llm.is_mock:
+        if not DEMO_MODE:
+            return {"ok": False, "error": "AI 연결이 필요해요."}
+        return {"ok": True, "selected": {s["id"]: [s["options"][0]] for s in specs}, "demo": True}
+    with db.connect() as c:
+        ok, _cap = _ai_gate(c, user)
+        if not ok:
+            return _AI_BUSY
+    prompt = f"""당신은 웹소설 구조 기획자다. 작품 맥락에 가장 잘 맞는 구조를 각 항목에서 하나씩 고르라.
+
+[작품 맥락]
+{(b.context or '아직 없음')[:4000]}
+
+[보기]
+{json.dumps(specs, ensure_ascii=False, separators=(',', ':'))}
+
+- 각 id를 빠짐없이 반환한다.
+- 반드시 해당 id의 options 안 문구를 정확히 하나만 고른다.
+- 서로 모순되지 않는 조합으로 고른다.
+- JSON만 출력: {{"selected":{{"time":["보기"],"info":["보기"],"twist":["보기"],"plot":["보기"]}}}}"""
+    raw = llm.write(prompt, mock_text="", max_tokens=900)
+    data = parse_llm_json(raw) or {}
+    selected = data.get("selected") if isinstance(data.get("selected"), dict) else {}
+    clean = {}
+    for s in specs:
+        val = selected.get(s["id"], [])
+        if not isinstance(val, list):
+            val = [val]
+        picked = [str(v) for v in val if str(v) in s["options"]][:1]
+        if picked:
+            clean[s["id"]] = picked
+    if len(clean) != len(specs):
+        return {"ok": False, "error": "이야기 구조를 완성하지 못했어요. 다시 시도해 주세요."}
+    return {"ok": True, "selected": clean}
 
 
 @router.post("/brief/cast-fill")
@@ -1509,6 +1631,7 @@ def write_sample(b: SampleBody, user: str = Header(default="solo", alias="X-User
         return {"ok": False, "error": "AI가 연결되어 있지 않아요.",
                 "detail": "API 키/사용량 한도를 확인해 주세요."}
     _cap_build(b)
+    saved_work = None
     with db.connect() as c:
         q = _sample_quota(c, user)
         if q["base"] <= 0:
@@ -1524,23 +1647,39 @@ def write_sample(b: SampleBody, user: str = Header(default="solo", alias="X-User
         # 작품에서 부른 경우엔 그 화의 줄거리를 함께 넣어 준다
         plan_line = ""
         if b.work_id:
-            w = _load_work(c, b.work_id, user)
-            if w:
-                o = next((x for x in (w.get("outline") or []) if int(x.get("no", 0)) == b.no), None)
+            saved_work = _load_work(c, b.work_id, user)
+            if saved_work:
+                o = next((x for x in (saved_work.get("outline") or []) if int(x.get("no", 0)) == b.no), None)
                 if o:
                     plan_line = f"\n[이 화의 줄거리]\n{o.get('title', '')} — {o.get('content', '')}"
+    if saved_work:
+        source_brief = saved_work.get("brief") or ""
+        source_brief += "\n\n[등장인물]\n" + json.dumps(
+            saved_work.get("characters") or [], ensure_ascii=False)
+        if saved_work.get("canon"):
+            source_brief += "\n\n[고정 설정]\n" + json.dumps(
+                saved_work.get("canon"), ensure_ascii=False)
+        style_context = "\n\n[문체와 표현]\n" + "\n".join(filter(None, [
+            saved_work.get("style") or "", saved_work.get("style_profile") or "",
+            (saved_work.get("style_sample") or "")[:1200],
+        ]))
+    else:
+        source_brief = _assemble_brief(b)
+        style_context = ""
     where = f"{b.no}화의 한 장면" if b.no else "1화 도입부"
     prompt = f"""당신은 프로 웹소설 작가다. 아래 기획을 그대로 반영해 {where}를 약 {SAMPLE_CHARS}자로 써라.
 작가가 '내 설정이 글로 나오면 어떤 느낌인지' 확인하려고 보는 예시다.
 
 [기획]
-{_assemble_brief(b)}{plan_line}
+{source_brief}{style_context}{plan_line}
 
 규칙:
 - 정해진 인물 이름·세계관·금기를 그대로 쓴다. 새로 지어내지 마라.
 - 정한 문체·분위기가 드러나게 쓴다. 이게 이 예시의 목적이다.
 - 장면 하나에 집중한다. 요약·설명이 아니라 실제 본문처럼 대사와 묘사로.
 - 같은 표현을 반복하지 마라.
+- 인물의 말투와 행동, 세계의 고유 규칙이 장면 안에서 자연스럽게 드러나야 한다.
+- 출력하기 전에 설정 누락, 인물 혼동, 맞춤법, 오타, 어색한 문장과 반복 표현을 스스로 점검하고 고친다.
 - 약 {SAMPLE_CHARS}자. 제목·머리말·설명 없이 본문만 출력하라."""
     raw = llm.write(prompt, mock_text="", max_tokens=2600)
     text = (raw or "").strip()

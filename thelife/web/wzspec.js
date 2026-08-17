@@ -5,10 +5,12 @@
    모든 항목에는 '기타 → 직접 입력'이 자동으로 붙는다. */
 const WZ_SPEC = [
   { id: "basic", kind: "text", title: "작품 기본 설정",
-    sub: "이 셋은 이야기의 뼈대라 직접 알려주세요. 나머지는 고르기만 하면 돼요.",
+    sub: "작품의 중심이 되는 내용을 써주세요. AI와 함께 구성할 수 있습니다.",
     fields: [
       { k: "title", label: "제목", ph: "예) 신들이 내 방송을 구독한다" },
       { k: "logline", label: "로그라인", ph: "예) 쫓겨난 개발자가 우연히 만든 AI로 복수를 시작한다", area: true },
+      { k: "world_setting", label: "배경", ph: "이야기가 펼쳐지는 시대와 장소", area: true },
+      { k: "story", label: "스토리", ph: "주인공에게 어떤 사건이 벌어지는지", area: true },
       { k: "ending", label: "결말", ph: "예) 누명을 벗고, 정직한 기술로 세상을 바꾼 뒤 물러난다", area: true },
     ] },
 
@@ -47,8 +49,7 @@ const WZ_SPEC = [
     opts: ["장면이 눈앞에 보일 만큼 세밀하게", "필요한 장면은 자세하게", "적당한 수준으로",
            "간결하게", "최소한으로"] },
 
-  { id: "cast", kind: "cast", title: "인물 설정", group: "인물",
-    sub: "인물 추가를 누르면 이름·나이와 역할을 바로 입력할 수 있어요. 비운 항목은 AI의 도움을 받을 수 있어요." },
+  { id: "cast", kind: "cast", title: "인물 설정", group: "인물", sub: "" },
 
   { id: "time", n: 17, title: "시간의 흐름", pick: 1, group: "스토리 방식",
     opts: [
