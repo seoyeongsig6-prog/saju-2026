@@ -1699,7 +1699,7 @@ function wzCastOut() {
     out.push({ name: c.name.trim(), age: (c.age || "").trim(), role: pick("role"),
       personality: pick("personality"), want: pick("want"), fear: pick("fear"),
       secret: pick("secret"), facade: pick("facade"), truth: pick("truth"),
-      description: c.description || "", need: "", relation: "" });
+      description: c.description || "", need: pick("fear"), relation: "" });
   });
   return out;
 }
@@ -1952,10 +1952,14 @@ function renderPlotList() {
         `<p class="pl-syn${syn ? "" : " empty"}">${syn || "아직 줄거리가 없어요."}</p>
          <button class="pl-edit">줄거리 고치기</button>
          <div class="pl-acts">
-            <button class="smp${SAMPLE.base > 0 ? "" : " off"}">1,000자 본문 예시</button>
+            <button class="smp${SAMPLE.base > 0 && o && (o.content || "").trim() ? "" : " off"}">1,000자 본문 예시</button>
            <button class="go">${ch ? "이어 쓰기" : "쓰기"}</button>
          </div>`;
       pane.querySelector(".smp").onclick = () => {
+        if (!(o && (o.content || "").trim())) {
+          notice("이 화의 줄거리를 먼저 작성해 주세요.");
+          return;
+        }
         if (SAMPLE.base <= 0) { showPlans("plot"); return; }
         makeSample({ work_id: WORK.id, no, title: `${no}화 본문 예시` });
       };

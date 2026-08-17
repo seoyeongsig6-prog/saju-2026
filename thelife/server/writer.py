@@ -1388,15 +1388,22 @@ def fill_structure(b: StructureFillBody,
     data = parse_llm_json(raw) or {}
     selected = data.get("selected") if isinstance(data.get("selected"), dict) else {}
     clean = {}
-    for s in specs:
+    for spec_index, s in enumerate(specs):
         val = selected.get(s["id"], [])
         if not isinstance(val, list):
             val = [val]
         picked = [str(v) for v in val if str(v) in s["options"]][:1]
-        if picked:
-            clean[s["id"]] = picked
-    if len(clean) != len(specs):
-        return {"ok": False, "error": "이야기 구조를 완성하지 못했어요. 다시 시도해 주세요."}
+        if not picked:
+            for candidate in (str(v).strip() for v in val if str(v).strip()):
+                match = next((opt for opt in s["options"]
+                              if candidate in opt or opt in candidate), None)
+                if match:
+                    picked = [match]
+                    break
+        # 응답 누락 때문에 전체 생성을 버리고 AI를 다시 부르지 않는다.
+        if not picked:
+            picked = [s["options"][spec_index % len(s["options"])]]
+        clean[s["id"]] = picked
     return {"ok": True, "selected": clean}
 
 
@@ -1537,6 +1544,16 @@ def fill_cast(b: CastFillBody, user: str = Header(default="solo", alias="X-User-
             valid = [str(v) for v in values if str(v) in spec["options"]][:spec["pick"]]
             if valid:
                 chosen[str(fid)] = valid
+        # Gemini가 보기 하나를 빼먹더라도 '완료'된 인물이 6/7로 남지 않게 한다.
+        # 재호출은 비용이 드므로, 누락된 항목만 서버에서 유효한 보기로 보완한다.
+        for fid, spec in specs.get(idx, {}).items():
+            if fid in chosen or not spec["options"]:
+                continue
+            pick_at = (idx + len(fid)) % len(spec["options"])
+            fallback = spec["options"][pick_at]
+            if fid == "truth" and fallback in chosen.get("facade", []):
+                fallback = spec["options"][(pick_at + 1) % len(spec["options"])]
+            chosen[fid] = [fallback]
         if chosen:
             item = {"index": idx, "fields": chosen}
             if b.create_all:
