@@ -18,7 +18,7 @@
 <link rel="icon" href="/static/icons/icon-192.png">
 
 <link rel="stylesheet" href="/static/style.css">
-<link rel="stylesheet" href="/static/writer.css?v=20260818-store1">
+<link rel="stylesheet" href="/static/writer.css?v=20260818-fix2">
 </head>
 <body class="writer launch">
 
@@ -43,6 +43,17 @@
   <div id="settings-plan"></div>
   <div class="story-h">화면</div>
   <div id="theme-seg" class="theme-seg"></div>
+  <section id="private-test" class="private-test hidden">
+    <div class="story-h">내 전용 테스트</div>
+    <p class="hint">이 영역은 비밀키로 접속한 기기에서만 보입니다.</p>
+    <div class="test-tier-row">
+      <button data-test-tier="free">무료</button>
+      <button data-test-tier="light">마스터</button>
+      <button data-test-tier="pro">프로</button>
+    </div>
+    <button id="test-reset-usage" class="set-item">사용 횟수 초기화<small>오늘의 AI·본문 예시 횟수만 다시 채웁니다</small></button>
+    <button id="test-reset-all" class="set-item danger">테스트 전체 초기화<small>테스트 작품과 사용 횟수를 모두 삭제합니다</small></button>
+  </section>
   <div class="story-h">데이터</div>
   <button id="btn-export" class="set-item">데이터 내보내기<small>내 작품 전체를 파일로 저장</small></button>
   <button id="btn-delacc" class="set-item danger">계정 삭제<small>모든 데이터를 영구 삭제합니다</small></button>
@@ -456,7 +467,7 @@
     <p id="notice-text" class="notice-text"></p>
     <div class="notice-actions">
       <button id="notice-undo" class="primary hidden">되돌리기</button>
-      <button id="notice-close" class="ghost">알겠어요</button>
+      <button id="notice-close" class="ghost">확인</button>
     </div>
   </div>
 </div>
@@ -467,6 +478,18 @@
     <div class="notice-actions">
       <button id="action-confirm-ok" class="primary">확인</button>
       <button id="action-confirm-cancel" class="ghost">취소</button>
+    </div>
+  </div>
+</div>
+
+<div id="structure-result" class="modal hidden">
+  <div class="modal-card structure-card">
+    <h2>AI가 이야기 구조를 구성했어요</h2>
+    <div id="structure-result-body" class="structure-result-body"></div>
+    <div class="notice-actions structure-actions">
+      <button id="structure-ok" class="primary">확인</button>
+      <button id="structure-redo" class="ghost">다시 짜기</button>
+      <button id="structure-manual" class="ghost">직접 짜기</button>
     </div>
   </div>
 </div>
@@ -507,7 +530,7 @@
   </div>
 </div>
 
-<script src="/static/wzspec.js?v=20260818-store1"></script>
-<script src="/static/writer.js?v=20260818-store1"></script>
+<script src="/static/wzspec.js?v=20260818-fix2"></script>
+<script src="/static/writer.js?v=20260818-fix2"></script>
 </body>
 </html>

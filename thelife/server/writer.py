@@ -11,6 +11,7 @@ import io
 import json
 import os
 import re
+import secrets
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -105,6 +106,9 @@ def _entitlement(c, user: str):
 
 
 def _tier_name(c, user: str) -> str:
+    test_tier = db.kv_get(c, f"testtier:{user}", "")
+    if test_tier in TIERS:
+        return test_tier
     ent = _entitlement(c, user)                 # 실제 구매 등급이 최우선
     if ent:
         return ent
@@ -299,7 +303,8 @@ def _cap_build(b: "BuildBody") -> None:
 
 
 @router.get("/config")
-def writer_config(user: str = Header(default="solo", alias="X-User-Id")):
+def writer_config(user: str = Header(default="solo", alias="X-User-Id"),
+                  test_secret: str = Header(default="", alias="X-Novelist-Test-Key")):
     """앱이 시작할 때 기능·요금제 상태를 알려준다."""
     with db.connect() as c:
         t = _tier_name(c, user)
@@ -319,7 +324,10 @@ def writer_config(user: str = Header(default="solo", alias="X-User-Id")):
     with db.connect() as c:
         quota = _sample_quota(c, user)
         world_quota = _world_quota(c, user)
+    test_mode = bool(ADMIN_SECRET and test_secret and
+                     secrets.compare_digest(test_secret, ADMIN_SECRET))
     return {"launch_mode": LAUNCH_MODE, "demo_mode": DEMO_MODE,
+            "test_mode": test_mode,
             "ai_connected": not llm.is_mock,
             "writing_enabled": True, "ai_body": ai_body,
             "pens_enabled": not LAUNCH_MODE, "sample": quota, "sample_chars": SAMPLE_CHARS,
@@ -511,6 +519,53 @@ def pens_purchase(body: PenPurchaseBody, user: str = Header(default="solo", alia
 ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "")
 
 
+def _test_allowed(secret: str) -> bool:
+    """개인 테스트 기능은 서버 비밀키가 있을 때만 존재하는 것처럼 동작한다."""
+    return bool(ADMIN_SECRET and secret and secrets.compare_digest(secret, ADMIN_SECRET))
+
+
+class TestTierBody(BaseModel):
+    tier: str
+
+
+@router.post("/test/tier")
+def test_tier(body: TestTierBody,
+              user: str = Header(default="solo", alias="X-User-Id"),
+              secret: str = Header(default="", alias="X-Novelist-Test-Key")):
+    if not _test_allowed(secret):
+        return {"ok": False, "error": "권한이 없어요."}
+    if body.tier not in TIERS:
+        return {"ok": False, "error": "알 수 없는 플랜이에요."}
+    with db.connect() as c:
+        db.kv_set(c, f"testtier:{user}", body.tier)
+    return {"ok": True, "tier": body.tier, "limits": TIERS[body.tier]}
+
+
+class TestResetBody(BaseModel):
+    all_data: bool = False
+
+
+@router.post("/test/reset")
+def test_reset(body: TestResetBody,
+               user: str = Header(default="solo", alias="X-User-Id"),
+               secret: str = Header(default="", alias="X-Novelist-Test-Key")):
+    if not _test_allowed(secret):
+        return {"ok": False, "error": "권한이 없어요."}
+    with db.connect() as c:
+        for pattern in (f"aiq:{user}:%", f"smpl:{user}:%", f"smplad:{user}:%",
+                        f"worldq:{user}:%", f"worldextra:{user}:%"):
+            c.execute("DELETE FROM kv WHERE k LIKE ?", (pattern,))
+        if body.all_data:
+            wids = [r["id"] for r in c.execute(
+                "SELECT id FROM works WHERE user_id=?", (user,)).fetchall()]
+            for wid in wids:
+                c.execute("DELETE FROM chapters WHERE work_id=?", (wid,))
+            c.execute("DELETE FROM works WHERE user_id=?", (user,))
+        db.kv_set(c, f"testtier:{user}", "free")
+    return {"ok": True, "tier": "free", "limits": TIERS["free"],
+            "deleted_works": len(wids) if body.all_data else 0}
+
+
 class GrantBody(BaseModel):
     user_id: str
     tier: str
@@ -571,6 +626,7 @@ def delete_account(user: str = Header(default="solo", alias="X-User-Id")):
             c.execute("DELETE FROM chapters WHERE work_id=?", (wid,))
         c.execute("DELETE FROM works WHERE user_id=?", (user,))
         c.execute("DELETE FROM kv WHERE k=?", (f"tier:{user}",))
+        c.execute("DELETE FROM kv WHERE k=?", (f"testtier:{user}",))
         c.execute("DELETE FROM kv WHERE k=?", (f"ent:{user}",))
         c.execute("DELETE FROM kv WHERE k=?", (f"pens:{user}",))
         c.execute("DELETE FROM kv WHERE k=?", (f"penmonth:{user}",))
@@ -1248,9 +1304,9 @@ def world_questions(b: WorldQuestionsBody,
             return {"ok": False, "error": "AI 연결이 필요해요.", "world_quota": available}
         quota = _world_spend(c, user)
     if llm.is_mock:
-        return {"ok": True, "questions": ["이 이야기의 중심 존재는 누구인가요?",
-                                             "가장 큰 사건이나 갈등은 무엇인가요?",
-                                             "독자가 마지막에 어떤 감정을 느끼길 바라나요?"],
+        return {"ok": True, "questions": ["좋아요. 이 이야기에서 독자가 가장 따라가길 바라는 존재는 누구예요?",
+                                             "그 존재의 평온을 깨뜨리는 사건은 무엇이면 좋을까요?",
+                                             "마지막 장면에서 독자에게 어떤 감정을 남기고 싶으세요?"],
                 "world_quota": quota, "demo": True}
     prompt = f"""당신은 웹소설 기획 인터뷰어다. 아래 아이디어를 더 선명하게 만들 질문을 작성하라.
 
@@ -1261,7 +1317,10 @@ def world_questions(b: WorldQuestionsBody,
 - 답을 고르게 하지 말고 사용자가 자유롭게 문장으로 답할 질문만 쓴다.
 - 이미 적힌 내용을 다시 묻지 않는다.
 - 제목·로그라인·배경·스토리·결말을 만들 때 꼭 필요한 질문만 최대 3개.
-- 짧고 쉬운 한국어로 쓴다.
+- 카카오톡에서 경험 많은 편집자가 대화하듯 부드럽고 자연스럽게 묻는다.
+- 딱딱한 설문 문구, 전문용어, 정답을 유도하는 질문은 금지한다.
+- 질문끼리 이어지되 AI가 작품 방향을 멋대로 바꾸지 않게 사용자의 핵심 소재를 매번 기준으로 삼는다.
+- 짧고 쉬운 한국어로 정확히 3개를 쓴다.
 - JSON만 출력: {{"questions":["질문1","질문2","질문3"]}}"""
     raw = llm.write(prompt, mock_text="", max_tokens=700)
     if llm.last_error:
@@ -1303,10 +1362,15 @@ def draft_brief(b: BuildBody, user: str = Header(default="solo", alias="X-User-I
                                          "intent": demo.get("intent", ""),
                                          "ending": demo.get("ending", ""),
                                          "choices": {"genre": ["판타지"], "era": ["현재"],
-                                                     "place": ["대도시"], "mood": ["기묘한"]}},
+                                                     "place": ["대도시"], "mood": ["기묘한"],
+                                                     "pace": ["적당하게"], "focus": ["세계관", "인물", "갈등"],
+                                                     "emotion": ["필요한 만큼 보여준다"],
+                                                     "dialogue": ["대사와 서술이 비슷하다"],
+                                                     "describe": ["필요한 장면은 자세하게"]}},
                 "demo": True}
+    choice_keys = {"genre", "era", "place", "mood", "pace", "focus", "emotion", "dialogue", "describe"}
     options = {k: [str(v) for v in vals[:60]] for k, vals in (b.choice_options or {}).items()
-               if k in {"genre", "era", "place", "mood"} and isinstance(vals, list)}
+               if k in choice_keys and isinstance(vals, list)}
     prompt = f"""당신은 프로 웹소설 기획자다. 사용자의 아이디어와 답변을 바탕으로 작품의 기본만 구성하라.
 
 [사용자가 쓴 아이디어와 답변]
@@ -1323,13 +1387,13 @@ def draft_brief(b: BuildBody, user: str = Header(default="solo", alias="X-User-I
 {json.dumps(options, ensure_ascii=False)}
 
 JSON만 출력:
-{{"title":"작품 제목","logline":"작품을 한 문장으로 설명","world_setting":"시대와 공간을 포함한 배경","intent":"도입부터 결말 직전까지의 중심 스토리","ending":"명확한 결말","choices":{{"genre":["보기 그대로"],"era":["보기 그대로"],"place":["보기 그대로"],"mood":["보기 그대로"]}}}}
+{{"title":"작품 제목","logline":"작품을 한 문장으로 설명","world_setting":"시대와 공간을 포함한 배경","intent":"도입부터 결말 직전까지의 중심 스토리","ending":"명확한 결말","choices":{{"genre":["보기 그대로"],"era":["보기 그대로"],"place":["보기 그대로"],"mood":["보기 그대로"],"pace":["보기 그대로"],"focus":["보기 그대로"],"emotion":["보기 그대로"],"dialogue":["보기 그대로"],"describe":["보기 그대로"]}}}}
 
 규칙:
 - 오직 위 다섯 항목만 만든다. 인물·관계·세부 규칙은 만들지 않는다.
 - 사용자가 이미 정한 소재와 주체를 평범한 인간 이야기로 바꾸지 않는다.
 - 제목·로그라인·배경·스토리·결말이 서로 모순되지 않게 한다.
-- choices는 각 항목의 보기 안에서만 고른다. genre·place는 최대 3개, mood는 최대 3개, era는 1개.
+- choices는 각 항목의 보기 안에서만 고른다. genre·place·mood·focus는 최대 3개, 나머지는 1개.
 - 맞춤법과 문장을 스스로 점검한 뒤 압축 JSON만 출력한다."""
     raw = llm.write(prompt, mock_text="", max_tokens=4200)
     data = parse_llm_json(raw)
@@ -1347,7 +1411,7 @@ JSON만 출력:
         picked = raw_choices.get(key, [])
         if not isinstance(picked, list):
             picked = [picked]
-        limit = 1 if key == "era" else 3
+        limit = 3 if key in {"genre", "place", "mood", "focus"} else 1
         clean_choices[key] = [str(v) for v in picked if str(v) in vals][:limit]
     clean["choices"] = clean_choices
     return {"ok": True, "draft": clean}
@@ -1452,7 +1516,11 @@ def fill_cast(b: CastFillBody, user: str = Header(default="solo", alias="X-User-
     clean = []
     if b.create_all:
         fields = clean_fields(b.specs)
-        clean = [{"index": i, "name": "", "fields": fields} for i in range(max_characters)]
+        existing = [x for x in (b.characters or []) if isinstance(x, dict) and
+                    str(x.get("name", "")).strip()][:max_characters]
+        remaining = max(0, max_characters - len(existing))
+        clean = [{"index": len(existing) + i, "name": "", "fields": fields}
+                 for i in range(remaining)]
     else:
         for raw_ch in (b.characters or [])[:12]:
             if not isinstance(raw_ch, dict):
@@ -1462,7 +1530,7 @@ def fill_cast(b: CastFillBody, user: str = Header(default="solo", alias="X-User-
                 clean.append({"index": int(raw_ch.get("index", len(clean))),
                               "name": str(raw_ch.get("name", ""))[:80], "fields": fields})
     if not clean:
-        return {"ok": False, "error": "채울 인물 항목이 없어요."}
+        return {"ok": False, "error": "현재 플랜에서 만들 수 있는 인물이 모두 설정되어 있어요."}
 
     if llm.is_mock:
         if not DEMO_MODE:
@@ -1517,8 +1585,11 @@ def fill_cast(b: CastFillBody, user: str = Header(default="solo", alias="X-User-
                 "fields": [{"id": f["id"], "question": f["question"],
                             "options": f["options"], "pick": f["pick"]}
                            for f in ch["fields"]]} for ch in clean]
-    create_rule = (f"- 서로 구분되는 인물 {len(clean)}명을 새로 만들어라. index 0은 반드시 주인공이다.\n"
-                   "- 각 인물에 자연스러운 한국어 이름과 숫자로 된 나이를 반드시 넣어라."
+    has_existing = bool(b.characters)
+    create_rule = (f"- 이미 설정된 인물은 작품 맥락에 포함되어 있다. 그 인물은 바꾸거나 중복하지 말고, "
+                   f"서로 구분되는 새 인물 {len(clean)}명만 이어서 만들어라.\n"
+                   f"- {'새 인물 중 첫 명은 작품에 필요한 핵심 인물로 만든다.' if has_existing else 'index 0은 반드시 주인공이다.'}\n"
+                   "- 각 인물에 작품 존재 방식에 맞는 이름과 나이를 반드시 넣어라."
                    if b.create_all else "- 전달된 인물의 이름은 바꾸지 말고 빈 설정만 채워라.")
     prompt = f"""당신은 프로 웹소설 인물 기획자다. 작품 맥락과 인물별 보기를 보고 인물진을 완성하라.
 
