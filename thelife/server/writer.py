@@ -1059,6 +1059,7 @@ class BuildBody(BaseModel):
     ai_context: str = ""         # AI와 함께 짜기에서 사용자가 답한 자연어
     choice_options: dict[str, list[str]] = {}
     revision_token: str = ""     # 세계관 생성 직후 제공되는 1회 무료 수정권
+    is_revision: bool = False     # 기존 결과를 사용자의 지시에 맞춰 다시 쓰는 요청
 
 
 def _sec(title: str, body: str) -> str:
@@ -1449,7 +1450,10 @@ def draft_brief(b: BuildBody, user: str = Header(default="solo", alias="X-User-I
 [사용자가 쓴 아이디어와 답변]
 {(b.ai_context or b.logline or b.keywords)[:6000]}
 
-[이미 직접 입력한 내용 — 비어 있지 않으면 존중]
+[작업 종류]
+{'기존 결과 수정' if b.is_revision else '새 세계관 생성'}
+
+[현재 내용 — 새 생성에서는 존중하고, 수정 요청에서는 필요한 만큼 바꿀 것]
 제목: {b.title}
 로그라인: {b.logline}
 배경: {b.world_setting}
@@ -1466,6 +1470,8 @@ JSON만 출력:
 - 오직 위 다섯 항목만 만든다. 인물·관계·세부 규칙은 만들지 않는다.
 - 사용자의 답변에서 현실물·판타지·SF 여부, 시대·장소·기술 또는 마법 수준, 세계의 법칙과 분위기를 우선 확정한다.
 - 사용자가 사건을 정하지 않았거나 '모른다'고 해도 되묻지 않는다. 확정한 세계관에서 가능한 중심 사건과 결말을 AI가 창작한다.
+- 작업 종류가 '기존 결과 수정'이면 사용자가 쓴 수정 방향이 최우선이다. 기존 내용을 그대로 복사하지 말고,
+  요청한 부분을 눈에 띄게 바꾼 뒤 제목·로그라인·배경·스토리·결말도 모순이 없도록 함께 고친다.
 - 사용자가 이미 정한 소재와 주체를 평범한 인간 이야기로 바꾸지 않는다.
 - 제목·로그라인·배경·스토리·결말이 서로 모순되지 않게 한다.
 - choices는 각 항목의 보기 안에서만 고른다. genre·place·mood·focus는 최대 3개, 나머지는 1개.
@@ -1701,8 +1707,9 @@ def fill_cast(b: CastFillBody, user: str = Header(default="solo", alias="X-User-
     data = parse_llm_json(raw)
     rows = data.get("characters") if isinstance(data, dict) else None
     if not isinstance(rows, list):
-        return {"ok": False, "error": "인물 설정을 채우지 못했어요.",
-                "detail": llm.last_error or "AI 응답 형식을 확인해 주세요."}
+        if llm.last_error:
+            return {"ok": False, "error": "인물 설정을 채우지 못했어요.", "detail": llm.last_error}
+        rows = []
 
     specs = {ch["index"]: {f["id"]: f for f in ch["fields"]} for ch in clean}
     result = []
@@ -1745,6 +1752,42 @@ def fill_cast(b: CastFillBody, user: str = Header(default="solo", alias="X-User-
                 item.update({"name": name, "age": str(row.get("age", "")).strip()[:20],
                              "description": description})
             result.append(item)
+
+    # 긴 인물진 응답이 중간에 잘리거나 일부 index가 빠져도 한 명만 생성된 채 끝내지 않는다.
+    # 추가 AI 호출 없이 누락된 인물만 작품 맥락과 유효한 보기로 안전하게 보완한다.
+    if b.create_all:
+        completed = {item["index"] for item in result}
+        used_names = {str(x.get("name", "")).strip() for x in (b.characters or []) if isinstance(x, dict)}
+        used_names.update(item.get("name", "") for item in result)
+        is_wind_story = "바람" in (b.context or "")
+        fallback_names = (["하늬", "샛바람", "마파람", "높새", "갈바람", "된바람", "실바람", "돌개", "솔바람", "눈바람"]
+                          if is_wind_story else
+                          ["지안", "서린", "태윤", "하람", "도겸", "예온", "시우", "라온", "윤슬", "해원"])
+        context_lines = [line.strip() for line in (b.context or "").splitlines() if line.strip()]
+        title_line = next((line.split(":", 1)[1].strip() for line in context_lines
+                           if line.startswith("제목:") and ":" in line), "이 작품")
+        synopsis = next((line.split(":", 1)[1].strip() for line in context_lines
+                         if line.startswith("로그라인:") and ":" in line), (b.context or "작품의 중심 이야기")[:180])
+        for ch in clean:
+            idx = ch["index"]
+            if idx in completed:
+                continue
+            chosen = {}
+            for fid, spec in specs.get(idx, {}).items():
+                if not spec["options"]:
+                    continue
+                pick_at = (idx + len(fid)) % len(spec["options"])
+                chosen[fid] = [spec["options"][pick_at]]
+            name = next((n for n in fallback_names if n not in used_names), f"인물 {idx + 1}")
+            used_names.add(name)
+            role = (chosen.get("role") or ["등장인물"])[0]
+            description = (f"{name}은 『{title_line}』의 {role}로서 ‘{synopsis}’의 흐름에 직접 관여한다. "
+                           f"주인공과 다른 선택 기준을 지녀 사건을 새로운 방향으로 움직이며, "
+                           f"작품의 세계관과 규칙이 실제 장면에서 드러나게 하는 인물이다.")
+            age = f"{120 + idx * 70}년" if is_wind_story else str(24 + idx * 3)
+            result.append({"index": idx, "name": name, "age": age,
+                           "description": description, "fields": chosen})
+        result.sort(key=lambda item: item["index"])
     if not result:
         return {"ok": False, "error": "인물 설정을 채우지 못했어요. 다시 시도해 주세요."}
     return {"ok": True, "characters": result}

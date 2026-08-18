@@ -80,7 +80,7 @@ const CONFIG_READY = (async () => {
       PENS = cfg.pens || 0; PEN_NEEDED = !!cfg.pen_needed; PEN_PACKS = cfg.pen_packs || [];
       if (cfg.sample) SAMPLE = cfg.sample;
       if (cfg.world_quota) WORLD_QUOTA = cfg.world_quota;
-      if (DEMO_MODE) $("#btn-settings").textContent = "미리보기";
+      renderPlanBadge();
     }
     Ads.refresh();
     renderPenBar();
@@ -166,6 +166,11 @@ function showPlans(from) {
     : "작품 규모와 필요한 AI 도움에 맞춰 선택하세요.";
   renderPlans();
 }
+function renderPlanBadge() {
+  const badge = $("#btn-settings");
+  if (!badge || !LIMITS) return;
+  badge.textContent = TEST_MODE ? `${LIMITS.label} 테스트` : `${LIMITS.label} 플랜`;
+}
 
 function renderTestPanel() {
   const panel = $("#private-test");
@@ -191,7 +196,7 @@ async function refreshConfig() {
   TIER = cfg.tier; LIMITS = cfg.limits; TIERS_INFO = cfg.tiers; EXPIRES = cfg.expires_at;
   WORLD_QUOTA = cfg.world_quota || WORLD_QUOTA;
   if (cfg.sample) SAMPLE = cfg.sample;
-  renderSettingsPlan(); renderTestPanel(); Ads.refresh();
+  renderPlanBadge(); renderSettingsPlan(); renderTestPanel(); Ads.refresh();
 }
 async function resetPrivateTest(allData) {
   const text = allData ? "테스트 작품과 사용 횟수를 모두 초기화할까요?\n삭제한 작품은 되돌릴 수 없습니다."
@@ -258,7 +263,7 @@ async function syncEntitlement() {
   });
   if (r && r.ok) {
     TIER = r.tier; LIMITS = r.limits; EXPIRES = r.expires_at || null;
-    renderPlans(); renderSettingsPlan(); Ads.refresh();
+    renderPlanBadge(); renderPlans(); renderSettingsPlan(); Ads.refresh();
   }
   return r;
 }
@@ -271,7 +276,7 @@ async function choosePlan(t) {
   // 개발용 웹(비런치)에서는 서버 오버라이드로 미리보기 전환.
   if (!LAUNCH && !window.NovelistIAP) {
     const r = await api("/api/writer/tier", { method: "POST", body: JSON.stringify({ tier: t }) });
-    if (r.ok) { TIER = r.tier; LIMITS = r.limits; renderPlans(); renderSettingsPlan(); Ads.refresh();
+    if (r.ok) { TIER = r.tier; LIMITS = r.limits; renderPlanBadge(); renderPlans(); renderSettingsPlan(); Ads.refresh();
       notice(`${TIERS_INFO[t].label} 플랜으로 전환했어요. (미리보기)`); }
     else notice(r.error || "변경할 수 없어요.");
     return;
@@ -451,8 +456,6 @@ async function showHome() {
   box.innerHTML = "";
   const works = d.works || [];
   $("#w-empty").classList.toggle("hidden", works.length > 0);
-  const saved = wzSaved();
-  $("#w-resume").classList.toggle("hidden", !saved);
   $("#w-new").textContent = "새 작품 만들기";
   works.forEach((w) => {
     const el = document.createElement("button");
@@ -480,7 +483,6 @@ async function delWork(id, title) {
 const bdVal = (id) => $("#" + id).value.trim();
 
 /* 새 작품 = 단계별 설계(위저드). 상세 폼(w-build)은 '직접 다 채우기'로 남겨둔다. */
-$("#w-resume").onclick = () => startWizard(false);
 $("#w-new").onclick = () => startWizard(true);
 /* 선택지 + '기타(직접 입력)' 패턴 */
 const ROLE_OPTS = ["적대자(메인 빌런)", "서브 빌런", "조력자", "멘토·스승", "애정상대",
@@ -1209,7 +1211,7 @@ async function wzCastAll() {
   const specs = WZ_CAST_SPEC.map((cs) => ({ id: cs.id, question: cs.title,
     options: (cs.opts || []).map((o) => typeof o === "string" ? o : o.v),
     pick: cs.pick === 0 ? 3 : (cs.pick || 1) }));
-  busy("주인공과 등장인물을 만드는 중…");
+  busy(hasCast ? "기존 인물은 그대로 두고 나머지 인물을 만드는 중…" : "주인공과 등장인물을 만드는 중…");
   const r = await api("/api/writer/brief/cast-fill", { method: "POST",
     body: JSON.stringify({ context: wzContext(), create_all: true, specs,
       characters: WZ.cast.map((c, index) => ({ index, name: c.name, description: c.description || "" })) }) });
@@ -1836,7 +1838,7 @@ function wzOpen(wz) {
   WZ = Object.assign({ i: 0, phase: "form", total: 20, sel: {}, other: {}, detail: {},
                        basic: {}, cast: [], castOpen: -1, draft: null, outline: [],
                        plan: {}, planCount: 1, aiIdea: "", aiAnswers: [], aiRedraw: false,
-                       worldRevisionToken: "" }, wz || {});
+                       worldRevisionToken: "", worldEditDraft: "" }, wz || {});
   WZ.paints = {};
   WZ.live = true;
   view("w-wizard");
@@ -1897,7 +1899,7 @@ function wzRender() {
 
 function wzRenderText(box, s) {
   const intro = document.createElement("div"); intro.className = "basic-ai-intro";
-  intro.innerHTML = `<button class="ai-btn compact">AI와 함께 짜기</button>`;
+  intro.innerHTML = `<button class="ai-btn compact">AI로 세계관 쓰기</button>`;
   intro.querySelector("button").onclick = () => openWorldAi(false); box.appendChild(intro);
   s.fields.filter((f) => !["world_setting", "story"].includes(f.k)).forEach((f) => {
     const wrap = document.createElement("label"); wrap.className = "basic-field";
@@ -2002,7 +2004,13 @@ function openWorldAi(redraw) {
   $("#world-ai-title").textContent = redraw ? "AI로 다시 짜기" : "AI와 함께 짜기";
   $("#world-ai-help").textContent = redraw ? "어떤 방향으로 다시 짜볼까요?" :
     "떠오른 아이디어를 자유롭게 써주세요.\nAI가 이야기의 성격을 판단해 어울리는 세계관을 바로 만듭니다.";
-  $("#world-ai-fields").innerHTML = `<textarea id="world-ai-idea" class="wz-in" rows="7" placeholder="${redraw ? "새로운 내용이나 수정할 방향을 써주세요" : "떠올린 이야기, 사건, 세계를 자유롭게 써주세요"}">${escapeHtml(redraw ? "" : (WZ.aiIdea || WZ.basic.story || ""))}</textarea>`;
+  const current = redraw ? [WZ.basic.title && `제목: ${WZ.basic.title}`, WZ.basic.logline && `로그라인: ${WZ.basic.logline}`,
+    WZ.basic.world_setting && `배경: ${WZ.basic.world_setting}`, WZ.basic.story && `스토리: ${WZ.basic.story}`,
+    WZ.basic.ending && `결말: ${WZ.basic.ending}`].filter(Boolean).join("\n\n") : "";
+  const savedInput = redraw ? (WZ.worldEditDraft || "") : (WZ.aiIdea || WZ.basic.story || "");
+  $("#world-ai-fields").innerHTML = `${redraw && current ? `<div class="world-ai-current"><b>현재 작성된 내용</b><p>${escapeHtml(current)}</p></div>` : ""}
+    <textarea id="world-ai-idea" class="wz-in" rows="7" placeholder="${redraw ? "바꾸고 싶은 내용이나 방향을 써주세요" : "떠올린 이야기, 사건, 세계를 자유롭게 써주세요"}">${escapeHtml(savedInput)}</textarea>`;
+  $("#world-ai-idea").oninput = (e) => { if (redraw) { WZ.worldEditDraft = e.target.value; wzSaveSoon(); } };
   const free = redraw && WZ.worldRevisionToken;
   $("#world-ai-quota").textContent = free
     ? "첫 수정은 무료예요. 횟수가 차감되지 않습니다."
@@ -2018,7 +2026,9 @@ async function worldAiStart() {
   WZ.aiIdea = idea; wzSave(); closeWorldAi();
   await wzGenerate(`사용자가 직접 쓴 아이디어:\n${idea}\n\n이 아이디어의 현실성·장르·시대·장소·기술 또는 마법 수준·세계의 법칙·제약·분위기를 AI가 판단해 세계관을 완성한다. 구체적인 사건과 갈등도 이 세계관에서 자연스럽게 창작한다.`);
 }
-$("#world-ai-close").onclick = closeWorldAi; $("#world-ai-back").onclick = closeWorldAi;
+$("#world-ai-close").onclick = closeWorldAi;
+/* 배경을 잘못 눌러도 작성 중인 수정 지시가 사라지지 않는다. 닫기는 X 버튼만 사용한다. */
+$("#world-ai-back").onclick = () => {};
 $("#world-ai-start").onclick = worldAiStart;
 $("#world-ai-exit").onclick = () => $("#world-ai-limit").classList.add("hidden");
 $("#world-ai-plans").onclick = () => { $("#world-ai-limit").classList.add("hidden"); closeWorldAi(); showPlans("wizard"); };
@@ -2036,7 +2046,7 @@ async function wzGenerate(aiContext) {
   wzTasks([["제목과 로그라인 구성", "now"], ["배경과 스토리 확장", ""], ["결말 정리", ""]]);
   const r = await api("/api/writer/brief/draft", { method: "POST", body: JSON.stringify(wzBody({
     ai_context: aiContext || WZ.aiIdea || wzContext(), choice_options: worldChoiceOptions(),
-    revision_token: WZ.aiRedraw ? (WZ.worldRevisionToken || "") : "" })) });
+    revision_token: WZ.aiRedraw ? (WZ.worldRevisionToken || "") : "", is_revision: !!WZ.aiRedraw })) });
   if (r.world_quota) WORLD_QUOTA = r.world_quota;
   if (!r.ok) {
     if (r.need === "world_quota") showWorldLimit();
@@ -2045,6 +2055,7 @@ async function wzGenerate(aiContext) {
   }
   if (WZ.aiRedraw) WZ.worldRevisionToken = "";
   if (r.revision_token) WZ.worldRevisionToken = r.revision_token;
+  WZ.worldEditDraft = "";
   WZ.aiRedraw = false;
   WZ.draft = r.draft || {}; WZ.demo = !!r.demo;
   const d = WZ.draft, choices = d.choices || {};
