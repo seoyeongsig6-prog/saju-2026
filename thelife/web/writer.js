@@ -1997,78 +1997,26 @@ function showWorldLimit() { $("#world-ai-limit").classList.remove("hidden"); }
 function closeWorldAi() { $("#world-ai-back").classList.add("hidden"); $("#world-ai-sheet").classList.add("hidden"); }
 function openWorldAi(redraw) {
   WZ.aiRedraw = !!redraw;
+  if (!WZ.aiRedraw && (WORLD_QUOTA.left || 0) <= 0) { showWorldLimit(); return; }
+  if (WZ.aiRedraw && !WZ.worldRevisionToken && (WORLD_QUOTA.left || 0) <= 0) { showWorldLimit(); return; }
   $("#world-ai-title").textContent = redraw ? "AI로 다시 짜기" : "AI와 함께 짜기";
   $("#world-ai-help").textContent = redraw ? "어떤 방향으로 다시 짜볼까요?" :
-    "생각하는 이야기를 간단하게 써주세요.\n작성된 스토리를 확장해 세계관을 만들어 드립니다.";
+    "떠오른 아이디어를 자유롭게 써주세요.\nAI가 이야기의 성격을 판단해 어울리는 세계관을 바로 만듭니다.";
   $("#world-ai-fields").innerHTML = `<textarea id="world-ai-idea" class="wz-in" rows="7" placeholder="${redraw ? "새로운 내용이나 수정할 방향을 써주세요" : "떠올린 이야기, 사건, 세계를 자유롭게 써주세요"}">${escapeHtml(redraw ? "" : (WZ.aiIdea || WZ.basic.story || ""))}</textarea>`;
   const free = redraw && WZ.worldRevisionToken;
   $("#world-ai-quota").textContent = free
-    ? "첫 수정은 무료예요. 질문과 수정 모두 횟수가 차감되지 않습니다."
-    : `질문은 무료예요. 세계관을 생성할 때만 1회 차감됩니다. · 생성 가능 ${WORLD_QUOTA.left}회`;
-  $("#world-ai-start").textContent = "시작하기"; $("#world-ai-start").dataset.stage = "idea";
+    ? "첫 수정은 무료예요. 횟수가 차감되지 않습니다."
+    : `세계관을 생성할 때 1회 차감됩니다. · 생성 가능 ${WORLD_QUOTA.left}회`;
+  $("#world-ai-start").textContent = redraw ? "세계관 다시 만들기" : "세계관 만들기";
   $("#world-ai-back").classList.remove("hidden"); $("#world-ai-sheet").classList.remove("hidden");
 }
 
 async function worldAiStart() {
   const btn = $("#world-ai-start");
-  if (btn.dataset.stage === "idea") {
-    const idea = ($("#world-ai-idea").value || "").trim();
-    if (idea.length < 10) { notice("생각하는 이야기를 조금 더 자세히 써주세요."); return; }
-    btn.disabled = true; btn.textContent = "질문을 만드는 중…";
-    const r = await api("/api/writer/brief/world-questions", { method: "POST", body: JSON.stringify({ idea }) });
-    btn.disabled = false;
-    if (r.world_quota) WORLD_QUOTA = r.world_quota;
-    if (!r.ok) { btn.textContent = "시작하기"; if (r.need === "world_quota") showWorldLimit(); else notice(r.error || "질문을 만들지 못했어요."); return; }
-    const first = r.question || (r.questions || [])[0];
-    if (!first) { btn.textContent = "시작하기"; notice("첫 질문을 만들지 못했어요. 다시 시도해 주세요."); return; }
-    WZ.aiIdea = idea; WZ.aiQuestions = [first]; WZ.aiAnswers = [];
-    WZ.aiQuestionIndex = 0;
-    $("#world-ai-help").textContent = "편하게 대화하듯 알려주세요. 제가 필요한 부분만 세 번 안으로 여쭤볼게요.";
-    renderWorldChat();
-    $("#world-ai-quota").textContent = WZ.aiRedraw && WZ.worldRevisionToken
-      ? "첫 수정은 무료예요."
-      : `질문은 차감되지 않아요. 세계관 생성 가능 ${WORLD_QUOTA.left}회`;
-    btn.dataset.stage = "chat"; btn.textContent = "보내기"; return;
-  }
-  if (btn.dataset.stage === "chat") {
-    const answer = ($("#world-chat-answer")?.value || "").trim();
-    if (!answer) { notice("편하게 답을 적어 주세요."); return; }
-    WZ.aiAnswers[WZ.aiQuestionIndex] = answer;
-    wzSave();
-    if (WZ.aiAnswers.filter(Boolean).length >= 3) { await finishWorldChat(); return; }
-    btn.disabled = true; btn.textContent = "답을 읽는 중…";
-    const conversation = WZ.aiQuestions.map((question, i) => ({ question, answer: WZ.aiAnswers[i] || "" }))
-      .filter((row) => row.answer);
-    const r = await api("/api/writer/brief/world-next", { method: "POST",
-      body: JSON.stringify({ idea: WZ.aiIdea, conversation }) });
-    btn.disabled = false;
-    if (!r.ok) { btn.textContent = "다시 보내기"; notice(r.error || "다음 질문을 만들지 못했어요."); return; }
-    if (r.done) { await finishWorldChat(); return; }
-    if (!r.question) { notice("다음 질문을 만들지 못했어요."); btn.textContent = "다시 보내기"; return; }
-    WZ.aiQuestions.push(r.question); WZ.aiQuestionIndex = WZ.aiAnswers.filter(Boolean).length;
-    wzSave(); renderWorldChat();
-  }
-}
-async function finishWorldChat() {
-  wzSave(); closeWorldAi();
-  const transcript = [`아이디어: ${WZ.aiIdea}`].concat(
-    WZ.aiQuestions.map((q, i) => `${q}\n${WZ.aiAnswers[i] || ""}`).filter((x, i) => WZ.aiAnswers[i]))
-    .join("\n\n");
-  await wzGenerate(transcript);
-}
-function renderWorldChat() {
-  const upto = WZ.aiQuestionIndex || 0;
-  const history = [];
-  for (let i = 0; i < upto; i++) {
-    history.push(`<div class="chat-bubble ai">${escapeHtml(WZ.aiQuestions[i])}</div>`);
-    history.push(`<div class="chat-bubble me">${escapeHtml(WZ.aiAnswers[i] || "")}</div>`);
-  }
-  const q = WZ.aiQuestions[upto] || "이야기에서 가장 중요하게 남기고 싶은 건 무엇인가요?";
-  history.push(`<div class="chat-bubble ai">${escapeHtml(q)}</div>`);
-  history.push(`<textarea id="world-chat-answer" class="wz-in chat-answer" rows="3" placeholder="말하듯 편하게 적어 주세요"></textarea>`);
-  $("#world-ai-fields").innerHTML = `<div class="world-chat">${history.join("")}</div>`;
-  $("#world-ai-start").textContent = upto >= 2 ? "이 내용으로 만들기" : "보내기";
-  $("#world-chat-answer").focus();
+  const idea = ($("#world-ai-idea").value || "").trim();
+  if (idea.length < 10) { notice("떠올린 아이디어를 조금 더 자세히 써주세요."); return; }
+  WZ.aiIdea = idea; wzSave(); closeWorldAi();
+  await wzGenerate(`사용자가 직접 쓴 아이디어:\n${idea}\n\n이 아이디어의 현실성·장르·시대·장소·기술 또는 마법 수준·세계의 법칙·제약·분위기를 AI가 판단해 세계관을 완성한다. 구체적인 사건과 갈등도 이 세계관에서 자연스럽게 창작한다.`);
 }
 $("#world-ai-close").onclick = closeWorldAi; $("#world-ai-back").onclick = closeWorldAi;
 $("#world-ai-start").onclick = worldAiStart;
