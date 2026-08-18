@@ -969,8 +969,8 @@ body.writer:not(.focus-mode).has-ad .wview {
   body.has-ad:not(.focus-mode) .ad-banner { bottom: calc(66px + env(safe-area-inset-bottom, 0px)); }
 }
 
-/* 통합 제작 화면: 주요 이동은 메뉴로, 하단은 현재 작업에만 집중한다. */
-.app-nav { display: none !important; }
+/* 설계·집필처럼 집중이 필요한 화면만 하단 탭을 숨긴다. */
+body.focus-mode .app-nav { display: none !important; }
 body.writer:not(.focus-mode) .wview,
 body.writer:not(.focus-mode).has-ad .wview { padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px)); }
 body.has-ad:not(.focus-mode) .ad-banner, body.has-ad .wz-foot { bottom: 0; }
@@ -980,6 +980,10 @@ body.has-ad:not(.focus-mode) .ad-banner, body.has-ad .wz-foot { bottom: 0; }
 .section-ai-intro p { margin: 0; color: var(--dim); font-size: 13px; line-height: 1.65; }
 .ai-btn.compact { width: 100%; min-height: 48px; border: 0; border-radius: 16px;
   background: var(--panel); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); font-weight: 800; }
+.basic-ai-intro .ai-btn.compact {
+  width: auto; min-width: 154px; min-height: 44px; align-self: flex-start; padding: 0 20px;
+  border-radius: 999px; background: var(--text); color: var(--bg); box-shadow: none;
+}
 .basic-field, .result-field, .ai-question { display: flex; flex-direction: column; gap: 9px; margin-bottom: 20px; }
 .basic-field > span, .result-field > span, .ai-question > span { font-size: 13px; font-weight: 800; line-height: 1.5; }
 .basic-field .wz-in, .result-field .wz-in, .ai-question .wz-in { min-height: 52px; padding: 16px;
@@ -1136,6 +1140,14 @@ body.writer button.ghost { color: var(--dim); }
 .w-empty small { display: block; max-width: 270px; margin: 8px auto 0; line-height: 1.65; }
 .w-item { border: 0; box-shadow: var(--shadow); }
 .w-item::before { width: 3px; background: var(--accent); }
+#w-resume, #w-new { margin-top: 22px; }
+#w-resume + #w-new { margin-top: 12px; }
+.resume-draft { width: 100%; min-height: 50px; border: 1px solid var(--line); background: var(--panel);
+  color: var(--text); font-weight: 800; }
+.settings-actions { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 10px; margin: 28px 0 8px; }
+.settings-actions .btn-prev { width: 54px; min-height: 54px; padding: 0; border: 0; border-radius: 50%;
+  background: var(--panel2); color: var(--text); font-size: 36px; font-weight: 300; }
+.settings-actions .btn-main { min-height: 54px; border-radius: 999px; }
 
 /* 화면 머리글과 카드 */
 .app-top, .w-top { min-height: 52px; align-items: center; }

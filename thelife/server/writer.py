@@ -18,7 +18,7 @@ import urllib.request
 import uuid
 
 from fastapi import APIRouter, File, Form, Header, Request, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from . import db
 from .engine.world import parse_llm_json
@@ -1286,10 +1286,15 @@ class WorldQuestionsBody(BaseModel):
     idea: str = ""
 
 
+class WorldNextBody(BaseModel):
+    idea: str = ""
+    conversation: list[dict] = Field(default_factory=list)
+
+
 @router.post("/brief/world-questions")
 def world_questions(b: WorldQuestionsBody,
                     user: str = Header(default="solo", alias="X-User-Id")):
-    """AI와 함께 짜기 1회를 시작하고, 선택지가 아닌 짧은 자연어 질문을 최대 3개 만든다."""
+    """AI와 함께 짜기 1회를 시작하고 첫 질문 하나만 만든다."""
     idea = b.idea.strip()[:3000]
     if len(idea) < 10:
         return {"ok": False, "error": "생각하는 이야기를 조금 더 자세히 써주세요."}
@@ -1304,11 +1309,9 @@ def world_questions(b: WorldQuestionsBody,
             return {"ok": False, "error": "AI 연결이 필요해요.", "world_quota": available}
         quota = _world_spend(c, user)
     if llm.is_mock:
-        return {"ok": True, "questions": ["좋아요. 이 이야기에서 독자가 가장 따라가길 바라는 존재는 누구예요?",
-                                             "그 존재의 평온을 깨뜨리는 사건은 무엇이면 좋을까요?",
-                                             "마지막 장면에서 독자에게 어떤 감정을 남기고 싶으세요?"],
+        return {"ok": True, "question": "좋아요. 이 이야기에서 독자가 가장 따라가길 바라는 존재는 누구예요?",
                 "world_quota": quota, "demo": True}
-    prompt = f"""당신은 웹소설 기획 인터뷰어다. 아래 아이디어를 더 선명하게 만들 질문을 작성하라.
+    prompt = f"""당신은 웹소설 기획 인터뷰어다. 아래 아이디어를 더 선명하게 만들 첫 질문 하나를 작성하라.
 
 [아이디어]
 {idea}
@@ -1316,12 +1319,12 @@ def world_questions(b: WorldQuestionsBody,
 규칙:
 - 답을 고르게 하지 말고 사용자가 자유롭게 문장으로 답할 질문만 쓴다.
 - 이미 적힌 내용을 다시 묻지 않는다.
-- 제목·로그라인·배경·스토리·결말을 만들 때 꼭 필요한 질문만 최대 3개.
+- 제목·로그라인·배경·스토리·결말을 만들 때 지금 가장 필요한 질문 하나만 묻는다.
 - 카카오톡에서 경험 많은 편집자가 대화하듯 부드럽고 자연스럽게 묻는다.
 - 딱딱한 설문 문구, 전문용어, 정답을 유도하는 질문은 금지한다.
 - 질문끼리 이어지되 AI가 작품 방향을 멋대로 바꾸지 않게 사용자의 핵심 소재를 매번 기준으로 삼는다.
-- 짧고 쉬운 한국어로 정확히 3개를 쓴다.
-- JSON만 출력: {{"questions":["질문1","질문2","질문3"]}}"""
+- 짧고 쉬운 한국어로 쓴다.
+- JSON만 출력: {{"question":"질문 하나"}}"""
     raw = llm.write(prompt, mock_text="", max_tokens=700)
     if llm.last_error:
         with db.connect() as c:
@@ -1329,11 +1332,67 @@ def world_questions(b: WorldQuestionsBody,
         return {"ok": False, "error": "질문을 만들지 못했어요. 다시 시도해 주세요.",
                 "detail": llm.last_error, "world_quota": quota}
     data = parse_llm_json(raw) or {}
-    questions = [str(q).strip()[:160] for q in (data.get("questions") or []) if str(q).strip()][:3]
-    if not questions:
-        questions = ["이 이야기에서 가장 중요한 사건은 무엇인가요?",
-                     "주인공이 마지막에 반드시 이루어야 할 일은 무엇인가요?"]
-    return {"ok": True, "questions": questions, "world_quota": quota}
+    question = str(data.get("question", "")).strip()[:200]
+    if not question:
+        question = "이 이야기에서 독자가 가장 따라가길 바라는 존재는 누구예요?"
+    return {"ok": True, "question": question, "world_quota": quota}
+
+
+@router.post("/brief/world-next")
+def world_next(b: WorldNextBody,
+               user: str = Header(default="solo", alias="X-User-Id")):
+    """직전 답을 실제로 읽고 다음 질문을 정한다. 충분하면 세 번 전에도 대화를 끝낸다."""
+    idea = b.idea.strip()[:3000]
+    conversation = []
+    for row in (b.conversation or [])[:3]:
+        if not isinstance(row, dict):
+            continue
+        q = str(row.get("question", "")).strip()[:200]
+        a = str(row.get("answer", "")).strip()[:1200]
+        if q and a:
+            conversation.append({"question": q, "answer": a})
+    if not idea or not conversation:
+        return {"ok": False, "error": "앞선 대화 내용을 확인할 수 없어요."}
+    if len(conversation) >= 3:
+        return {"ok": True, "done": True}
+    if llm.is_mock:
+        last = conversation[-1]["answer"]
+        question = (f"그렇다면 ‘{last[:36]}’을 가장 크게 흔드는 사건은 무엇이면 좋을까요?"
+                    if len(conversation) == 1 else
+                    f"좋아요. 그 사건을 겪은 뒤 마지막에는 어떤 감정을 남기고 싶으세요?")
+        return {"ok": True, "done": False, "question": question, "demo": True}
+    with db.connect() as c:
+        ok, _cap = _ai_gate(c, user)
+        if not ok:
+            return _AI_BUSY
+    prompt = f"""당신은 웹소설 기획 편집자다. 사용자와 카카오톡처럼 대화하며 작품의 핵심을 끌어내고 있다.
+
+[처음 아이디어]
+{idea}
+
+[지금까지 실제 대화]
+{json.dumps(conversation, ensure_ascii=False)}
+
+판단:
+- 방금 답을 반드시 이해하고 그 내용에 이어지는 질문을 한다.
+- 이미 말한 내용을 다시 묻지 않는다.
+- 사용자의 소재와 의도를 바꾸거나 새 작품을 강요하지 않는다.
+- 제목·로그라인·세계관·중심 사건·결말·분위기를 만들 정보가 충분하면 done=true로 끝낸다.
+- 부족하면 지금 가장 중요한 것 하나만, 말하듯 부드럽게 묻는다.
+- 전체 대화는 최대 3문답이다.
+- JSON만 출력: {{"done":false,"question":"다음 질문"}} 또는 {{"done":true,"question":""}}"""
+    raw = llm.write(prompt, mock_text="", max_tokens=500)
+    if llm.last_error:
+        return {"ok": False, "error": "다음 질문을 만들지 못했어요. 다시 눌러 주세요.",
+                "detail": llm.last_error}
+    data = parse_llm_json(raw) or {}
+    done = bool(data.get("done"))
+    question = str(data.get("question", "")).strip()[:200]
+    if done:
+        return {"ok": True, "done": True}
+    if not question:
+        question = "그 선택 때문에 벌어지는 가장 큰 사건은 무엇이면 좋을까요?"
+    return {"ok": True, "done": False, "question": question}
 
 
 @router.post("/brief/draft")

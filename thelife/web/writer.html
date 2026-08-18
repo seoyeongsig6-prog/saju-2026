@@ -18,7 +18,7 @@
 <link rel="icon" href="/static/icons/icon-192.png">
 
 <link rel="stylesheet" href="/static/style.css">
-<link rel="stylesheet" href="/static/writer.css?v=20260818-fix3">
+<link rel="stylesheet" href="/static/writer.css?v=20260818-fix4">
 </head>
 <body class="writer launch">
 
@@ -33,12 +33,17 @@
     <p>아직 시작한 작품이 없어요.</p>
     <small>아이디어를 작품 설계로 바꾸고 바로 집필을 시작해 보세요.</small>
   </div>
-  <button id="w-new" class="primary big">첫 작품 만들기</button>
+  <button id="w-resume" class="resume-draft hidden">만들던 작품 이어가기</button>
+  <button id="w-new" class="primary big">새 작품 만들기</button>
 </div>
 
 <!-- 설정 -->
 <div id="w-settings" class="wview hidden">
-  <div class="w-top"><button class="ghost small" onclick="showHome()">← 뒤로</button><b>설정</b></div>
+  <div class="app-top">
+    <button id="st-home" class="top-ic" aria-label="홈"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/></svg></button>
+    <b class="top-title">설정</b>
+    <button id="st-menu" class="top-ic" aria-label="메뉴"><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg></button>
+  </div>
   <div class="story-h">요금제</div>
   <div id="settings-plan"></div>
   <div class="story-h">화면</div>
@@ -60,6 +65,7 @@
   <div class="story-h">정보</div>
   <a class="set-item" href="/privacy" target="_blank" rel="noopener">개인정보처리방침</a>
   <a class="set-item" href="/terms" target="_blank" rel="noopener">이용약관</a>
+  <div class="settings-actions"><button id="st-back" class="btn-prev" aria-label="이전">‹</button><button id="st-done" class="btn-main">완료</button></div>
 </div>
 
 <!-- 구독 플랜 비교 -->
@@ -530,7 +536,7 @@
   </div>
 </div>
 
-<script src="/static/wzspec.js?v=20260818-fix3"></script>
-<script src="/static/writer.js?v=20260818-fix3"></script>
+<script src="/static/wzspec.js?v=20260818-fix4"></script>
+<script src="/static/writer.js?v=20260818-fix4"></script>
 </body>
 </html>

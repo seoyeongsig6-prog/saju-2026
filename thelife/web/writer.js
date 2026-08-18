@@ -94,6 +94,10 @@ function setPens(n) { if (typeof n === "number") { PENS = n; renderPenBar(); } }
 /* ---------- 설정 화면 ---------- */
 function showSettings() { view("w-settings"); renderSettingsPlan(); renderThemeSeg(); renderTestPanel(); }
 $("#btn-settings").onclick = showSettings;
+$("#st-home").onclick = showHome;
+$("#st-menu").onclick = () => openMenu("settings");
+$("#st-back").onclick = showHome;
+$("#st-done").onclick = showHome;
 
 /* 설정 — 데이터 내보내기 / 계정 삭제 (스토어 정책상 앱 내 필수) */
 $("#btn-export").onclick = async () => {
@@ -360,7 +364,7 @@ document.querySelectorAll("#app-nav [data-nav]").forEach((b) => {
   b.onclick = () => {
     const to = b.dataset.nav;
     if (to === "home") { showHome(); return; }
-    if (to === "new") { startWizard(); return; }
+    if (to === "new") { startWizard(true); return; }
     if (to === "plans") { showPlans("home"); return; }
     if (to === "settings") { showSettings(); return; }
   };
@@ -448,7 +452,8 @@ async function showHome() {
   const works = d.works || [];
   $("#w-empty").classList.toggle("hidden", works.length > 0);
   const saved = wzSaved();
-  $("#w-new").textContent = saved ? "만들던 작품 이어가기" : (works.length ? "새 작품 만들기" : "첫 작품 만들기");
+  $("#w-resume").classList.toggle("hidden", !saved);
+  $("#w-new").textContent = "새 작품 만들기";
   works.forEach((w) => {
     const el = document.createElement("button");
     el.className = "w-item";
@@ -475,7 +480,8 @@ async function delWork(id, title) {
 const bdVal = (id) => $("#" + id).value.trim();
 
 /* 새 작품 = 단계별 설계(위저드). 상세 폼(w-build)은 '직접 다 채우기'로 남겨둔다. */
-$("#w-new").onclick = () => startWizard();
+$("#w-resume").onclick = () => startWizard(false);
+$("#w-new").onclick = () => startWizard(true);
 /* 선택지 + '기타(직접 입력)' 패턴 */
 const ROLE_OPTS = ["적대자(메인 빌런)", "서브 빌런", "조력자", "멘토·스승", "애정상대",
   "라이벌", "동료", "가족", "부하·수하", "상관·윗사람", "배신자", "전령·정보원", "관문 수호자", "기타"];
@@ -1116,13 +1122,11 @@ window.addEventListener("pagehide", wzSave);
 window.addEventListener("beforeunload", wzSave);
 document.addEventListener("visibilitychange", () => { if (document.hidden) wzSave(); });
 
-async function startWizard() {
+async function startWizard(forceNew = false) {
   const prev = wzSaved();
-  if (prev) {
-    const step = (prev.phase === "form") ? `${Math.min(prev.i + 1, WZ_SPEC.length)}단계` : "확인 단계";
-    if (await askAction(`설정하던 작품이 있어요 (${step}).\n이어서 하시겠어요?`, "이어서 하기", "새로 시작")) {
-      wzOpen(prev); return;
-    }
+  if (prev && !forceNew) { wzOpen(prev); return; }
+  if (prev && forceNew) {
+    if (!await askAction("새 작품을 시작하면 만들던 설정은 삭제돼요.\n새로 시작할까요?", "새로 시작", "취소")) return;
     wzClear();
   }
   wzOpen(null);
@@ -2012,7 +2016,9 @@ async function worldAiStart() {
     btn.disabled = false;
     if (r.world_quota) WORLD_QUOTA = r.world_quota;
     if (!r.ok) { btn.textContent = "시작하기"; if (r.need === "world_quota") showWorldLimit(); else notice(r.error || "질문을 만들지 못했어요."); return; }
-    WZ.aiIdea = idea; WZ.aiQuestions = r.questions || []; WZ.aiAnswers = [];
+    const first = r.question || (r.questions || [])[0];
+    if (!first) { btn.textContent = "시작하기"; notice("첫 질문을 만들지 못했어요. 다시 시도해 주세요."); return; }
+    WZ.aiIdea = idea; WZ.aiQuestions = [first]; WZ.aiAnswers = [];
     WZ.aiQuestionIndex = 0;
     $("#world-ai-help").textContent = "편하게 대화하듯 알려주세요. 제가 필요한 부분만 세 번 안으로 여쭤볼게요.";
     renderWorldChat();
@@ -2023,11 +2029,27 @@ async function worldAiStart() {
     const answer = ($("#world-chat-answer")?.value || "").trim();
     if (!answer) { notice("편하게 답을 적어 주세요."); return; }
     WZ.aiAnswers[WZ.aiQuestionIndex] = answer;
-    WZ.aiQuestionIndex++;
-    if (WZ.aiQuestionIndex < WZ.aiQuestions.length) { renderWorldChat(); return; }
-    wzSave(); closeWorldAi();
-    await wzGenerate([`아이디어: ${WZ.aiIdea}`].concat(WZ.aiQuestions.map((q, i) => `${q}\n${WZ.aiAnswers[i]}`)).join("\n\n"));
+    wzSave();
+    if (WZ.aiAnswers.filter(Boolean).length >= 3) { await finishWorldChat(); return; }
+    btn.disabled = true; btn.textContent = "답을 읽는 중…";
+    const conversation = WZ.aiQuestions.map((question, i) => ({ question, answer: WZ.aiAnswers[i] || "" }))
+      .filter((row) => row.answer);
+    const r = await api("/api/writer/brief/world-next", { method: "POST",
+      body: JSON.stringify({ idea: WZ.aiIdea, conversation }) });
+    btn.disabled = false;
+    if (!r.ok) { btn.textContent = "다시 보내기"; notice(r.error || "다음 질문을 만들지 못했어요."); return; }
+    if (r.done) { await finishWorldChat(); return; }
+    if (!r.question) { notice("다음 질문을 만들지 못했어요."); btn.textContent = "다시 보내기"; return; }
+    WZ.aiQuestions.push(r.question); WZ.aiQuestionIndex = WZ.aiAnswers.filter(Boolean).length;
+    wzSave(); renderWorldChat();
   }
+}
+async function finishWorldChat() {
+  wzSave(); closeWorldAi();
+  const transcript = [`아이디어: ${WZ.aiIdea}`].concat(
+    WZ.aiQuestions.map((q, i) => `${q}\n${WZ.aiAnswers[i] || ""}`).filter((x, i) => WZ.aiAnswers[i]))
+    .join("\n\n");
+  await wzGenerate(transcript);
 }
 function renderWorldChat() {
   const upto = WZ.aiQuestionIndex || 0;
@@ -2040,7 +2062,7 @@ function renderWorldChat() {
   history.push(`<div class="chat-bubble ai">${escapeHtml(q)}</div>`);
   history.push(`<textarea id="world-chat-answer" class="wz-in chat-answer" rows="3" placeholder="말하듯 편하게 적어 주세요"></textarea>`);
   $("#world-ai-fields").innerHTML = `<div class="world-chat">${history.join("")}</div>`;
-  $("#world-ai-start").textContent = upto >= WZ.aiQuestions.length - 1 ? "이 내용으로 만들기" : "보내기";
+  $("#world-ai-start").textContent = upto >= 2 ? "이 내용으로 만들기" : "보내기";
   $("#world-chat-answer").focus();
 }
 $("#world-ai-close").onclick = closeWorldAi; $("#world-ai-back").onclick = closeWorldAi;
