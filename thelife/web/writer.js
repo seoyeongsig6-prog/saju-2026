@@ -13,10 +13,11 @@ const IS_NATIVE = !!(window.Capacitor && typeof window.Capacitor.isNativePlatfor
   && window.Capacitor.isNativePlatform());
 const API_BASE = (window.NOVELIST_API_BASE || "").replace(/\/$/, "");
 if (IS_NATIVE) document.body.classList.add("native");
-const TEST_PARAM = new URLSearchParams(location.search).get("novelist_test");
+/* # 뒤의 값은 서버 요청·로그에 전송되지 않는다. 첫 접속 뒤 주소에서도 즉시 지운다. */
+const TEST_PARAM = new URLSearchParams(location.hash.replace(/^#/, "")).get("novelist_test");
 if (TEST_PARAM) {
   localStorage.setItem("novelist_test_key", TEST_PARAM);
-  history.replaceState(null, "", location.pathname + location.hash);
+  history.replaceState(null, "", location.pathname + location.search);
 }
 let TEST_KEY = localStorage.getItem("novelist_test_key") || "";
 const api = async (path, opts = {}) => {
