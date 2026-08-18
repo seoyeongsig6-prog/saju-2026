@@ -1058,6 +1058,7 @@ class BuildBody(BaseModel):
     outline: list[OutlineIn] = []
     ai_context: str = ""         # AI와 함께 짜기에서 사용자가 답한 자연어
     choice_options: dict[str, list[str]] = {}
+    revision_token: str = ""     # 세계관 생성 직후 제공되는 1회 무료 수정권
 
 
 def _sec(title: str, body: str) -> str:
@@ -1294,24 +1295,18 @@ class WorldNextBody(BaseModel):
 @router.post("/brief/world-questions")
 def world_questions(b: WorldQuestionsBody,
                     user: str = Header(default="solo", alias="X-User-Id")):
-    """AI와 함께 짜기 1회를 시작하고 첫 질문 하나만 만든다."""
+    """차감 없이 세계관의 성격을 파악할 첫 질문 하나만 만든다."""
     idea = b.idea.strip()[:3000]
     if len(idea) < 10:
         return {"ok": False, "error": "생각하는 이야기를 조금 더 자세히 써주세요."}
     with db.connect() as c:
-        available = _world_quota(c, user)
-        if available["left"] <= 0:
-            return {"ok": False, "need": "world_quota", "world_quota": available}
-        ok, _cap = _ai_gate(c, user)
-        if not ok:
-            return {**_AI_BUSY, "world_quota": available}
-        if llm.is_mock and not DEMO_MODE:
-            return {"ok": False, "error": "AI 연결이 필요해요.", "world_quota": available}
-        quota = _world_spend(c, user)
+        quota = _world_quota(c, user)
+    if llm.is_mock and not DEMO_MODE:
+        return {"ok": False, "error": "AI 연결이 필요해요.", "world_quota": quota}
     if llm.is_mock:
-        return {"ok": True, "question": "좋아요. 이 이야기에서 독자가 가장 따라가길 바라는 존재는 누구예요?",
+        return {"ok": True, "question": "이 아이디어는 현실에서 가능한 이야기인가요, 아니면 판타지나 미래 기술이 있는 세계인가요?",
                 "world_quota": quota, "demo": True}
-    prompt = f"""당신은 웹소설 기획 인터뷰어다. 아래 아이디어를 더 선명하게 만들 첫 질문 하나를 작성하라.
+    prompt = f"""당신은 웹소설 세계관 설계 인터뷰어다. 아래 아이디어가 어떤 세계에서 성립하는지 파악할 첫 질문 하나를 작성하라.
 
 [아이디어]
 {idea}
@@ -1319,7 +1314,9 @@ def world_questions(b: WorldQuestionsBody,
 규칙:
 - 답을 고르게 하지 말고 사용자가 자유롭게 문장으로 답할 질문만 쓴다.
 - 이미 적힌 내용을 다시 묻지 않는다.
-- 제목·로그라인·배경·스토리·결말을 만들 때 지금 가장 필요한 질문 하나만 묻는다.
+- 현실에서 가능한 이야기인지, 판타지·SF·초현실 요소가 있는지부터 구분한다.
+- 시대, 장소, 기술·마법 수준, 세계의 고유한 법칙과 제약, 분위기 중 지금 가장 필요한 것 하나만 묻는다.
+- 사건·임무·갈등·목적·결말은 사용자에게 만들라고 묻지 않는다. 그것은 이후 AI가 세계관에 맞춰 창작한다.
 - 카카오톡에서 경험 많은 편집자가 대화하듯 부드럽고 자연스럽게 묻는다.
 - 딱딱한 설문 문구, 전문용어, 정답을 유도하는 질문은 금지한다.
 - 질문끼리 이어지되 AI가 작품 방향을 멋대로 바꾸지 않게 사용자의 핵심 소재를 매번 기준으로 삼는다.
@@ -1327,14 +1324,12 @@ def world_questions(b: WorldQuestionsBody,
 - JSON만 출력: {{"question":"질문 하나"}}"""
     raw = llm.write(prompt, mock_text="", max_tokens=700)
     if llm.last_error:
-        with db.connect() as c:
-            quota = _world_refund(c, user)
         return {"ok": False, "error": "질문을 만들지 못했어요. 다시 시도해 주세요.",
                 "detail": llm.last_error, "world_quota": quota}
     data = parse_llm_json(raw) or {}
     question = str(data.get("question", "")).strip()[:200]
     if not question:
-        question = "이 이야기에서 독자가 가장 따라가길 바라는 존재는 누구예요?"
+        question = "이 아이디어는 현실에서 가능한 이야기인가요, 아니면 판타지나 미래 기술이 있는 세계인가요?"
     return {"ok": True, "question": question, "world_quota": quota}
 
 
@@ -1357,15 +1352,11 @@ def world_next(b: WorldNextBody,
         return {"ok": True, "done": True}
     if llm.is_mock:
         last = conversation[-1]["answer"]
-        question = (f"그렇다면 ‘{last[:36]}’을 가장 크게 흔드는 사건은 무엇이면 좋을까요?"
+        question = (f"그렇다면 ‘{last[:36]}’이 자연스럽게 존재할 시대와 장소는 어디가 좋을까요?"
                     if len(conversation) == 1 else
-                    f"좋아요. 그 사건을 겪은 뒤 마지막에는 어떤 감정을 남기고 싶으세요?")
+                    "이 세계를 현실과 다르게 만드는 가장 중요한 규칙이나 제약은 무엇이면 좋을까요?")
         return {"ok": True, "done": False, "question": question, "demo": True}
-    with db.connect() as c:
-        ok, _cap = _ai_gate(c, user)
-        if not ok:
-            return _AI_BUSY
-    prompt = f"""당신은 웹소설 기획 편집자다. 사용자와 카카오톡처럼 대화하며 작품의 핵심을 끌어내고 있다.
+    prompt = f"""당신은 웹소설 세계관 설계자다. 사용자와 카카오톡처럼 대화하며 아이디어가 성립하는 세계의 성격을 파악하고 있다.
 
 [처음 아이디어]
 {idea}
@@ -1377,7 +1368,10 @@ def world_next(b: WorldNextBody,
 - 방금 답을 반드시 이해하고 그 내용에 이어지는 질문을 한다.
 - 이미 말한 내용을 다시 묻지 않는다.
 - 사용자의 소재와 의도를 바꾸거나 새 작품을 강요하지 않는다.
-- 제목·로그라인·세계관·중심 사건·결말·분위기를 만들 정보가 충분하면 done=true로 끝낸다.
+- 오직 세계관을 파악한다: 현실성, 시대와 장소, 기술·마법 수준, 세계의 규칙과 제약, 분위기.
+- 사건·임무·갈등·목적·결말을 사용자에게 정하라고 묻지 않는다. 사건은 이후 AI가 만든다.
+- 사용자가 '몰라', '네가 정해'처럼 답하면 같은 질문을 반복하지 말고, 아이디어에 맞는 방향을 AI가 정한 뒤 다음 세계관 질문으로 넘어간다.
+- 세계가 어떤 곳이고 무엇이 가능한지 만들 정보가 충분하면 done=true로 끝낸다.
 - 부족하면 지금 가장 중요한 것 하나만, 말하듯 부드럽게 묻는다.
 - 전체 대화는 최대 3문답이다.
 - JSON만 출력: {{"done":false,"question":"다음 질문"}} 또는 {{"done":true,"question":""}}"""
@@ -1391,7 +1385,7 @@ def world_next(b: WorldNextBody,
     if done:
         return {"ok": True, "done": True}
     if not question:
-        question = "그 선택 때문에 벌어지는 가장 큰 사건은 무엇이면 좋을까요?"
+        question = "이 세계를 현실과 다르게 만드는 가장 중요한 규칙이나 제약은 무엇이면 좋을까요?"
     return {"ok": True, "done": False, "question": question}
 
 
@@ -1401,21 +1395,35 @@ def draft_brief(b: BuildBody, user: str = Header(default="solo", alias="X-User-I
     if not (b.logline.strip() or b.ai_context.strip() or b.keywords.strip()):
         return {"ok": False, "error": "생각하는 이야기를 먼저 알려주세요."}
     _cap_build(b)
+    token = b.revision_token.strip()[:80]
+    free_revision = False
+    charged_world = False
     with db.connect() as c:
-        ok, _cap = _ai_gate(c, user)
-        if not ok:
-            if b.ai_context.strip():
-                _world_refund(c, user)
-            return _AI_BUSY
+        quota = _world_quota(c, user)
+        if token and db.kv_get(c, f"worldrev:{user}:{token}", "") == "ready":
+            free_revision = True
+            db.kv_set(c, f"worldrev:{user}:{token}", "using")
+        else:
+            if quota["left"] <= 0:
+                return {"ok": False, "need": "world_quota", "world_quota": quota,
+                        "error": "이용 가능한 세계관 생성 횟수를 모두 사용했어요."}
+            ok, _cap = _ai_gate(c, user)
+            if not ok:
+                return {**_AI_BUSY, "world_quota": quota}
+            quota = _world_spend(c, user)
+            charged_world = True
     if llm.is_mock:
         if not DEMO_MODE:
             with db.connect() as c:
-                quota = _world_refund(c, user) if b.ai_context.strip() else None
+                if charged_world:
+                    quota = _world_refund(c, user)
+                elif free_revision:
+                    db.kv_set(c, f"worldrev:{user}:{token}", "ready")
             return {"ok": False, "error": "AI 연결이 필요해요.",
                     "detail": "배포 환경의 AI 연결 상태를 확인해 주세요.",
-                    **({"world_quota": quota} if quota else {})}
+                    "world_quota": quota}
         demo = _demo_brief(b, 0)
-        return {"ok": True, "draft": {"title": demo.get("title", ""),
+        response = {"ok": True, "draft": {"title": demo.get("title", ""),
                                          "logline": demo.get("logline", ""),
                                          "world_setting": demo.get("world_setting", ""),
                                          "intent": demo.get("intent", ""),
@@ -1426,11 +1434,17 @@ def draft_brief(b: BuildBody, user: str = Header(default="solo", alias="X-User-I
                                                      "emotion": ["필요한 만큼 보여준다"],
                                                      "dialogue": ["대사와 서술이 비슷하다"],
                                                      "describe": ["필요한 장면은 자세하게"]}},
-                "demo": True}
+                "demo": True, "world_quota": quota}
+        if charged_world:
+            new_token = uuid.uuid4().hex
+            with db.connect() as c:
+                db.kv_set(c, f"worldrev:{user}:{new_token}", "ready")
+            response["revision_token"] = new_token
+        return response
     choice_keys = {"genre", "era", "place", "mood", "pace", "focus", "emotion", "dialogue", "describe"}
     options = {k: [str(v) for v in vals[:60]] for k, vals in (b.choice_options or {}).items()
                if k in choice_keys and isinstance(vals, list)}
-    prompt = f"""당신은 프로 웹소설 기획자다. 사용자의 아이디어와 답변을 바탕으로 작품의 기본만 구성하라.
+    prompt = f"""당신은 프로 웹소설 세계관 설계자다. 사용자의 아이디어와 답변을 바탕으로 먼저 세계를 확정하고, 그 세계에서 자연스럽게 생길 사건은 직접 창작하라.
 
 [사용자가 쓴 아이디어와 답변]
 {(b.ai_context or b.logline or b.keywords)[:6000]}
@@ -1450,6 +1464,8 @@ JSON만 출력:
 
 규칙:
 - 오직 위 다섯 항목만 만든다. 인물·관계·세부 규칙은 만들지 않는다.
+- 사용자의 답변에서 현실물·판타지·SF 여부, 시대·장소·기술 또는 마법 수준, 세계의 법칙과 분위기를 우선 확정한다.
+- 사용자가 사건을 정하지 않았거나 '모른다'고 해도 되묻지 않는다. 확정한 세계관에서 가능한 중심 사건과 결말을 AI가 창작한다.
 - 사용자가 이미 정한 소재와 주체를 평범한 인간 이야기로 바꾸지 않는다.
 - 제목·로그라인·배경·스토리·결말이 서로 모순되지 않게 한다.
 - choices는 각 항목의 보기 안에서만 고른다. genre·place·mood·focus는 최대 3개, 나머지는 1개.
@@ -1458,10 +1474,13 @@ JSON만 출력:
     data = parse_llm_json(raw)
     if not isinstance(data, dict):
         with db.connect() as c:
-            quota = _world_refund(c, user) if b.ai_context.strip() else None
+            if charged_world:
+                quota = _world_refund(c, user)
+            elif free_revision:
+                db.kv_set(c, f"worldrev:{user}:{token}", "ready")
         return {"ok": False, "error": "작품의 세계관을 만들지 못했어요. 다시 시도해 주세요.",
                 "detail": (llm.last_error or (raw[:150] or "빈 응답")),
-                **({"world_quota": quota} if quota else {})}
+                "world_quota": quota}
     clean = {k: str(data.get(k, "")).strip()[:3000]
              for k in ("title", "logline", "world_setting", "intent", "ending")}
     raw_choices = data.get("choices") if isinstance(data.get("choices"), dict) else {}
@@ -1473,7 +1492,15 @@ JSON만 출력:
         limit = 3 if key in {"genre", "place", "mood", "focus"} else 1
         clean_choices[key] = [str(v) for v in picked if str(v) in vals][:limit]
     clean["choices"] = clean_choices
-    return {"ok": True, "draft": clean}
+    response = {"ok": True, "draft": clean, "world_quota": quota}
+    with db.connect() as c:
+        if free_revision:
+            db.kv_set(c, f"worldrev:{user}:{token}", "used")
+        elif charged_world:
+            new_token = uuid.uuid4().hex
+            db.kv_set(c, f"worldrev:{user}:{new_token}", "ready")
+            response["revision_token"] = new_token
+    return response
 
 
 class SuggestBody(BaseModel):

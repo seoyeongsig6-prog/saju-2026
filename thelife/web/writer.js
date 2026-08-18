@@ -1835,7 +1835,8 @@ document.querySelectorAll("#plot-sheet .st").forEach((b) => {
 function wzOpen(wz) {
   WZ = Object.assign({ i: 0, phase: "form", total: 20, sel: {}, other: {}, detail: {},
                        basic: {}, cast: [], castOpen: -1, draft: null, outline: [],
-                       plan: {}, planCount: 1, aiIdea: "", aiAnswers: [] }, wz || {});
+                       plan: {}, planCount: 1, aiIdea: "", aiAnswers: [], aiRedraw: false,
+                       worldRevisionToken: "" }, wz || {});
   WZ.paints = {};
   WZ.live = true;
   view("w-wizard");
@@ -1995,13 +1996,15 @@ async function wzStructureAll() {
 function showWorldLimit() { $("#world-ai-limit").classList.remove("hidden"); }
 function closeWorldAi() { $("#world-ai-back").classList.add("hidden"); $("#world-ai-sheet").classList.add("hidden"); }
 function openWorldAi(redraw) {
-  if ((WORLD_QUOTA.left || 0) <= 0) { showWorldLimit(); return; }
+  WZ.aiRedraw = !!redraw;
   $("#world-ai-title").textContent = redraw ? "AI로 다시 짜기" : "AI와 함께 짜기";
   $("#world-ai-help").textContent = redraw ? "어떤 방향으로 다시 짜볼까요?" :
     "생각하는 이야기를 간단하게 써주세요.\n작성된 스토리를 확장해 세계관을 만들어 드립니다.";
   $("#world-ai-fields").innerHTML = `<textarea id="world-ai-idea" class="wz-in" rows="7" placeholder="${redraw ? "새로운 내용이나 수정할 방향을 써주세요" : "떠올린 이야기, 사건, 세계를 자유롭게 써주세요"}">${escapeHtml(redraw ? "" : (WZ.aiIdea || WZ.basic.story || ""))}</textarea>`;
-  const total = (WORLD_QUOTA.base || 0) + (WORLD_QUOTA.extra || 0);
-  $("#world-ai-quota").textContent = `이용 가능 횟수 ${WORLD_QUOTA.left}회 중 1회가 차감됩니다.`;
+  const free = redraw && WZ.worldRevisionToken;
+  $("#world-ai-quota").textContent = free
+    ? "첫 수정은 무료예요. 질문과 수정 모두 횟수가 차감되지 않습니다."
+    : `질문은 무료예요. 세계관을 생성할 때만 1회 차감됩니다. · 생성 가능 ${WORLD_QUOTA.left}회`;
   $("#world-ai-start").textContent = "시작하기"; $("#world-ai-start").dataset.stage = "idea";
   $("#world-ai-back").classList.remove("hidden"); $("#world-ai-sheet").classList.remove("hidden");
 }
@@ -2022,7 +2025,9 @@ async function worldAiStart() {
     WZ.aiQuestionIndex = 0;
     $("#world-ai-help").textContent = "편하게 대화하듯 알려주세요. 제가 필요한 부분만 세 번 안으로 여쭤볼게요.";
     renderWorldChat();
-    $("#world-ai-quota").textContent = `남은 이용 가능 횟수 ${WORLD_QUOTA.left}회`;
+    $("#world-ai-quota").textContent = WZ.aiRedraw && WZ.worldRevisionToken
+      ? "첫 수정은 무료예요."
+      : `질문은 차감되지 않아요. 세계관 생성 가능 ${WORLD_QUOTA.left}회`;
     btn.dataset.stage = "chat"; btn.textContent = "보내기"; return;
   }
   if (btn.dataset.stage === "chat") {
@@ -2082,9 +2087,17 @@ async function wzGenerate(aiContext) {
   wzGo("gen"); $("#wz-gen-h").textContent = "작품의 세계관을 만들고 있어요";
   wzTasks([["제목과 로그라인 구성", "now"], ["배경과 스토리 확장", ""], ["결말 정리", ""]]);
   const r = await api("/api/writer/brief/draft", { method: "POST", body: JSON.stringify(wzBody({
-    ai_context: aiContext || WZ.aiIdea || wzContext(), choice_options: worldChoiceOptions() })) });
+    ai_context: aiContext || WZ.aiIdea || wzContext(), choice_options: worldChoiceOptions(),
+    revision_token: WZ.aiRedraw ? (WZ.worldRevisionToken || "") : "" })) });
   if (r.world_quota) WORLD_QUOTA = r.world_quota;
-  if (!r.ok) { notice((r.error || "만들지 못했어요.") + (r.detail ? `\n\n${r.detail}` : "")); WZ.phase = "form"; wzRender(); return; }
+  if (!r.ok) {
+    if (r.need === "world_quota") showWorldLimit();
+    else notice((r.error || "만들지 못했어요.") + (r.detail ? `\n\n${r.detail}` : ""));
+    WZ.phase = "form"; wzRender(); return;
+  }
+  if (WZ.aiRedraw) WZ.worldRevisionToken = "";
+  if (r.revision_token) WZ.worldRevisionToken = r.revision_token;
+  WZ.aiRedraw = false;
   WZ.draft = r.draft || {}; WZ.demo = !!r.demo;
   const d = WZ.draft, choices = d.choices || {};
   WZ.basic.title = d.title || ""; WZ.basic.logline = d.logline || "";
