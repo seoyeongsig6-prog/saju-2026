@@ -1098,10 +1098,12 @@ async function saveBible() {
     }),
   });
   if (!r.ok) { notice(r.error || "저장 실패"); return; }
-  WORK.title = $("#bible-title").value.trim(); $("#wk-title").textContent = WORK.title;
+  WORK.title = $("#bible-title").value.trim();
+  $("#wk-title").textContent = "작품";
+  $("#wk-name").textContent = WORK.title;
   WORK.ending = $("#bible-ending").value.trim();
   WORK.total_chapters = total;
-  $("#wk-progress").textContent = `${WORK.chapters.length}/${total}화`;
+  $("#wk-progress").textContent = "";
 }
 $("#bible-save-core").onclick = async () => {
   await saveBible();
@@ -2441,6 +2443,7 @@ async function wzGenerate(aiContext) {
   wzTasks([["제목과 로그라인 구성", "now"], ["배경과 스토리 확장", ""], ["결말 정리", ""]]);
   const r = await api("/api/writer/brief/draft", { method: "POST", body: JSON.stringify(wzBody({
     ai_context: aiContext || WZ.aiIdea || wzContext(), choice_options: worldChoiceOptions() })) });
+  if (r.world_quota) WORLD_QUOTA = r.world_quota;
   if (!r.ok) { notice((r.error || "만들지 못했어요.") + (r.detail ? `\n\n${r.detail}` : "")); WZ.phase = "form"; wzRender(); return; }
   WZ.draft = r.draft || {}; WZ.demo = !!r.demo;
   const d = WZ.draft, choices = d.choices || {};
@@ -2483,7 +2486,13 @@ function wzGo(phase) {
       <button class="btn-redraw">AI로 다시 짜기</button><button class="btn-main">다음</button></div>`;
     foot.querySelector(".btn-prev").onclick = wzBackStep;
     foot.querySelector(".btn-redraw").onclick = () => openWorldAi(true);
-    foot.querySelector(".btn-main").onclick = () => { wzSaveWorld(); WZ.i = WZ_SPEC.findIndex((s) => s.id === "pace"); WZ.phase = "form"; wzRender(); };
+    foot.querySelector(".btn-main").onclick = () => {
+      wzSaveWorld();
+      const autoIds = ["genre", "era", "place", "mood"];
+      const missingAuto = WZ_SPEC.findIndex((s) => autoIds.includes(s.id) && !wzValues(s.id).length);
+      WZ.i = missingAuto >= 0 ? missingAuto : WZ_SPEC.findIndex((s) => s.id === "pace");
+      WZ.phase = "form"; wzRender();
+    };
     wzPad();
   }
   if (phase === "plan") { renderWzPlan(); wzBar(null, "작품 쓰기", wzFinish, null); }
@@ -2667,7 +2676,6 @@ window.addEventListener("popstate", () => { history.pushState(null, ""); goBack(
 /* 시작 — 설정하다 만 게 있으면(새로고침·앱 재시작) 그 자리로 돌려놓는다 */
 (async function boot() {
   await CONFIG_READY;
-  await showHome();
   history.pushState(null, "");          // 뒤로가기를 잡아둘 한 칸
   await showHome();
 })();

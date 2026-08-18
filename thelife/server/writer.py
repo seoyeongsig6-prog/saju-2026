@@ -276,6 +276,14 @@ def _world_spend(c, user: str) -> dict | None:
     return _world_quota(c, user)
 
 
+def _world_refund(c, user: str) -> dict:
+    """AI 연결/응답 실패 때 먼저 차감한 1회를 안전하게 되돌린다."""
+    q = _world_quota(c, user)
+    if q["used"] > 0:
+        db.kv_set(c, f"worldq:{user}:{q['day']}", str(q["used"] - 1))
+    return _world_quota(c, user)
+
+
 def _clamp(s: str, n: int) -> str:
     return (s or "")[:n]
 
@@ -1230,15 +1238,16 @@ def world_questions(b: WorldQuestionsBody,
     if len(idea) < 10:
         return {"ok": False, "error": "생각하는 이야기를 조금 더 자세히 써주세요."}
     with db.connect() as c:
-        quota = _world_spend(c, user)
-        if not quota:
-            return {"ok": False, "need": "world_quota", "world_quota": _world_quota(c, user)}
+        available = _world_quota(c, user)
+        if available["left"] <= 0:
+            return {"ok": False, "need": "world_quota", "world_quota": available}
         ok, _cap = _ai_gate(c, user)
         if not ok:
-            return {**_AI_BUSY, "world_quota": quota}
+            return {**_AI_BUSY, "world_quota": available}
+        if llm.is_mock and not DEMO_MODE:
+            return {"ok": False, "error": "AI 연결이 필요해요.", "world_quota": available}
+        quota = _world_spend(c, user)
     if llm.is_mock:
-        if not DEMO_MODE:
-            return {"ok": False, "error": "AI 연결이 필요해요.", "world_quota": quota}
         return {"ok": True, "questions": ["이 이야기의 중심 존재는 누구인가요?",
                                              "가장 큰 사건이나 갈등은 무엇인가요?",
                                              "독자가 마지막에 어떤 감정을 느끼길 바라나요?"],
@@ -1255,6 +1264,11 @@ def world_questions(b: WorldQuestionsBody,
 - 짧고 쉬운 한국어로 쓴다.
 - JSON만 출력: {{"questions":["질문1","질문2","질문3"]}}"""
     raw = llm.write(prompt, mock_text="", max_tokens=700)
+    if llm.last_error:
+        with db.connect() as c:
+            quota = _world_refund(c, user)
+        return {"ok": False, "error": "질문을 만들지 못했어요. 다시 시도해 주세요.",
+                "detail": llm.last_error, "world_quota": quota}
     data = parse_llm_json(raw) or {}
     questions = [str(q).strip()[:160] for q in (data.get("questions") or []) if str(q).strip()][:3]
     if not questions:
@@ -1272,11 +1286,16 @@ def draft_brief(b: BuildBody, user: str = Header(default="solo", alias="X-User-I
     with db.connect() as c:
         ok, _cap = _ai_gate(c, user)
         if not ok:
+            if b.ai_context.strip():
+                _world_refund(c, user)
             return _AI_BUSY
     if llm.is_mock:
         if not DEMO_MODE:
+            with db.connect() as c:
+                quota = _world_refund(c, user) if b.ai_context.strip() else None
             return {"ok": False, "error": "AI 연결이 필요해요.",
-                    "detail": "배포 환경의 AI 연결 상태를 확인해 주세요."}
+                    "detail": "배포 환경의 AI 연결 상태를 확인해 주세요.",
+                    **({"world_quota": quota} if quota else {})}
         demo = _demo_brief(b, 0)
         return {"ok": True, "draft": {"title": demo.get("title", ""),
                                          "logline": demo.get("logline", ""),
@@ -1315,8 +1334,11 @@ JSON만 출력:
     raw = llm.write(prompt, mock_text="", max_tokens=4200)
     data = parse_llm_json(raw)
     if not isinstance(data, dict):
+        with db.connect() as c:
+            quota = _world_refund(c, user) if b.ai_context.strip() else None
         return {"ok": False, "error": "작품의 세계관을 만들지 못했어요. 다시 시도해 주세요.",
-                "detail": (llm.last_error or (raw[:150] or "빈 응답"))}
+                "detail": (llm.last_error or (raw[:150] or "빈 응답")),
+                **({"world_quota": quota} if quota else {})}
     clean = {k: str(data.get(k, "")).strip()[:3000]
              for k in ("title", "logline", "world_setting", "intent", "ending")}
     raw_choices = data.get("choices") if isinstance(data.get("choices"), dict) else {}
