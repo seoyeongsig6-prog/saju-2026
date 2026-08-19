@@ -102,7 +102,7 @@ $("#st-done").onclick = showHome;
 /* 설정 — 데이터 내보내기 / 계정 삭제 (스토어 정책상 앱 내 필수) */
 $("#btn-export").onclick = async () => {
   const d = await api("/api/writer/account/export");
-  if (!d || !d.ok) { notice("내보내기에 실패했어요. 잠시 후 다시 시도해 주세요."); return; }
+  if (!d || !d.ok) { notice((d && d.error) || "내보내기에 실패했어요. 잠시 후 다시 시도해 주세요."); return; }
   const blob = new Blob([JSON.stringify(d, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -125,10 +125,11 @@ function renderSettingsPlan() {
   const L = LIMITS;
   const works = L.max_works >= 100000 ? "무제한" : L.max_works + "개";
   const expTxt = EXPIRES ? ` <span class="plan-exp">~${String(EXPIRES).slice(0, 10)}까지</span>` : "";
-  const sample = L.sample_daily ? `본문 예시 ${L.sample_daily}회/일` : "본문 예시 없음";
+  const period = L.quota_period === "lifetime" ? "가입 후" : "월";
+  const sample = L.sample_limit ? `1,000자 본문 ${period} ${L.sample_limit}회` : "1,000자 본문 제한";
   bar.innerHTML = `
     <div class="plan-now">현재 플랜 <b>${L.label}</b>${expTxt}
-      <span class="plan-lim">AI 회차 설계 ${L.max_chapters}화 · 화당 ${L.syn_chars}자 · 인물 ${L.max_characters}명 · 작품 ${works} · ${sample}</span></div>
+      <span class="plan-lim">작품 ${works} · AI 세계관 ${period} ${L.world_limit}회 · AI 인물 ${L.max_characters}명 · AI 줄거리 ${L.max_chapters}화 · ${sample}</span></div>
     <button class="plan-upgrade" id="see-plans">구독 플랜 보기 · 변경</button>`;
   $("#see-plans").onclick = () => showPlans("settings");
 }
@@ -200,7 +201,7 @@ async function refreshConfig() {
 }
 async function resetPrivateTest(allData) {
   const text = allData ? "테스트 작품과 사용 횟수를 모두 초기화할까요?\n삭제한 작품은 되돌릴 수 없습니다."
-    : "오늘 사용한 AI 횟수를 초기화할까요?";
+    : "테스트용 AI 사용 횟수를 모두 초기화할까요?";
   if (!await askAction(text, "초기화", "취소")) return;
   const r = await api("/api/writer/test/reset", { method: "POST",
     body: JSON.stringify({ all_data: allData }) });
@@ -224,20 +225,18 @@ function renderPlans() {
     const P = TIERS_INFO[t];
     const works = P.max_works >= 100000 ? "무제한" : P.max_works + "개";
     const cur = t === TIER;
-    // 이 빌드가 '실제로 하는 것'만 적는다 — 없는 기능을 플랜에 적지 않는다.
-    const anyStyle = PLAN_ORDER.some((k) => TIERS_INFO[k] && TIERS_INFO[k].style_learning);
-    const anyBody = PLAN_ORDER.some((k) => TIERS_INFO[k] && TIERS_INFO[k].body_writing);
+    const period = P.quota_period === "lifetime" ? "가입 후" : "월";
+    const canon = P.max_canon >= 100000 ? "무제한" : P.max_canon + "개";
     const feats = [
-      _feat(IC.book, "AI 회차 줄거리", P.max_chapters + "화"),
-      _feat(IC.pen, "화당 줄거리", P.syn_chars + "자"),
-      _feat(IC.users, "AI 인물 생성", P.max_characters + "명"),
       _feat(IC.stack, "작품 수", works),
-      _feat(IC.write, "직접 본문 쓰기", "무제한"),
-      _feat(IC.spark, "본문 예시 · 약 1,000자", P.sample_daily ? `하루 ${P.sample_daily}회` : "—", !P.sample_daily),
-      P.ai_daily ? _feat(IC.spark, "하루 AI 사용", P.ai_daily + "회") : "",
-      anyStyle ? _feat(IC.spark, "문체 학습", P.style_learning ? "✓" : "—", !P.style_learning) : "",
-      anyBody ? _feat(IC.pen, "AI 본문 대행", P.body_writing ? "✓" : "—", !P.body_writing) : "",
-      _feat(IC.ban, "광고 제거", P.ads ? "—" : "✓", P.ads),
+      _feat(IC.spark, "AI로 세계관 짜기", `${period} ${P.world_limit}회`),
+      _feat(IC.users, "AI 인물 만들기", `${period} ${P.character_limit}회 · 인물 ${P.max_characters}명`),
+      _feat(IC.stack, "기억하기", canon),
+      _feat(IC.book, "AI 줄거리", `${period} ${P.outline_limit}회 · 1회당 ${P.max_chapters}화까지`),
+      _feat(IC.pen, "1,000자 본문 쓰기", P.sample_limit ? `${period} ${P.sample_limit}회` : "제한", !P.sample_limit),
+      _feat(IC.write, "직접 집필", "무제한"),
+      _feat(IC.ban, "광고", P.ads ? "있음" : "없음"),
+      _feat(IC.book, "파일 내보내기", P.export_enabled ? "제공" : "제한", !P.export_enabled),
     ].join("");
     const cta = cur
       ? '<button class="plan-cta current" disabled>현재 플랜</button>'

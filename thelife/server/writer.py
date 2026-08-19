@@ -34,27 +34,37 @@ DEMO_MODE = os.environ.get("NOVELIST_DEMO_MODE", "0") == "1"
 _LAUNCH_OFF = {"ok": False, "error": "이 버전에서는 제공하지 않는 기능이에요."}
 
 
-# 요금제 — 무료/라이트/프로. 질(회차 수·화당 줄거리 깊이·인물 수)로 차등한다.
+# 요금제. 내부의 light 식별자는 기존 결제·저장 데이터 호환을 위해 유지하지만
+# 사용자에게는 MASTER로 표시한다.
 TIERS = {
-    "free":  {"label": "무료", "max_chapters": 3,  "syn_chars": 100,
+    "free":  {"label": "FREE", "max_chapters": 3,  "syn_chars": 100,
               "max_characters": 3,  "max_works": 1,      "style_learning": False, "ads": True,
-              "price": "무료", "period": "", "tagline": "가볍게 시작하기", "badge": "",
+              "max_canon": 5, "quota_period": "lifetime", "world_limit": 3,
+              "character_limit": 5, "outline_limit": 3, "sample_limit": 0,
+              "export_enabled": False,
+              "price": "0원", "period": "", "tagline": "가볍게 시작하기", "badge": "",
               "best_for": "웹소설 입문",
               "pitch": "아이디어 한 줄이면 인물·플롯·회차 줄거리까지 AI가 잡아줘요. 부담 없이 먼저 맛보세요.",
               "highlight": "무료로 전 과정 체험"},
-    "light": {"label": "라이트", "max_chapters": 20, "syn_chars": 250,
-              "max_characters": 7,  "max_works": 10,     "style_learning": False, "ads": False,
-              "price": "₩4,900", "period": "/월", "tagline": "본격 연재 기획", "badge": "인기",
+    "light": {"label": "MASTER", "max_chapters": 10, "syn_chars": 250,
+              "max_characters": 7,  "max_works": 5,      "style_learning": False, "ads": False,
+              "max_canon": 10, "quota_period": "monthly", "world_limit": 10,
+              "character_limit": 10, "outline_limit": 5, "sample_limit": 10,
+              "export_enabled": True,
+              "price": "4,900원", "period": "/월", "tagline": "본격 연재 기획", "badge": "인기",
               "best_for": "연재 준비 작가",
-              "pitch": "20화까지 상세 줄거리를 한 번에. 광고 없이, 작품 10개를 나란히 굴리며 연재를 준비하세요.",
-              "highlight": "무료 대비 회차 6배 · 광고 없음"},
-    "pro":   {"label": "프로", "max_chapters": 70, "syn_chars": 450,
-              "max_characters": 10, "max_works": 100000, "style_learning": True,  "ads": False,
-              "monthly_pens": 5, "body_writing": True,
-              "price": "₩9,900", "period": "/월", "tagline": "프로 작가용", "badge": "추천",
+              "pitch": "10화까지 상세 줄거리를 설계하고, 광고 없이 작품 5개를 관리하세요.",
+              "highlight": "10화 설계 · 본문 예시 월 10회 · 광고 없음"},
+    "pro":   {"label": "PRO", "max_chapters": 20, "syn_chars": 450,
+              "max_characters": 12, "max_works": 100000, "style_learning": False, "ads": False,
+              "max_canon": 100000, "quota_period": "monthly", "world_limit": 20,
+              "character_limit": 20, "outline_limit": 10, "sample_limit": 20,
+              "export_enabled": True,
+              "monthly_pens": 0, "body_writing": False,
+              "price": "9,900원", "period": "/월", "tagline": "프로 작가용", "badge": "추천",
               "best_for": "전업·다작 작가",
-              "pitch": "70화 대작을 통째로 설계하고, 내 문체까지 학습시켜 나만의 결로. 매달 펜 5개로 본문까지 직접 씁니다.",
-              "highlight": "문체 학습 · 본문 쓰기 · 매달 펜 5개"},
+              "pitch": "20화까지 상세 줄거리를 설계하고, 작품 수 제한 없이 여러 작품을 관리하세요.",
+              "highlight": "20화 설계 · 본문 예시 월 20회 · 작품 무제한"},
 }
 # 기본값 채우기 — 아래 등급은 본문 쓰기/월 펜 없음.
 for _t in TIERS.values():
@@ -187,18 +197,18 @@ def _body_gate(c, user: str):
 # ── 본문 예시(약 1,000자) — 하루 몇 건까지 ────────────────────────────────
 # 등급별 기본 건수. 여기에 '광고를 본 횟수'만큼 1건씩 더해진다.
 # 한국시간 자정에 리셋된다. 광고로 늘어나는 총량은 아래 AI_DAILY_CAP이 막아준다.
-SAMPLE_BASE = {"free": 0, "light": 3, "pro": 10}
+SAMPLE_BASE = {k: v["sample_limit"] for k, v in TIERS.items()}
 SAMPLE_CHARS = 1000
 for _k, _v in SAMPLE_BASE.items():
     if _k in TIERS:
-        TIERS[_k]["sample_daily"] = _v
+        TIERS[_k]["sample_limit"] = _v
 
 # 'AI와 함께 짜기'는 긴 기획 생성이라 별도 횟수로 안내하고 관리한다.
 # 질문 생성은 이 1회에 포함되며, 한국시간 자정에 다시 채워진다.
-WORLD_BASE = {"free": 1, "light": 3, "pro": 10}
+WORLD_BASE = {k: v["world_limit"] for k, v in TIERS.items()}
 for _k, _v in WORLD_BASE.items():
     if _k in TIERS:
-        TIERS[_k]["world_daily"] = _v
+        TIERS[_k]["world_limit"] = _v
 
 # 하루 AI 호출 상한 — 비용 폭탄/남용 방지 안전망 (정상 사용엔 넉넉).
 AI_DAILY_CAP = {"free": 40, "light": 250, "pro": 800}
@@ -219,13 +229,12 @@ LAUNCH_TIER_COPY = {
         "highlight": "AI 작품 설계 · 직접 집필",
     },
     "light": {
-        "pitch": "20화까지 상세 줄거리를 한 번에. 광고 없이, 하루 3번의 1,000자 본문 예시로 문을 열어 보세요.",
-        "highlight": "20화 설계 · 본문 예시 하루 3회 · 광고 없음",
+        "pitch": "10화까지 상세 줄거리를 설계하고, 광고 없이 작품 5개를 관리하세요.",
+        "highlight": "10화 설계 · 본문 예시 월 10회 · 광고 없음",
     },
     "pro": {
-        "pitch": "70화 대작을 통째로 설계하고, 화당 450자 상세 줄거리로 흐름을 놓치지 않아요. "
-                 "작품 수 무제한, 하루 10번의 1,000자 본문 예시를 제공합니다.",
-        "highlight": "70화 설계 · 본문 예시 하루 10회 · 작품 무제한",
+        "pitch": "20화까지 상세 줄거리를 설계하고, 작품 수 제한 없이 여러 작품을 관리하세요.",
+        "highlight": "20화 설계 · 본문 예시 월 20회 · 작품 무제한",
     },
 }
 if LAUNCH_MODE:
@@ -252,24 +261,55 @@ def _ai_gate(c, user: str):
 _AI_BUSY = {"ok": False, "error": "오늘 AI 생성 횟수를 다 썼어요. 내일 다시 시도하거나 요금제를 올려 주세요."}
 
 
+def _quota_scope(c, user: str) -> tuple[str, str]:
+    """무료는 가입 후 누적, 유료는 한국시간 기준 매월 새로 시작한다."""
+    tier = _tier_name(c, user)
+    if _limits(tier).get("quota_period") == "lifetime":
+        return "lifetime", "lifetime"
+    return db.real_now().strftime("%Y-%m"), "monthly"
+
+
+def _feature_quota(c, user: str, feature: str, limit_key: str) -> dict:
+    scope, period = _quota_scope(c, user)
+    base = int(_limits(_tier_name(c, user)).get(limit_key, 0))
+    used = int(db.kv_get(c, f"{feature}q:{user}:{scope}", "0") or "0")
+    return {"used": used, "base": base, "extra": 0, "left": max(0, base - used),
+            "scope": scope, "period": period}
+
+
+def _feature_spend(c, user: str, feature: str, limit_key: str) -> dict | None:
+    q = _feature_quota(c, user, feature, limit_key)
+    if q["left"] <= 0:
+        return None
+    db.kv_set(c, f"{feature}q:{user}:{q['scope']}", str(q["used"] + 1))
+    return _feature_quota(c, user, feature, limit_key)
+
+
+def _feature_refund(c, user: str, feature: str, limit_key: str) -> dict:
+    q = _feature_quota(c, user, feature, limit_key)
+    if q["used"] > 0:
+        db.kv_set(c, f"{feature}q:{user}:{q['scope']}", str(q["used"] - 1))
+    return _feature_quota(c, user, feature, limit_key)
+
+
 def _sample_quota(c, user: str) -> dict:
-    """오늘 본문 예시를 몇 건 썼고 몇 건 남았는지. (광고 1회 = 1건 추가)"""
-    day = db.real_now().date().isoformat()          # 한국시간 자정에 리셋
-    base = SAMPLE_BASE.get(_tier_name(c, user), 1)
-    used = int(db.kv_get(c, f"smpl:{user}:{day}", "0") or "0")
-    extra = int(db.kv_get(c, f"smplad:{user}:{day}", "0") or "0")
+    """무료는 가입 후, 유료는 월 단위의 1,000자 본문 예시 사용량."""
+    scope, period = _quota_scope(c, user)
+    base = SAMPLE_BASE.get(_tier_name(c, user), 0)
+    used = int(db.kv_get(c, f"smpl:{user}:{scope}", "0") or "0")
+    extra = int(db.kv_get(c, f"smplad:{user}:{scope}", "0") or "0")
     return {"used": used, "base": base, "extra": extra,
-            "left": max(0, base + extra - used), "day": day}
+            "left": max(0, base + extra - used), "day": scope, "scope": scope, "period": period}
 
 
 def _world_quota(c, user: str) -> dict:
-    """AI와 함께 짜기 사용량. 추후 이용권 구매분은 extra 키에 더할 수 있다."""
-    day = db.real_now().date().isoformat()
+    """세계관 생성 사용량. 무료는 가입 후, 유료는 월 단위."""
+    scope, period = _quota_scope(c, user)
     base = WORLD_BASE.get(_tier_name(c, user), 1)
-    used = int(db.kv_get(c, f"worldq:{user}:{day}", "0") or "0")
-    extra = int(db.kv_get(c, f"worldextra:{user}:{day}", "0") or "0")
+    used = int(db.kv_get(c, f"worldq:{user}:{scope}", "0") or "0")
+    extra = int(db.kv_get(c, f"worldextra:{user}:{scope}", "0") or "0")
     return {"used": used, "base": base, "extra": extra,
-            "left": max(0, base + extra - used), "day": day}
+            "left": max(0, base + extra - used), "day": scope, "scope": scope, "period": period}
 
 
 def _world_spend(c, user: str) -> dict | None:
@@ -554,7 +594,8 @@ def test_reset(body: TestResetBody,
     with db.connect() as c:
         current_tier = _tier_name(c, user)
         for pattern in (f"aiq:{user}:%", f"smpl:{user}:%", f"smplad:{user}:%",
-                        f"worldq:{user}:%", f"worldextra:{user}:%"):
+                        f"worldq:{user}:%", f"worldextra:{user}:%",
+                        f"characterq:{user}:%", f"outlineq:{user}:%"):
             c.execute("DELETE FROM kv WHERE k LIKE ?", (pattern,))
         if body.all_data:
             wids = [r["id"] for r in c.execute(
@@ -607,6 +648,9 @@ def admin_pens(body: PenGrantBody, secret: str = Header(default="", alias="X-Adm
 def export_account(user: str = Header(default="solo", alias="X-User-Id")):
     """내 데이터 전부 내보내기 (데이터 이동권)."""
     with db.connect() as c:
+        if not _limits(_tier_name(c, user)).get("export_enabled"):
+            return {"ok": False, "need": "tier",
+                    "error": "파일 내보내기는 MASTER 플랜부터 제공됩니다."}
         works = [dict(r) for r in c.execute(
             "SELECT * FROM works WHERE user_id=? ORDER BY id", (user,)).fetchall()]
         for w in works:
@@ -1630,8 +1674,16 @@ def fill_cast(b: CastFillBody, user: str = Header(default="solo", alias="X-User-
     if not clean:
         return {"ok": False, "error": "현재 플랜에서 만들 수 있는 인물이 모두 설정되어 있어요."}
 
+    with db.connect() as c:
+        character_quota = _feature_spend(c, user, "character", "character_limit")
+    if character_quota is None:
+        return {"ok": False, "need": "tier",
+                "error": "AI 인물 만들기 횟수를 모두 사용했어요."}
+
     if llm.is_mock:
         if not DEMO_MODE:
+            with db.connect() as c:
+                _feature_refund(c, user, "character", "character_limit")
             return {"ok": False, "error": "AI 연결이 필요해요.",
                     "detail": "배포 환경의 AI 연결 상태를 확인해 주세요."}
         is_wind_story = "바람" in (b.context or "")
@@ -1673,11 +1725,13 @@ def fill_cast(b: CastFillBody, user: str = Header(default="solo", alias="X-User-
                 age = (f"{120 + i * 70}년" if is_wind_story else str(24 + i * 3))
                 row.update({"name": name, "age": age, "description": description})
             result.append(row)
-        return {"ok": True, "characters": result, "demo": True}
+        return {"ok": True, "characters": result, "demo": True,
+                "character_quota": character_quota}
 
     with db.connect() as c:
         ok, _cap = _ai_gate(c, user)
         if not ok:
+            _feature_refund(c, user, "character", "character_limit")
             return _AI_BUSY
     compact = [{"index": ch["index"], "name": ch["name"],
                 "fields": [{"id": f["id"], "question": f["question"],
@@ -1714,6 +1768,8 @@ def fill_cast(b: CastFillBody, user: str = Header(default="solo", alias="X-User-
     rows = data.get("characters") if isinstance(data, dict) else None
     if not isinstance(rows, list):
         if llm.last_error:
+            with db.connect() as c:
+                _feature_refund(c, user, "character", "character_limit")
             return {"ok": False, "error": "인물 설정을 채우지 못했어요.", "detail": llm.last_error}
         rows = []
 
@@ -1795,8 +1851,10 @@ def fill_cast(b: CastFillBody, user: str = Header(default="solo", alias="X-User-
                            "description": description, "fields": chosen})
         result.sort(key=lambda item: item["index"])
     if not result:
+        with db.connect() as c:
+            _feature_refund(c, user, "character", "character_limit")
         return {"ok": False, "error": "인물 설정을 채우지 못했어요. 다시 시도해 주세요."}
-    return {"ok": True, "characters": result}
+    return {"ok": True, "characters": result, "character_quota": character_quota}
 
 
 @router.post("/brief/suggest")
@@ -1881,10 +1939,10 @@ def write_sample(b: SampleBody, user: str = Header(default="solo", alias="X-User
         q = _sample_quota(c, user)
         if q["base"] <= 0:
             return {"ok": False, "need": "tier", "sample": q,
-                    "error": "라이트 버전 이상에서만 제공됩니다."}
+                    "error": "1,000자 본문 쓰기는 MASTER 플랜부터 제공됩니다."}
         if q["left"] <= 0:
-            return {"ok": False, "need": "ad", "sample": q,
-                    "error": "오늘 쓸 수 있는 예시를 다 썼어요. 광고를 보면 1건 더 만들 수 있어요."}
+            return {"ok": False, "need": "tier", "sample": q,
+                    "error": "이번 달 1,000자 본문 쓰기 횟수를 모두 사용했어요."}
         ok, _cap = _ai_gate(c, user)
         if not ok:
             return _AI_BUSY
@@ -1948,8 +2006,13 @@ def draft_outline(b: BuildBody, user: str = Header(default="solo", alias="X-User
         return {"ok": False, "error": "회차 전개를 짜려면 최소한 로그라인·세계관·결말 중 하나는 채워주세요."}
     _cap_build(b)
     with db.connect() as c:
+        outline_quota = _feature_spend(c, user, "outline", "outline_limit")
+        if outline_quota is None:
+            return {"ok": False, "need": "tier",
+                    "error": "AI 줄거리 생성 횟수를 모두 사용했어요."}
         ok, _cap = _ai_gate(c, user)
         if not ok:
+            _feature_refund(c, user, "outline", "outline_limit")
             return _AI_BUSY
         lim = _limits(_tier_name(c, user))
     requested = max(1, min(b.total_chapters, 200))
@@ -1957,6 +2020,8 @@ def draft_outline(b: BuildBody, user: str = Header(default="solo", alias="X-User
     syn = lim["syn_chars"]                          # 화당 줄거리 목표 글자수
     if llm.is_mock:
         if not DEMO_MODE:
+            with db.connect() as c:
+                _feature_refund(c, user, "outline", "outline_limit")
             return {"ok": False, "error": "AI 연결이 필요해요.",
                     "detail": "배포 환경의 AI 연결 상태를 확인해 주세요."}
         titles = ["사건의 시작", "첫 번째 선택", "되돌릴 수 없는 변화",
@@ -1976,7 +2041,7 @@ def draft_outline(b: BuildBody, user: str = Header(default="solo", alias="X-User
         return {"ok": True, "outline": outline, "capped": requested > total,
                 "tier_max": lim["max_chapters"], "syn_chars": syn,
                 "tier_label": lim["label"], "requested": requested,
-                "missing": [], "demo": True}
+                "missing": [], "demo": True, "outline_quota": outline_quota}
     context = _assemble_brief(b)
     beats_guide = "\n".join(
         f"- {int(edge*100)}%까지: {name}" for name, edge in zip(BEATS, BEAT_EDGES))
@@ -2011,6 +2076,8 @@ Save the Cat 15비트를 회차 진행률에 맞춰 배치하고, 반드시 고�
     data = parse_llm_json(raw)
     items = data.get("outline") if isinstance(data, dict) else (data if isinstance(data, list) else None)
     if not items:
+        with db.connect() as c:
+            _feature_refund(c, user, "outline", "outline_limit")
         return {"ok": False, "error": "회차 전개 생성에 실패했어요. 한 번 더 시도해 주세요.",
                 "detail": (llm.last_error or (raw[:150] or "빈 응답"))}
     outline = []
@@ -2059,7 +2126,8 @@ Save the Cat 15비트를 회차 진행률에 맞춰 배치하고, 반드시 고�
     outline.sort(key=lambda o: o["no"])
     return {"ok": True, "outline": outline, "capped": requested > total,
             "tier_max": lim["max_chapters"], "syn_chars": syn, "tier_label": lim["label"],
-            "requested": requested, "missing": [n for n in range(1, total + 1) if n not in have]}
+            "requested": requested, "missing": [n for n in range(1, total + 1) if n not in have],
+            "outline_quota": outline_quota}
 
 
 @router.post("/works")
@@ -2271,6 +2339,10 @@ def set_canon(work_id: int, body: CanonBody,
         if not w:
             return {"ok": False, "error": "작품을 찾을 수 없어요."}
         canon = w.get("canon") or {}
+        limit = int(_limits(_tier_name(c, user)).get("max_canon", 5))
+        if name not in canon and len(canon) >= limit:
+            return {"ok": False, "need": "tier",
+                    "error": f"현재 플랜에서는 기억하기를 {limit}개까지 저장할 수 있어요."}
         canon[name] = body.value.strip()
         c.execute("UPDATE works SET canon_json=? WHERE id=?",
                   (json.dumps(canon, ensure_ascii=False), work_id))
