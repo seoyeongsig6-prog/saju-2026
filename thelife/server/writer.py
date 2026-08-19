@@ -552,6 +552,7 @@ def test_reset(body: TestResetBody,
     if not _test_allowed(secret):
         return {"ok": False, "error": "권한이 없어요."}
     with db.connect() as c:
+        current_tier = _tier_name(c, user)
         for pattern in (f"aiq:{user}:%", f"smpl:{user}:%", f"smplad:{user}:%",
                         f"worldq:{user}:%", f"worldextra:{user}:%"):
             c.execute("DELETE FROM kv WHERE k LIKE ?", (pattern,))
@@ -561,8 +562,7 @@ def test_reset(body: TestResetBody,
             for wid in wids:
                 c.execute("DELETE FROM chapters WHERE work_id=?", (wid,))
             c.execute("DELETE FROM works WHERE user_id=?", (user,))
-        db.kv_set(c, f"testtier:{user}", "free")
-    return {"ok": True, "tier": "free", "limits": TIERS["free"],
+    return {"ok": True, "tier": current_tier, "limits": TIERS[current_tier],
             "deleted_works": len(wids) if body.all_data else 0}
 
 
