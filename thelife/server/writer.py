@@ -1484,8 +1484,14 @@ JSON만 출력:
                 quota = _world_refund(c, user)
             elif free_revision:
                 db.kv_set(c, f"worldrev:{user}:{token}", "ready")
-        return {"ok": False, "error": "작품의 세계관을 만들지 못했어요. 다시 시도해 주세요.",
-                "detail": (llm.last_error or (raw[:150] or "빈 응답")),
+        provider_error = (llm.last_error or "").lower()
+        provider_limited = any(mark in provider_error for mark in
+                               ("resourceexhausted", "429", "spending cap", "quota exceeded"))
+        return {"ok": False,
+                "need": "provider_limit" if provider_limited else "ai_retry",
+                "error": ("현재 AI 생성 서버의 사용 한도에 도달했어요. 잠시 후 다시 시도해 주세요."
+                          if provider_limited else
+                          "작품의 세계관을 만들지 못했어요. 잠시 후 다시 시도해 주세요."),
                 "world_quota": quota}
     clean = {k: str(data.get(k, "")).strip()[:3000]
              for k in ("title", "logline", "world_setting", "intent", "ending")}

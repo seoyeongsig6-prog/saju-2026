@@ -2050,7 +2050,7 @@ async function wzGenerate(aiContext) {
   if (r.world_quota) WORLD_QUOTA = r.world_quota;
   if (!r.ok) {
     if (r.need === "world_quota") showWorldLimit();
-    else notice((r.error || "만들지 못했어요.") + (r.detail ? `\n\n${r.detail}` : ""));
+    else notice(r.error || "만들지 못했어요. 잠시 후 다시 시도해 주세요.");
     WZ.phase = "form"; wzRender(); return;
   }
   if (WZ.aiRedraw) WZ.worldRevisionToken = "";
