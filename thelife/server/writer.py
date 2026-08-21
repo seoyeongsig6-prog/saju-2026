@@ -26,10 +26,9 @@ from .llm import llm
 
 router = APIRouter(prefix="/api/writer")
 
-# 판매용 런치 버전 — 소설 '본문 집필'과 거기 딸린 기능을 끈다.
-# 기본은 '꺼짐'(전체 기능). 판매용 서버에서만 WRITER_LAUNCH_MODE=1 로 켠다.
-# (기본값이 켜짐이면 개인 집필 서버가 코드 배포만으로 기능을 잃어 위험하다.)
-LAUNCH_MODE = os.environ.get("WRITER_LAUNCH_MODE", "0") == "1"
+# 이 저장소의 기본값은 판매용 앱이다. 환경변수가 빠져도 요금표 밖의 예전 AI 기능이
+# 다시 열리지 않게 하며, 과거 개인용 서버를 따로 실행할 때만 명시적으로 0을 쓴다.
+LAUNCH_MODE = os.environ.get("WRITER_LAUNCH_MODE", "1") == "1"
 DEMO_MODE = os.environ.get("NOVELIST_DEMO_MODE", "0") == "1"
 _LAUNCH_OFF = {"ok": False, "error": "이 버전에서는 제공하지 않는 기능이에요."}
 
@@ -194,27 +193,18 @@ def _body_gate(c, user: str):
         "error": "이 앱은 본문을 작가가 직접 씁니다. 회차를 열어 바로 집필해 주세요."}
 
 
-# ── 본문 예시(약 1,000자) — 하루 몇 건까지 ────────────────────────────────
-# 등급별 기본 건수. 여기에 '광고를 본 횟수'만큼 1건씩 더해진다.
-# 한국시간 자정에 리셋된다. 광고로 늘어나는 총량은 아래 AI_DAILY_CAP이 막아준다.
+# ── 본문 예시(약 1,000자) — 요금표의 가입 후/월 이용량만 제공 ─────────────
 SAMPLE_BASE = {k: v["sample_limit"] for k, v in TIERS.items()}
 SAMPLE_CHARS = 1000
 for _k, _v in SAMPLE_BASE.items():
     if _k in TIERS:
         TIERS[_k]["sample_limit"] = _v
 
-# 'AI와 함께 짜기'는 긴 기획 생성이라 별도 횟수로 안내하고 관리한다.
-# 질문 생성은 이 1회에 포함되며, 한국시간 자정에 다시 채워진다.
+# 세계관 생성은 무료는 가입 후, 유료는 월 이용량으로 관리한다.
 WORLD_BASE = {k: v["world_limit"] for k, v in TIERS.items()}
 for _k, _v in WORLD_BASE.items():
     if _k in TIERS:
         TIERS[_k]["world_limit"] = _v
-
-# 하루 AI 호출 상한 — 비용 폭탄/남용 방지 안전망 (정상 사용엔 넉넉).
-AI_DAILY_CAP = {"free": 40, "light": 250, "pro": 800}
-for _k, _v in AI_DAILY_CAP.items():
-    if _k in TIERS:
-        TIERS[_k]["ai_daily"] = _v
 
 # ── 판매(런치) 빌드의 플랜 = 판매 앱이 '실제로 하는 것'만 적는다 ──────────────
 # 판매 앱의 정체성: AI가 세계관·인물·플롯·회차별 줄거리를 짜주고,
@@ -243,22 +233,6 @@ if LAUNCH_MODE:
         TIERS[_k]["style_learning"] = False   # 문체 학습은 AI 본문용 — 판매 빌드엔 없다
         TIERS[_k]["body_writing"] = False     # AI 본문 대행 없음
         TIERS[_k]["monthly_pens"] = 0         # 펜도 없음
-
-
-def _ai_gate(c, user: str):
-    """AI 생성 1회를 차감·검사한다. (남은 게 없으면 False)"""
-    tier = _tier_name(c, user)
-    cap = AI_DAILY_CAP.get(tier, 40)
-    day = db.real_now().date().isoformat()   # 한국시간 자정에 리셋
-    key = f"aiq:{user}:{day}"
-    used = int(db.kv_get(c, key, "0") or "0")
-    if used >= cap:
-        return False, cap
-    db.kv_set(c, key, str(used + 1))
-    return True, cap
-
-
-_AI_BUSY = {"ok": False, "error": "오늘 AI 생성 횟수를 다 썼어요. 내일 다시 시도하거나 요금제를 올려 주세요."}
 
 
 def _quota_scope(c, user: str) -> tuple[str, str]:
@@ -297,9 +271,8 @@ def _sample_quota(c, user: str) -> dict:
     scope, period = _quota_scope(c, user)
     base = SAMPLE_BASE.get(_tier_name(c, user), 0)
     used = int(db.kv_get(c, f"smpl:{user}:{scope}", "0") or "0")
-    extra = int(db.kv_get(c, f"smplad:{user}:{scope}", "0") or "0")
-    return {"used": used, "base": base, "extra": extra,
-            "left": max(0, base + extra - used), "day": scope, "scope": scope, "period": period}
+    return {"used": used, "base": base, "extra": 0,
+            "left": max(0, base - used), "day": scope, "scope": scope, "period": period}
 
 
 def _world_quota(c, user: str) -> dict:
@@ -307,9 +280,8 @@ def _world_quota(c, user: str) -> dict:
     scope, period = _quota_scope(c, user)
     base = WORLD_BASE.get(_tier_name(c, user), 1)
     used = int(db.kv_get(c, f"worldq:{user}:{scope}", "0") or "0")
-    extra = int(db.kv_get(c, f"worldextra:{user}:{scope}", "0") or "0")
-    return {"used": used, "base": base, "extra": extra,
-            "left": max(0, base + extra - used), "day": scope, "scope": scope, "period": period}
+    return {"used": used, "base": base, "extra": 0,
+            "left": max(0, base - used), "day": scope, "scope": scope, "period": period}
 
 
 def _world_spend(c, user: str) -> dict | None:
@@ -593,8 +565,7 @@ def test_reset(body: TestResetBody,
         return {"ok": False, "error": "권한이 없어요."}
     with db.connect() as c:
         current_tier = _tier_name(c, user)
-        for pattern in (f"aiq:{user}:%", f"smpl:{user}:%", f"smplad:{user}:%",
-                        f"worldq:{user}:%", f"worldextra:{user}:%",
+        for pattern in (f"smpl:{user}:%", f"worldq:{user}:%",
                         f"characterq:{user}:%", f"outlineq:{user}:%"):
             c.execute("DELETE FROM kv WHERE k LIKE ?", (pattern,))
         if body.all_data:
@@ -1341,6 +1312,8 @@ class WorldNextBody(BaseModel):
 def world_questions(b: WorldQuestionsBody,
                     user: str = Header(default="solo", alias="X-User-Id")):
     """차감 없이 세계관의 성격을 파악할 첫 질문 하나만 만든다."""
+    if LAUNCH_MODE:
+        return _LAUNCH_OFF
     idea = b.idea.strip()[:3000]
     if len(idea) < 10:
         return {"ok": False, "error": "생각하는 이야기를 조금 더 자세히 써주세요."}
@@ -1382,6 +1355,8 @@ def world_questions(b: WorldQuestionsBody,
 def world_next(b: WorldNextBody,
                user: str = Header(default="solo", alias="X-User-Id")):
     """직전 답을 실제로 읽고 다음 질문을 정한다. 충분하면 세 번 전에도 대화를 끝낸다."""
+    if LAUNCH_MODE:
+        return _LAUNCH_OFF
     idea = b.idea.strip()[:3000]
     conversation = []
     for row in (b.conversation or [])[:3]:
@@ -1452,9 +1427,6 @@ def draft_brief(b: BuildBody, user: str = Header(default="solo", alias="X-User-I
             if quota["left"] <= 0:
                 return {"ok": False, "need": "world_quota", "world_quota": quota,
                         "error": "이용 가능한 세계관 생성 횟수를 모두 사용했어요."}
-            ok, _cap = _ai_gate(c, user)
-            if not ok:
-                return {**_AI_BUSY, "world_quota": quota}
             quota = _world_spend(c, user)
             charged_world = True
     if llm.is_mock:
@@ -1582,6 +1554,8 @@ class StructureFillBody(BaseModel):
 def fill_structure(b: StructureFillBody,
                    user: str = Header(default="solo", alias="X-User-Id")):
     """시간·정보·반전·플롯 네 항목을 한 번의 AI 호출로 고른다."""
+    if LAUNCH_MODE:
+        return _LAUNCH_OFF
     specs = []
     for raw in (b.specs or [])[:4]:
         if not isinstance(raw, dict):
@@ -1596,10 +1570,6 @@ def fill_structure(b: StructureFillBody,
         if not DEMO_MODE:
             return {"ok": False, "error": "AI 연결이 필요해요."}
         return {"ok": True, "selected": {s["id"]: [s["options"][0]] for s in specs}, "demo": True}
-    with db.connect() as c:
-        ok, _cap = _ai_gate(c, user)
-        if not ok:
-            return _AI_BUSY
     prompt = f"""당신은 웹소설 구조 기획자다. 작품 맥락에 가장 잘 맞는 구조를 각 항목에서 하나씩 고르라.
 
 [작품 맥락]
@@ -1728,11 +1698,6 @@ def fill_cast(b: CastFillBody, user: str = Header(default="solo", alias="X-User-
         return {"ok": True, "characters": result, "demo": True,
                 "character_quota": character_quota}
 
-    with db.connect() as c:
-        ok, _cap = _ai_gate(c, user)
-        if not ok:
-            _feature_refund(c, user, "character", "character_limit")
-            return _AI_BUSY
     compact = [{"index": ch["index"], "name": ch["name"],
                 "fields": [{"id": f["id"], "question": f["question"],
                             "options": f["options"], "pick": f["pick"]}
@@ -1861,6 +1826,8 @@ def fill_cast(b: CastFillBody, user: str = Header(default="solo", alias="X-User-
 def suggest_choice(b: SuggestBody, user: str = Header(default="solo", alias="X-User-Id")):
     """단계별 설계에서 'AI에게 추천받기' — 지금까지의 설정에 가장 어울리는 보기를 고른다.
     보기 중에서만 고르므로 응답이 짧고 값이 싸다."""
+    if LAUNCH_MODE:
+        return _LAUNCH_OFF
     opts = [o.strip() for o in (b.options or []) if o.strip()][:60]
     if not opts:
         return {"ok": False, "error": "고를 보기가 없어요."}
@@ -1871,10 +1838,6 @@ def suggest_choice(b: SuggestBody, user: str = Header(default="solo", alias="X-U
                     "detail": "배포 환경의 AI 연결 상태를 확인해 주세요."}
         return {"ok": True, "picked": opts[:n],
                 "reason": "미리보기용 예시 추천입니다.", "demo": True}
-    with db.connect() as c:
-        ok, _cap = _ai_gate(c, user)
-        if not ok:
-            return _AI_BUSY
     prompt = f"""당신은 프로 웹소설 기획자다. 아래 작품에 가장 어울리는 '{b.question}'을 고르라.
 
 [지금까지 정해진 것]
@@ -1917,15 +1880,6 @@ def sample_quota(user: str = Header(default="solo", alias="X-User-Id")):
         return {"ok": True, "sample": _sample_quota(c, user), "chars": SAMPLE_CHARS}
 
 
-@router.post("/sample/ad")
-def sample_ad_reward(user: str = Header(default="solo", alias="X-User-Id")):
-    """광고를 끝까지 본 대가로 예시 1건을 더 준다."""
-    with db.connect() as c:
-        q = _sample_quota(c, user)
-        db.kv_set(c, f"smplad:{user}:{q['day']}", str(q["extra"] + 1))
-        return {"ok": True, "sample": _sample_quota(c, user)}
-
-
 @router.post("/brief/sample")
 def write_sample(b: SampleBody, user: str = Header(default="solo", alias="X-User-Id")):
     """설정한 내용을 그대로 반영한 '본문 예시' 한 토막(약 1,000자)을 쓴다.
@@ -1943,9 +1897,6 @@ def write_sample(b: SampleBody, user: str = Header(default="solo", alias="X-User
         if q["left"] <= 0:
             return {"ok": False, "need": "tier", "sample": q,
                     "error": "이번 달 1,000자 본문 쓰기 횟수를 모두 사용했어요."}
-        ok, _cap = _ai_gate(c, user)
-        if not ok:
-            return _AI_BUSY
         db.kv_set(c, f"smpl:{user}:{q['day']}", str(q["used"] + 1))   # 먼저 차감(중복 요청 방지)
         # 작품에서 부른 경우엔 그 화의 줄거리를 함께 넣어 준다
         plan_line = ""
@@ -2010,10 +1961,6 @@ def draft_outline(b: BuildBody, user: str = Header(default="solo", alias="X-User
         if outline_quota is None:
             return {"ok": False, "need": "tier",
                     "error": "AI 줄거리 생성 횟수를 모두 사용했어요."}
-        ok, _cap = _ai_gate(c, user)
-        if not ok:
-            _feature_refund(c, user, "outline", "outline_limit")
-            return _AI_BUSY
         lim = _limits(_tier_name(c, user))
     requested = max(1, min(b.total_chapters, 200))
     total = min(requested, lim["max_chapters"])   # 요금제 상한까지만 생성

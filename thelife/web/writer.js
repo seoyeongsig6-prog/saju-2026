@@ -1297,31 +1297,6 @@ function wzToggle(sel, key, val, pick) {
   if (pick > 1 && arr.length >= pick) arr.shift();   // 최대 개수 넘으면 오래된 것 밀어내기
   arr.push(val);
 }
-/* ── AI에게 추천받기 ── */
-async function wzSuggest(s, target, quiet) {
-  const opts = (s.opts || []).map((o) => (typeof o === "string" ? o : o.v));
-  if (!quiet) busy("AI가 고르는 중…");
-  const r = await api("/api/writer/brief/suggest", {
-    method: "POST",
-    body: JSON.stringify({ question: s.title, options: opts,
-      pick: s.pick === 0 ? 3 : (s.pick || 1), context: wzContext() }),
-  });
-  if (!quiet) unbusy();
-  if (!r.ok) {
-    const message = (r.error || "추천을 받지 못했어요.") + (r.detail ? `\n\n${r.detail}` : "");
-    if (!quiet) notice(message);
-    return { ok: false, error: message };
-  }
-  (target || WZ.sel)[s.id] = r.picked;
-  wzSave();
-  if (quiet) return { ok: true, demo: !!r.demo };
-  // 표시만 그 자리에서 갱신 (화면을 다시 그리지 않아 보던 위치가 유지된다)
-  if (WZ.paints[s.id]) WZ.paints[s.id]();
-  else if (target) wzRenderCastDetail(); else wzRender();
-  if (r.reason) notice(`AI 추천: ${r.picked.join(", ")}\n\n${r.reason}`);
-  return { ok: true, demo: !!r.demo };
-}
-
 /* ── 인물 설정 ── */
 /* 역할(관계)은 10번 항목에서 고른 값 */
 function wzCastRole(c) {
@@ -1739,14 +1714,14 @@ async function makeSample(opts) {
   if (r.sample) SAMPLE = r.sample;
   if (!r.ok) {
     $("#smp-body").innerHTML = `<p class="smp-wait">${escapeHtml(r.error || "예시를 만들지 못했어요.")}</p>`;
-    smpFoot(o, r.need === "ad");
+    smpFoot(o);
     return;
   }
   SAMPLE_TEXT = r.text || "";
   $("#smp-body").innerHTML = `<div class="smp-text">${escapeHtml(SAMPLE_TEXT).replace(/\n/g, "<br>")}</div>`;
-  smpFoot(o, false);
+  smpFoot(o);
 }
-function smpFoot(o, needAd) {
+function smpFoot(o) {
   const foot = $("#smp-foot");
   foot.innerHTML = `<span class="smp-left">${escapeHtml(smpLeftText())}</span>`;
   const mk = (label, fn, primary) => {
@@ -1758,31 +1733,9 @@ function smpFoot(o, needAd) {
     try { await navigator.clipboard.writeText(SAMPLE_TEXT); notice("본문 예시를 복사했어요."); }
     catch (e) { notice("복사하지 못했어요. 글을 길게 눌러 복사해 주세요."); }
   }, true);
-  if (SAMPLE.left > 0 && !needAd) mk("다시 써보기", () => makeSample(o));
-  else mk("광고 보고 1건 더", () => watchAdForSample(o), true);
+  if (SAMPLE.left > 0) mk("다시 써보기", () => makeSample(o));
+  else if (TIER === "free") mk("플랜 보기", () => showPlans("plot"), true);
 }
-/* 광고를 끝까지 보면 예시 1건을 더 준다 */
-function watchAdForSample(o) {
-  const m = $("#ad-interstitial"), btn = $("#ad-close");
-  m.classList.remove("hidden");
-  let n = 5; btn.disabled = true; btn.textContent = `보는 중 (${n})`;
-  const t = setInterval(() => {
-    n -= 1;
-    if (n <= 0) { clearInterval(t); btn.disabled = false; btn.textContent = "받기"; }
-    else btn.textContent = `보는 중 (${n})`;
-  }, 1000);
-  btn.onclick = async () => {
-    if (btn.disabled) return;
-    clearInterval(t);
-    m.classList.add("hidden");
-    const r = await api("/api/writer/sample/ad", { method: "POST" });
-    if (r && r.sample) SAMPLE = r.sample;
-    smpFoot(o, SAMPLE.left <= 0);
-    if (SAMPLE.left > 0) makeSample(o);
-  };
-  // 네이티브: AdMob.showRewardedAd() — 보상 콜백에서 위와 같이 처리한다
-}
-
 /* ── 플롯보기 시트 (페이지를 떠나지 않고 아래에서 올라온다) ── */
 function openSheet(which) {
   $("#sh-title").textContent = `${CHAPTER.no}화`;
@@ -1884,12 +1837,6 @@ function wzRender() {
   if (s.kind === "text") wzRenderText(box, s);
   else if (s.kind === "cast") wzRenderCast(box, s);
   else {
-    if (s.id === "time") {
-      const intro = document.createElement("div"); intro.className = "section-ai-intro";
-      intro.innerHTML = `<p>이야기의 구조를 선택해 주세요.<br>AI로 이 스토리의 구조를 만들 수 있습니다.</p>
-        <button class="ai-btn compact">AI로 이야기 구조 만들기</button>`;
-      intro.querySelector("button").onclick = wzStructureAll; box.appendChild(intro);
-    }
     wzRenderPick(box, s, WZ.sel, WZ.other, WZ.detail, s.id);
   }
   if (!(s.kind === "cast" && WZ.castOpen >= 0)) wzFoot(s);
@@ -1965,33 +1912,6 @@ function wzRenderCast(box, s) {
   const add = document.createElement("button"); add.className = "btn-ghost2"; add.textContent = "＋ 인물 추가";
   add.onclick = () => { WZ.cast.push({ name: "", age: "", sel: {}, other: {}, detail: {} }); WZ.castOpen = WZ.cast.length - 1; wzRender(); };
   box.appendChild(add);
-}
-
-async function wzStructureAll() {
-  const items = WZ_SPEC.filter((s) => ["time", "info", "twist", "plot"].includes(s.id));
-  busy("이야기 구조를 만드는 중…");
-  const r = await api("/api/writer/brief/structure-fill", { method: "POST", body: JSON.stringify({
-    context: wzContext(), specs: items.map((s) => ({ id: s.id, title: s.title,
-      options: s.opts.map((o) => typeof o === "string" ? o : o.v) })) }) });
-  unbusy();
-  if (!r.ok) { notice(r.error || "이야기 구조를 만들지 못했어요."); return; }
-  Object.assign(WZ.sel, r.selected || {}); wzSave();
-  const labels = { time: "시간의 흐름", info: "정보 전달", twist: "반전 방식", plot: "플롯 유형" };
-  $("#structure-result-body").innerHTML = Object.keys(labels).map((id) =>
-    `<div><span>${labels[id]}</span><b>${escapeHtml(((WZ.sel[id] || [])[0]) || "")}</b></div>`).join("");
-  const modal = $("#structure-result"); modal.classList.remove("hidden");
-  $("#structure-ok").onclick = () => {
-    modal.classList.add("hidden");
-    const lastStructure = WZ_SPEC.map((x, i) => ({ x, i })).filter((v) => v.x.group === "스토리 방식").pop();
-    WZ.i = lastStructure ? lastStructure.i + 1 : WZ.i;
-    if (WZ.i >= WZ_SPEC.length) { WZ.phase = "plan"; wzGo("plan"); } else wzRender();
-  };
-  $("#structure-redo").onclick = () => { modal.classList.add("hidden"); wzStructureAll(); };
-  $("#structure-manual").onclick = () => {
-    modal.classList.add("hidden");
-    ["time", "info", "twist", "plot"].forEach((id) => { delete WZ.sel[id]; delete WZ.other[id]; });
-    WZ.i = WZ_SPEC.findIndex((x) => x.id === "time"); wzSave(); wzRender();
-  };
 }
 
 function showWorldLimit() { $("#world-ai-limit").classList.remove("hidden"); }

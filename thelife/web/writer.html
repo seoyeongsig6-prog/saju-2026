@@ -18,7 +18,7 @@
 <link rel="icon" href="/static/icons/icon-192.png">
 
 <link rel="stylesheet" href="/static/style.css">
-<link rel="stylesheet" href="/static/writer.css?v=20260820-plan1">
+<link rel="stylesheet" href="/static/writer.css?v=20260821-plan2">
 </head>
 <body class="writer launch">
 
@@ -55,7 +55,7 @@
       <button data-test-tier="light">마스터</button>
       <button data-test-tier="pro">프로</button>
     </div>
-    <button id="test-reset-usage" class="set-item">사용 횟수 초기화<small>오늘의 AI·본문 예시 횟수만 다시 채웁니다</small></button>
+    <button id="test-reset-usage" class="set-item">사용 횟수 초기화<small>요금표의 AI·1,000자 본문 횟수를 다시 채웁니다</small></button>
     <button id="test-reset-all" class="set-item danger">테스트 전체 초기화<small>테스트 작품과 사용 횟수를 모두 삭제합니다</small></button>
   </section>
   <div class="story-h">데이터</div>
@@ -487,18 +487,6 @@
   </div>
 </div>
 
-<div id="structure-result" class="modal hidden">
-  <div class="modal-card structure-card">
-    <h2>AI가 이야기 구조를 구성했어요</h2>
-    <div id="structure-result-body" class="structure-result-body"></div>
-    <div class="notice-actions structure-actions">
-      <button id="structure-ok" class="primary">확인</button>
-      <button id="structure-redo" class="ghost">다시 짜기</button>
-      <button id="structure-manual" class="ghost">직접 짜기</button>
-    </div>
-  </div>
-</div>
-
 <div id="busy" class="modal hidden">
   <div class="modal-card" style="text-align:center">
     <p id="busy-text">쓰는 중…</p>
@@ -527,15 +515,7 @@
   <span class="ad-text">광고 · 라이트/프로로 올리면 사라져요</span>
   <button id="ad-upsell" class="ad-up">업그레이드</button>
 </div>
-<div id="ad-interstitial" class="modal hidden">
-  <div class="modal-card ad-inter">
-    <span class="ad-tag">AD</span>
-    <div class="ad-fake">전면 광고 자리<br><small>네이티브 앱에서 실제 광고가 표시됩니다 · 라이트·프로는 광고 없음</small></div>
-    <button id="ad-close" class="ghost" disabled>닫기</button>
-  </div>
-</div>
-
-<script src="/static/wzspec.js?v=20260820-plan1"></script>
-<script src="/static/writer.js?v=20260820-plan1"></script>
+<script src="/static/wzspec.js?v=20260821-plan2"></script>
+<script src="/static/writer.js?v=20260821-plan2"></script>
 </body>
 </html>
