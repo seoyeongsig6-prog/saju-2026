@@ -5,6 +5,7 @@
   "description": "더 노벨리스트 — App Store / Google Play 네이티브 래퍼 (Capacitor)",
   "scripts": {
     "build:web": "node build.mjs",
+    "build:release": "node build.mjs",
     "sync": "node build.mjs && npx cap sync",
     "add:ios": "npx cap add ios",
     "add:android": "npx cap add android",
@@ -12,6 +13,7 @@
     "open:android": "npx cap open android"
   },
   "dependencies": {
+    "@capacitor-community/admob": "^7.2.0",
     "@capacitor/android": "^7.0.0",
     "@capacitor/app": "^7.0.0",
     "@capacitor/core": "^7.0.0",

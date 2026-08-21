@@ -59,7 +59,18 @@
     <button id="test-reset-all" class="set-item danger">테스트 전체 초기화<small>테스트 작품과 사용 횟수를 모두 삭제합니다</small></button>
   </section>
   <div class="story-h">데이터</div>
-  <button id="btn-export" class="set-item">데이터 내보내기<small>내 작품 전체를 파일로 저장</small></button>
+  <button id="btn-export" class="set-item">내 데이터 사본 받기<small>개인정보와 작품 데이터를 JSON으로 저장</small></button>
+  <div class="recovery-box">
+    <b>기기 변경·재설치 복구</b>
+    <p class="hint">복구 코드를 안전한 곳에 보관하면 같은 작품을 다시 불러올 수 있어요.</p>
+    <button id="btn-recovery-show" class="set-item">내 복구 코드 확인</button>
+    <div id="recovery-code-box" class="hidden">
+      <textarea id="recovery-code" rows="3" readonly aria-label="내 복구 코드"></textarea>
+      <button id="btn-recovery-copy" class="ghost small">복사</button>
+    </div>
+    <input id="recovery-input" autocomplete="off" spellcheck="false" placeholder="기존 복구 코드 붙여넣기">
+    <button id="btn-recovery-use" class="ghost small">이 코드의 작품 불러오기</button>
+  </div>
   <button id="btn-delacc" class="set-item danger">계정 삭제<small>모든 데이터를 영구 삭제합니다</small></button>
   <div class="story-h">정보</div>
   <a class="set-item" href="/privacy" target="_blank" rel="noopener">개인정보처리방침</a>
@@ -77,19 +88,6 @@
   <p class="plans-fine">구독은 App Store · Google Play 계정으로 결제되며 자동 갱신됩니다.
      기간이 끝나기 24시간 전에 해지하지 않으면 자동으로 갱신돼요.
      해지·환불·구독 관리는 각 스토어의 구독 설정에서 할 수 있어요.
-     <a href="privacy.html">개인정보처리방침</a> · <a href="terms.html">이용약관</a></p>
-</div>
-
-<!-- 펜 충전 (본문 쓰기용 소모성 재화) -->
-<div id="w-pens" class="wview hidden">
-  <div class="w-top"><button class="ghost small" onclick="showBack()">← 뒤로</button><b>펜 충전</b></div>
-  <p class="hint">판매용 앱에서는 AI 본문 대행을 제공하지 않습니다.</p>
-  <div class="pen-now">현재 보유 <b id="pen-count">0</b>펜</div>
-  <div id="pen-packs" class="pen-packs"></div>
-  <button id="btn-restore-pens" class="ghost small" style="width:100%;margin:4px 0 10px"
-          onclick="restorePurchases()">구매 복원</button>
-  <p class="plans-fine">펜은 소모성 상품이라 사용하면 차감되고 환불되지 않아요.
-     결제는 App Store · Google Play 계정으로 이뤄집니다.
      <a href="privacy.html">개인정보처리방침</a> · <a href="terms.html">이용약관</a></p>
 </div>
 
@@ -219,9 +217,8 @@
           <option>1인칭 몰입형</option>
           <option>구어체·가벼운 웹소설체</option>
           <option>기타(직접 입력)</option>
-        </select></label>
+      </select></label>
       <input id="bd-style-other" class="hidden" placeholder="문체 직접 입력">
-      <textarea id="bd-sample" rows="4" placeholder="문체 표본 (선택 · 300자 이상) — 붙여넣으면 그 결을 학습해서 씁니다"></textarea>
     </div>
   </div>
 
@@ -263,7 +260,6 @@
   <div id="wt-chapters" class="wtabpane">
     <button id="btn-plot" class="wk-plot"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h6a2 2 0 0 1 2 2v13a2 2 0 0 0-2-2H4z"/><path d="M20 5h-6a2 2 0 0 0-2 2v13a2 2 0 0 1 2-2h6z"/></svg><span>작품 줄거리</span></button>
     <div id="ch-list" class="ch-list"></div>
-    <div id="pen-bar" class="pen-bar hidden"></div>
   </div>
 
   <!-- 설정집 탭 -->
@@ -512,7 +508,7 @@
 <!-- 광고 (무료 요금제만) — 네이티브 래핑 시 이 자리를 AdMob 배너/전면으로 교체 -->
 <div id="ad-banner" class="ad-banner hidden">
   <span class="ad-tag">AD</span>
-  <span class="ad-text">광고 · 라이트/프로로 올리면 사라져요</span>
+  <span class="ad-text">광고 · MASTER/PRO로 올리면 사라져요</span>
   <button id="ad-upsell" class="ad-up">업그레이드</button>
 </div>
 <script src="/static/wzspec.js?v=20260821-plan2"></script>

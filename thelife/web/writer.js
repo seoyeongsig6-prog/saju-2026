@@ -12,6 +12,7 @@ if (!UID) {
 const IS_NATIVE = !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === "function"
   && window.Capacitor.isNativePlatform());
 const API_BASE = (window.NOVELIST_API_BASE || "").replace(/\/$/, "");
+let DEVICE_TOKEN = localStorage.getItem("novelist_device_token") || "";
 if (IS_NATIVE) document.body.classList.add("native");
 /* # 뒤의 값은 서버 요청·로그에 전송되지 않는다. 첫 접속 뒤 주소에서도 즉시 지운다. */
 const TEST_PARAM = new URLSearchParams(location.hash.replace(/^#/, "")).get("novelist_test");
@@ -21,14 +22,26 @@ if (TEST_PARAM) {
 }
 let TEST_KEY = localStorage.getItem("novelist_test_key") || "";
 const api = async (path, opts = {}) => {
+  if (!["/api/writer/auth/device", "/api/writer/auth/recover"].includes(path) && !DEVICE_TOKEN) await DEVICE_READY;
   const url = (API_BASE && path.startsWith("/")) ? API_BASE + path : path;
   const r = await fetch(url, {
     ...opts,
     headers: { "Content-Type": "application/json", "X-User-Id": UID,
+      ...(DEVICE_TOKEN ? { "X-Device-Token": DEVICE_TOKEN } : {}),
       ...(TEST_KEY ? { "X-Novelist-Test-Key": TEST_KEY } : {}), ...(opts.headers || {}) },
   });
   return r.json();
 };
+const DEVICE_READY = (async () => {
+  if (DEVICE_TOKEN) return true;
+  const r = await api("/api/writer/auth/device", {
+    method: "POST", body: JSON.stringify({ user_id: UID }),
+  });
+  if (!r || !r.ok || !r.device_token) throw new Error((r && r.error) || "기기 인증 실패");
+  DEVICE_TOKEN = r.device_token;
+  localStorage.setItem("novelist_device_token", DEVICE_TOKEN);
+  return true;
+})();
 
 /* 홈 화면에 추가하면 앱처럼 실행되게 (오프라인 대비 + 전체화면).
    서비스 워커는 '네트워크 먼저'라 고친 내용이 바로바로 반영된다. */
@@ -58,11 +71,10 @@ let WORK = null, CHAPTER = null;
 /* 판매용 런치 버전 여부 — 서버 플래그.
    body.launch = 판매 빌드(자연어 설정 수정 등 제외 항목 숨김).
    body.nobody = 'AI가 본문을 대신 써주는' 기능 없음 → 그 UI만 숨긴다.
-                 작가가 직접 쓰는 에디터는 모든 등급에서 항상 열려 있다(핵심 기능).
-   body.nopen  = 펜(소모성 재화)을 안 쓰는 빌드 → 펜 잔액·충전 UI 숨김. */
+                 작가가 직접 쓰는 에디터는 모든 등급에서 항상 열려 있다(핵심 기능). */
 let LAUNCH = true, DEMO_MODE = false, AI_CONNECTED = false, TEST_MODE = false;
 let TIER = "free", LIMITS = null, TIERS_INFO = null, EXPIRES = null;
-let AI_BODY = false, PENS = 0, PEN_NEEDED = false, PEN_PACKS = [];
+let AI_BODY = false;
 let WORLD_QUOTA = { used: 0, base: 1, extra: 0, left: 1 };
 const CONFIG_READY = (async () => {
   try {
@@ -74,22 +86,16 @@ const CONFIG_READY = (async () => {
     AI_BODY = !!(cfg && cfg.ai_body);
     document.body.classList.toggle("launch", LAUNCH);
     document.body.classList.toggle("nobody", !AI_BODY);
-    document.body.classList.toggle("nopen", !(cfg && cfg.pens_enabled));
     if (cfg) {
       TIER = cfg.tier || "free"; LIMITS = cfg.limits; TIERS_INFO = cfg.tiers; EXPIRES = cfg.expires_at;
-      PENS = cfg.pens || 0; PEN_NEEDED = !!cfg.pen_needed; PEN_PACKS = cfg.pen_packs || [];
       if (cfg.sample) SAMPLE = cfg.sample;
       if (cfg.world_quota) WORLD_QUOTA = cfg.world_quota;
       renderPlanBadge();
     }
     Ads.refresh();
-    renderPenBar();
     renderTestPanel();
   } catch (e) { /* 실패 시 런치 기본 유지 */ }
 })();
-
-/* 본문 쓰기 응답의 need(프로/펜)에 맞춰 안내하고 요금제/충전으로 보낸다. */
-function setPens(n) { if (typeof n === "number") { PENS = n; renderPenBar(); } }
 
 /* ---------- 설정 화면 ---------- */
 function showSettings() { view("w-settings"); renderSettingsPlan(); renderThemeSeg(); renderTestPanel(); }
@@ -111,7 +117,7 @@ $("#btn-export").onclick = async () => {
   notice(`내 데이터(작품 ${(d.works || []).length}개)를 내려받았어요.`);
 };
 $("#btn-delacc").onclick = async () => {
-  if (!await askAction("모든 작품과 데이터를 삭제할까요?\n삭제한 데이터는 되돌릴 수 없습니다.", "모두 삭제", "취소")) return;
+  if (!await askAction("모든 작품과 데이터를 삭제할까요?\n삭제해도 스토어 구독 결제는 자동 해지되지 않습니다. 먼저 기기의 구독 설정에서 해지해 주세요.\n삭제한 데이터는 되돌릴 수 없습니다.", "모두 삭제", "취소")) return;
   const r = await api("/api/writer/account", { method: "DELETE" });
   if (!r || !r.ok) { notice("삭제에 실패했어요. 잠시 후 다시 시도해 주세요."); return; }
   notice("모든 데이터를 삭제했어요.");
@@ -163,7 +169,7 @@ function showPlans(from) {
   PLAN_BACK = from || "settings";
   view("w-plans");
   $("#plans-hint").textContent = PLAN_BACK === "plot"
-    ? "1,000자 본문 예시는 라이트 플랜부터 사용할 수 있어요."
+    ? "1,000자 본문 예시는 MASTER 플랜부터 사용할 수 있어요."
     : "작품 규모와 필요한 AI 도움에 맞춰 선택하세요.";
   renderPlans();
 }
@@ -282,7 +288,7 @@ async function choosePlan(t) {
   }
   // 실제 앱 — 네이티브 인앱 결제(RevenueCat) 브리지로 구매.
   if (!window.NovelistIAP) {
-    notice("곧 앱에서 구독을 구매할 수 있어요.\n(App Store · Google Play 결제 연결 예정)");
+    notice("구독 구매는 App Store 또는 Google Play 앱에서 이용할 수 있어요.");
     return;
   }
   try {
@@ -303,9 +309,10 @@ const Ads = {
   on() { return !!(LIMITS && LIMITS.ads); },   // 무료 티어 = 광고 대상
   refresh() {
     const show = this.on();
-    $("#ad-banner").classList.toggle("hidden", !show);
-    document.body.classList.toggle("has-ad", show);
-    // 네이티브: show ? AdMob.showBanner() : AdMob.hideBanner();
+    const nativeAds = IS_NATIVE && window.NovelistAds;
+    $("#ad-banner").classList.toggle("hidden", !show || nativeAds);
+    document.body.classList.toggle("has-ad", show && !nativeAds);
+    if (nativeAds) (show ? window.NovelistAds.showBanner() : window.NovelistAds.hideBanner());
   },
   _last: 0,
   maybeInterstitial() {                          // 무거운 동작 뒤, 쿨다운 두고 한 번
@@ -313,6 +320,7 @@ const Ads = {
     const now = Date.now();
     if (now - this._last < 90000) return;
     this._last = now;
+    if (IS_NATIVE && window.NovelistAds) { window.NovelistAds.showInterstitial(); return; }
     const m = $("#ad-interstitial"), btn = $("#ad-close");
     m.classList.remove("hidden");
     let n = 3; btn.disabled = true; btn.textContent = `닫기 (${n})`;
@@ -322,7 +330,6 @@ const Ads = {
       else btn.textContent = `닫기 (${n})`;
     }, 1000);
     btn.onclick = () => { if (!btn.disabled) m.classList.add("hidden"); };
-    // 네이티브: AdMob.showInterstitial();
   },
 };
 $("#ad-upsell").onclick = () => {
@@ -331,6 +338,30 @@ $("#ad-upsell").onclick = () => {
   const from = ({ "w-wizard": "wizard", "w-plot": "plot", "w-work": "work",
                   "w-home": "home", "w-settings": "settings" })[open] || "settings";
   showPlans(from);
+};
+$("#btn-recovery-show").onclick = async () => {
+  const d = await api("/api/writer/auth/recovery-code");
+  if (!d || !d.ok) { notice("복구 코드를 불러오지 못했어요."); return; }
+  $("#recovery-code").value = d.recovery_code;
+  $("#recovery-code-box").classList.remove("hidden");
+};
+$("#btn-recovery-copy").onclick = async () => {
+  const code = $("#recovery-code").value;
+  try { await navigator.clipboard.writeText(code); notice("복구 코드를 복사했어요."); }
+  catch (e) { $("#recovery-code").select(); document.execCommand("copy"); notice("복구 코드를 복사했어요."); }
+};
+$("#btn-recovery-use").onclick = async () => {
+  const recovery_code = $("#recovery-input").value.trim();
+  if (!recovery_code) { notice("복구 코드를 먼저 붙여 넣어 주세요."); return; }
+  if (!await askAction("이 기기의 현재 작품 대신 복구 코드의 작품을 불러올까요?", "불러오기", "취소")) return;
+  const d = await api("/api/writer/auth/recover", {
+    method: "POST", body: JSON.stringify({ recovery_code }),
+  });
+  if (!d || !d.ok) { notice((d && d.error) || "복구하지 못했어요."); return; }
+  UID = d.user_id; DEVICE_TOKEN = d.device_token;
+  localStorage.setItem("thelife_uid", UID);
+  localStorage.setItem("novelist_device_token", DEVICE_TOKEN);
+  location.reload();
 };
 
 /* ---------- 테마 (밝게/어둡게 — 기본 밝게, 설정 화면에서 전환) ---------- */
@@ -350,13 +381,13 @@ function renderThemeSeg() {
 applyTheme(localStorage.getItem("thelife_theme") || "light");
 
 function view(id) {
-  ["w-home", "w-settings", "w-plans", "w-pens", "w-wizard", "w-build", "w-work", "w-plot", "w-editor"]
+  ["w-home", "w-settings", "w-plans", "w-wizard", "w-build", "w-work", "w-plot", "w-editor"]
     .forEach((v) =>
     $(`#${v}`).classList.toggle("hidden", v !== id));
   const focus = ["w-wizard", "w-build", "w-editor"].includes(id);
   document.body.classList.toggle("focus-mode", focus);
   const active = ({ "w-home": "home", "w-work": "home", "w-plot": "home",
-                    "w-settings": "settings", "w-plans": "plans", "w-pens": "settings" })[id] || "";
+                    "w-settings": "settings", "w-plans": "plans" })[id] || "";
   document.querySelectorAll("#app-nav [data-nav]").forEach((b) => {
     const on = b.dataset.nav === active;
     b.classList.toggle("active", on);
@@ -374,52 +405,6 @@ document.querySelectorAll("#app-nav [data-nav]").forEach((b) => {
   };
 });
 
-/* ---------- 펜 충전 화면 ---------- */
-function showPens() { view("w-pens"); renderPens(); }
-function showBack() { if (WORK) openWork(WORK.id); else showSettings(); }
-function renderPenBar() {
-  const bar = $("#pen-bar");
-  if (!bar) return;
-  bar.classList.toggle("hidden", !PEN_NEEDED);   // 개인 서버(펜 불필요)에선 숨김
-  if (!PEN_NEEDED) return;
-  bar.innerHTML = `남은 펜 <b>${PENS}</b>
-    <span class="pen-sub">본문 1편 = 펜 1개</span>
-    <button class="pen-charge" onclick="showPens()">＋ 충전</button>`;
-  const pc = $("#pen-count"); if (pc) pc.textContent = PENS;
-}
-function renderPens() {
-  const pc = $("#pen-count"); if (pc) pc.textContent = PENS;
-  const box = $("#pen-packs");
-  if (!box) return;
-  box.innerHTML = (PEN_PACKS || []).map((p) => `
-    <div class="pen-pack">
-      ${p.badge ? `<span class="pen-badge">${p.badge}</span>` : ""}
-      <div class="pen-pack-top"><b>펜 ${p.count}개</b><span class="pen-per">${p.per || ""}</span></div>
-      <button class="pen-buy" data-product="${p.product}" data-count="${p.count}">${p.price} 구매</button>
-    </div>`).join("");
-  box.querySelectorAll(".pen-buy").forEach((b) => {
-    b.onclick = () => buyPens(b.dataset.product, +b.dataset.count);
-  });
-}
-async function buyPens(productId, count) {
-  if (!window.NovelistIAP) {
-    notice("곧 앱에서 펜을 구매할 수 있어요.\n(App Store · Google Play 결제 연결 예정)");
-    return;
-  }
-  try {
-    busy("결제를 준비하는 중…");
-    const res = await window.NovelistIAP.purchaseProduct(productId);   // {ok, cancelled?, error?}
-    if (res && res.cancelled) { unbusy(); return; }
-    if (!res || !res.ok) { unbusy(); notice(res && res.error ? res.error : "결제를 완료하지 못했어요."); return; }
-    const cr = await api("/api/writer/pens/purchase", {
-      method: "POST", body: JSON.stringify({ product_id: productId }),
-    });
-    unbusy();
-    if (cr && cr.ok) { setPens(cr.pens); renderPens();
-      notice(`펜 ${count}개를 충전했어요. 이제 본문을 쓸 수 있어요!`); }
-    else notice((cr && cr.error) || "충전 반영이 지연되고 있어요. 잠시 후 다시 확인해 주세요.");
-  } catch (e) { unbusy(); notice("결제 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요."); }
-}
 function notice(t) {
   $("#notice-text").textContent = t;
   $("#notice-undo").classList.add("hidden");
@@ -626,7 +611,7 @@ function bdCollect() {
     canon: [...$("#bd-canon").querySelectorAll(".bd-canon-row")].map((r) => ({
       name: r.querySelector(".cn-name").value.trim(), desc: r.querySelector(".cn-desc").value.trim(),
     })).filter((c) => c.name),
-    style: bdStyle(), style_sample: bdVal("bd-sample"), ending: bdVal("bd-ending"),
+    style: bdStyle(), style_sample: "", ending: bdVal("bd-ending"),
     outline: [...$("#bd-outline").querySelectorAll(".bd-outline-row")].map((r) => ({
       no: Number(r.querySelector(".o-no").value) || 0,
       title: r.querySelector(".o-title").value.trim(), content: r.querySelector(".o-content").value.trim(),
@@ -735,7 +720,6 @@ async function openWork(id) {
   $("#wk-progress").textContent = "";
   renderChapters();
   renderBible();
-  renderPenBar();
   wtab("chapters");
 }
 
@@ -750,7 +734,7 @@ function wtab(name) {
 const escapeHtml = (s) => (s || "").replace(/[&<>"]/g,
   (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-/* 빈 회차를 열고(없으면 만들고) 바로 에디터로 — AI도 펜도 쓰지 않는다. */
+/* 빈 회차를 열고(없으면 만들고) 바로 에디터로 — AI를 쓰지 않는다. */
 function editOutline(n, el, after) {
   const redraw = after || renderChapters;
   const o = (WORK.outline || []).find((x) => x.no === n) || { title: "", content: "" };
@@ -2156,14 +2140,14 @@ function openMenu(where) {
       await navigator.clipboard.writeText($("#ed-body").value);
       notice("본문을 복사했어요. 연재 플랫폼에 붙여넣으세요.");
     });
-    add(".txt로 받기", () => {
+    if (LIMITS && LIMITS.export_enabled) add(".txt로 받기", () => {
       const blob = new Blob([`${$("#ed-title").value}\n\n${$("#ed-body").value}`],
         { type: "text/plain;charset=utf-8" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = `${WORK.title}_${CHAPTER.no}화.txt`;
       a.click();
-    });
+    }); else add("파일 내보내기 · MASTER부터", () => showPlans("work"), "", ICO.book);
     const lastNo = WORK.chapters.length ? WORK.chapters[WORK.chapters.length - 1].no : 0;
     if (CHAPTER && CHAPTER.no === lastNo) add("이 회차 삭제", deleteChapter, "danger", ICO.trash);
   } else if (where === "wizard") {
@@ -2174,6 +2158,15 @@ function openMenu(where) {
   } else {
     if (WORK) add("작품 메인", () => openWork(WORK.id), "", ICO.pen);
     if (WORK) add("작품 줄거리", () => showPlot(), "", ICO.book);
+    if (WORK) add(LIMITS && LIMITS.export_enabled ? "작품 전체 파일 받기" : "파일 내보내기 · MASTER부터",
+      async () => {
+        if (!LIMITS || !LIMITS.export_enabled) { showPlans("work"); return; }
+        const d = await api(`/api/writer/works/${WORK.id}/manuscript`);
+        if (!d || !d.ok) { notice((d && d.error) || "파일을 만들지 못했어요."); return; }
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([d.text], { type: "text/plain;charset=utf-8" }));
+        a.download = d.filename; a.click();
+      }, "", ICO.book);
     add("내 작품 목록", showHome, "", ICO.home);
     add("새 작품 만들기", () => startWizard(true), "", ICO.pen);
     add("이용권", () => showPlans(where || "home"), "", ICO.book);
@@ -2201,7 +2194,7 @@ async function deleteChapter() {
 
 /* ── 뒤로가기 — 브라우저/안드로이드 버튼으로 한 화면씩 되돌아간다 ── */
 function goBack() {
-  const open = ["w-editor", "w-plot", "w-wizard", "w-work", "w-plans", "w-pens", "w-settings"]
+  const open = ["w-editor", "w-plot", "w-wizard", "w-work", "w-plans", "w-settings"]
     .find((v) => !$(`#${v}`).classList.contains("hidden"));
   if (!$("#smp-sheet").classList.contains("hidden")) { closeSmp(); return; }
   if (!$("#menu-sheet").classList.contains("hidden")) { closeMenu(); return; }
@@ -2210,7 +2203,6 @@ function goBack() {
   if (open === "w-plot") { openWork(WORK.id); return; }
   if (open === "w-wizard") { wzBackStep(); return; }
   if (open === "w-plans") { leavePlans(); return; }
-  if (open === "w-pens") { showBack(); return; }
   showHome();
 }
 window.addEventListener("popstate", () => { history.pushState(null, ""); goBack(); });

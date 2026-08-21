@@ -1,5 +1,4 @@
-"""LLM 레이어 — ANTHROPIC_API_KEY(Claude) 또는 GEMINI_API_KEY(Gemini)가 있으면
-실제 모델로, 둘 다 없으면 목업 텍스트로 동작한다. LLM_PROVIDER=gemini면 Gemini 우선.
+"""판매 앱의 Gemini LLM 레이어. GEMINI_API_KEY가 없으면 목업 텍스트로 동작한다.
 
 모델이 퇴역(404)해도 서비스가 죽지 않도록 여러 후보 모델을 순서대로 시도한다.
 """
@@ -7,23 +6,15 @@ import os
 import time
 from typing import Generator, Optional
 
-CLAUDE_MODEL = os.environ.get("LLM_MODEL", "claude-sonnet-5")
-
 # Gemini 후보 — 앞에서부터 시도하고, 퇴역/미지원이면 다음으로 넘어간다.
 # 환경변수 GEMINI_MODEL로 맨 앞에 원하는 모델을 지정할 수 있다.
 GEMINI_CANDIDATES = [
     m for m in [
         os.environ.get("GEMINI_MODEL", "").strip(),
-        "gemini-2.5-flash",
-        "gemini-2.0-flash-001",
-        "gemini-flash-latest",
-        "gemini-2.5-pro",
-        "gemini-1.5-flash",
+        "gemini-3.6-flash",
+        "gemini-3.7-flash",
     ] if m
 ]
-
-PREFER = os.environ.get("LLM_PROVIDER", "").strip().lower()  # "gemini"면 무료 등급 우선
-
 
 def _is_model_missing(err: str) -> bool:
     e = err.lower()
@@ -62,26 +53,16 @@ def _finish_reason(resp) -> str:
 class LLM:
     def __init__(self) -> None:
         self.provider: Optional[str] = None
-        self.client = None            # anthropic 클라이언트
-        self.genai = None             # google.generativeai 모듈
+        self.genai = None             # google.genai Client
         self.gemini_model: Optional[str] = None
         self.last_error: str = ""
 
-        if PREFER != "gemini" and os.environ.get("ANTHROPIC_API_KEY"):
+        if os.environ.get("GEMINI_API_KEY"):
             try:
-                import anthropic
-                self.client = anthropic.Anthropic()
-                self.provider = "anthropic"
-            except Exception:
-                self.client = None
-
-        if self.provider is None and os.environ.get("GEMINI_API_KEY"):
-            try:
-                import google.generativeai as genai
-                genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-                self.genai = genai
+                from google import genai
+                self.genai = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
                 self.gemini_model = (GEMINI_CANDIDATES[0] if GEMINI_CANDIDATES
-                                     else "gemini-2.5-flash")
+                                     else "gemini-3.6-flash")
                 self.provider = "gemini"
             except Exception:
                 self.genai = None
@@ -92,8 +73,9 @@ class LLM:
 
     # ---- Gemini: 모델 후보를 순회하며 호출 ----
     def _gemini_generate(self, prompt: str, max_tokens: int, stream: bool):
-        # 2.5계열은 '생각'에 출력 토큰을 쓰므로 넉넉히 준다 (최소 800, 최대 8192)
-        cfg = {"max_output_tokens": max(800, min(max_tokens, 8192))}
+        # 최신 Flash도 추론에 출력 토큰을 쓰므로 넉넉히 준다 (최소 800, 최대 8192)
+        from google.genai import types
+        cfg = types.GenerateContentConfig(max_output_tokens=max(800, min(max_tokens, 8192)))
         tried = []
         # 현재 모델을 맨 앞에 두고, 나머지 후보를 뒤에 붙인다
         order = [self.gemini_model] + [m for m in GEMINI_CANDIDATES if m != self.gemini_model]
@@ -103,8 +85,12 @@ class LLM:
                 continue
             tried.append(name)
             try:
-                model = self.genai.GenerativeModel(name)
-                resp = model.generate_content(prompt, generation_config=cfg, stream=stream)
+                if stream:
+                    resp = self.genai.models.generate_content_stream(
+                        model=name, contents=prompt, config=cfg)
+                else:
+                    resp = self.genai.models.generate_content(
+                        model=name, contents=prompt, config=cfg)
                 self.gemini_model = name  # 성공한 모델을 기억
                 return resp
             except Exception as e:
@@ -118,16 +104,7 @@ class LLM:
     def write(self, prompt: str, mock_text: str, max_tokens: int = 1200) -> str:
         self.last_error = ""
         try:
-            if self.provider == "anthropic":
-                msg = self.client.messages.create(
-                    model=CLAUDE_MODEL, max_tokens=max_tokens,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-                text = "".join(b.text for b in msg.content if b.type == "text")
-                if text.strip():
-                    return text.strip()
-                self.last_error = "빈 응답"
-            elif self.provider == "gemini":
+            if self.provider == "gemini":
                 resp = self._gemini_generate(prompt, max_tokens, stream=False)
                 text = _gemini_text(resp)
                 if text and text.strip():
@@ -136,20 +113,12 @@ class LLM:
                 self.last_error = f"빈 응답 (finish_reason={fr})" if fr else "빈 응답"
         except Exception as e:
             self.last_error = f"{type(e).__name__}: {str(e)[:200]}"
-            print(f"[llm] 호출 실패: {self.last_error}", flush=True)
+            print(f"[llm] 호출 실패: {type(e).__name__}", flush=True)
         return mock_text
 
     def stream(self, prompt: str, mock_text: str) -> Generator[str, None, None]:
         try:
-            if self.provider == "anthropic":
-                with self.client.messages.stream(
-                    model=CLAUDE_MODEL, max_tokens=1200,
-                    messages=[{"role": "user", "content": prompt}],
-                ) as s:
-                    for text in s.text_stream:
-                        yield text
-                return
-            elif self.provider == "gemini":
+            if self.provider == "gemini":
                 got = False
                 for chunk in self._gemini_generate(prompt, 4096, stream=True):
                     t = _gemini_text(chunk) if False else None  # 스트림 청크는 아래서 안전 처리
@@ -167,7 +136,7 @@ class LLM:
                 if got:
                     return
         except Exception as e:
-            print(f"[llm] 스트림 실패: {type(e).__name__}: {str(e)[:150]}", flush=True)
+            print(f"[llm] 스트림 실패: {type(e).__name__}", flush=True)
         for line in mock_text.splitlines(keepends=True):
             time.sleep(0.35)  # 스트리밍 체감용
             yield line

@@ -2,8 +2,7 @@ fastapi
 uvicorn
 pyyaml
 pydantic
-anthropic
-google-generativeai
+google-genai
 psycopg[binary]
 python-multipart
 tzdata

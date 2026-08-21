@@ -3,6 +3,7 @@
 // window.NovelistIAP 의 존재 여부만 보고 결제를 호출하므로, 스토어·플러그인
 // 버전에 종속되는 코드는 전부 여기에만 모여 있다.
 import { Capacitor } from "@capacitor/core";
+import { AdMob, BannerAdPosition, BannerAdSize } from "@capacitor-community/admob";
 import {
   Purchases, LOG_LEVEL, PURCHASES_ERROR_CODE,
 } from "@revenuecat/purchases-capacitor";
@@ -12,6 +13,7 @@ const UID = localStorage.getItem("thelife_uid") || undefined;   // 서버 X-User
 
 // tier -> 이 offering 안에서 찾을 상품 식별자
 const PRODUCT = CFG.products || {};
+const AD_CFG = window.NOVELIST_AD_CONFIG || {};
 
 let _offerings = null;
 
@@ -64,19 +66,49 @@ const ready = init().catch((e) => { console.warn("[IAP] init 실패", e); return
 
 window.NovelistIAP = {
   ready,
-  // 구독(라이트·프로) — tier 이름으로 구매.
+  // 구독(MASTER·PRO) — 서버 호환용 내부 tier 이름(light/pro)으로 구매.
   async purchase(tier) {
     if (!(await ready)) return { ok: false, error: "결제를 사용할 수 없어요." };
     return buyPackage(await packageByProduct(PRODUCT[tier]));
-  },
-  // 소모성(펜) — 스토어 상품 식별자로 구매.
-  async purchaseProduct(productId) {
-    if (!(await ready)) return { ok: false, error: "결제를 사용할 수 없어요." };
-    return buyPackage(await packageByProduct(productId));
   },
   async restore() {
     if (!(await ready)) return { ok: false };
     await Purchases.restorePurchases();
     return { ok: true };
+  },
+};
+
+let adReady = false;
+async function initAds() {
+  if (!Capacitor.isNativePlatform()) return false;
+  await AdMob.initialize({ initializeForTesting: false,
+    tagForChildDirectedTreatment: false, tagForUnderAgeOfConsent: false,
+    maxAdContentRating: "Teen" });
+  adReady = true;
+  return true;
+}
+const adsReady = initAds().catch((e) => { console.warn("[Ads] init 실패", e); return false; });
+const adIds = () => AD_CFG[Capacitor.getPlatform()] || {};
+
+window.NovelistAds = {
+  ready: adsReady,
+  async showBanner() {
+    if (!(await adsReady) || !adIds().banner) return false;
+    await AdMob.showBanner({ adId: adIds().banner,
+      adSize: BannerAdSize.ADAPTIVE_BANNER, position: BannerAdPosition.BOTTOM_CENTER,
+      margin: 0, npa: true });
+    return true;
+  },
+  async hideBanner() {
+    if (!adReady) return;
+    try { await AdMob.hideBanner(); } catch (e) {}
+  },
+  async showInterstitial() {
+    if (!(await adsReady) || !adIds().interstitial) return false;
+    try {
+      await AdMob.prepareInterstitial({ adId: adIds().interstitial, npa: true });
+      await AdMob.showInterstitial();
+      return true;
+    } catch (e) { console.warn("[Ads] 전면 광고 실패", e); return false; }
   },
 };

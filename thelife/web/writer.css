@@ -315,29 +315,6 @@ input.wz-in.one { width: 100%; padding: 13px 14px; border-radius: 13px; font-siz
 .notice-actions.col { flex-direction: column; }
 .notice-actions.col button { width: 100%; }
 
-/* ── 펜 (본문 쓰기용 소모성 재화) ── */
-.pen-bar { display: flex; align-items: center; gap: 8px; margin: 4px 0 0;
-  padding: 9px 12px; border-radius: 11px; background: var(--accent-soft);
-  font-size: 13px; color: var(--text); }
-.pen-bar b { color: var(--accent); font-size: 15px; }
-.pen-bar .pen-ic { font-size: 15px; }
-.pen-bar .pen-sub { color: var(--dim); font-size: 11.5px; }
-.pen-bar .pen-charge { margin-left: auto; padding: 6px 12px; border-radius: 999px;
-  background: var(--grad); color: #fff; border: none; font-weight: 700; font-size: 12.5px; }
-.pen-now { font-size: 14px; margin: 2px 0 4px; }
-.pen-now b { color: var(--accent); font-size: 20px; }
-.pen-packs { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
-.pen-pack { position: relative; display: flex; align-items: center; gap: 12px;
-  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
-  padding: 14px 16px; box-shadow: var(--shadow-sm); }
-.pen-pack-top { display: flex; flex-direction: column; gap: 2px; }
-.pen-pack-top b { font-size: 16px; }
-.pen-per { font-size: 12px; color: var(--dim); }
-.pen-badge { position: absolute; top: -10px; right: 14px; background: var(--grad); color: #fff;
-  font-size: 10.5px; font-weight: 800; padding: 2px 9px; border-radius: 999px; }
-.pen-buy { margin-left: auto; padding: 11px 16px; border-radius: 12px; white-space: nowrap;
-  background: var(--grad); color: #fff; border: none; font-weight: 700; font-size: 14px; }
-
 /* ── 공통 요소 (밝은 테마 대응) ── */
 body.writer input, body.writer select, body.writer textarea {
   background: var(--panel); border: 1px solid var(--line); color: var(--text);
@@ -450,14 +427,10 @@ textarea { width: 100%; font-family: inherit; resize: vertical; line-height: 1.6
 .ch-item small { margin-left: auto; color: var(--dim); font-size: 11.5px; }
 .write-box { display: flex; flex-direction: column; gap: 9px; margin-top: 16px; }
 
-/* 본문 집필 UI — 쓰기 권한이 없으면(무료·라이트) 숨김. 프로는 보인다. */
+/* AI 본문 대필 UI는 판매 앱에서 숨기고 직접 집필은 모든 플랜에 제공한다. */
 /* AI가 본문을 '대신' 써주는 UI만 숨긴다 — 작가가 직접 쓰는 에디터는 그대로 열려 있다. */
 body.nobody #ch-write-box,
 body.nobody #btn-rewrite-all { display: none !important; }
-/* 펜을 안 쓰는 빌드 — 잔액 바와 충전 화면을 아예 감춘다 */
-body.nopen #pen-bar,
-body.nopen #w-pens { display: none !important; }
-
 /* 작가가 직접 쓰는 입구 — 회차 목록 맨 아래 (색·그림자는 button.primary를 그대로 쓴다) */
 body.writer .ch-new { width: 100%; margin-top: 12px; padding: 16px; font-size: 15px; }
 body.writer .ch-len { margin-left: auto; font-size: 12px; color: var(--dim); font-weight: 600; }
@@ -466,8 +439,8 @@ body.writer .ch-len { margin-left: auto; font-size: 12px; color: var(--dim); fon
 body.launch #revise-box { display: none !important; }
 
 /* '구매 복원'은 네이티브 앱에서만 의미가 있다 (웹에선 숨김) */
-#btn-restore, #btn-restore-pens { display: none; }
-body.native #btn-restore, body.native #btn-restore-pens { display: block; }
+#btn-restore { display: none; }
+body.native #btn-restore { display: block; }
 
 /* 광고 (무료 요금제만) */
 .ad-banner {
@@ -905,6 +878,13 @@ body.writer button.primary:hover { box-shadow: none; }
 body.writer input, body.writer select, body.writer textarea {
   border-color: transparent; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line-soft);
 }
+
+.recovery-box { margin: 8px 0 12px; padding: 16px; border: 1px solid var(--line);
+  border-radius: 16px; background: var(--panel); }
+.recovery-box > b { display: block; margin-bottom: 4px; }
+.recovery-box .set-item { margin: 8px 0; }
+.recovery-box input, .recovery-box textarea { width: 100%; margin: 8px 0; }
+.recovery-box textarea { font-size: 12px; word-break: break-all; resize: none; }
 body.writer input:focus, body.writer textarea:focus, body.writer select:focus {
   border-color: transparent; box-shadow: inset 0 0 0 1.5px var(--text);
 }

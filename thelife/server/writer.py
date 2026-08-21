@@ -7,6 +7,8 @@
 작가가 지시하고, 고치고, 다시 쓴다 — 여기서는 조작이 전부다.
 """
 import datetime
+import hashlib
+import hmac
 import io
 import json
 import os
@@ -17,7 +19,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-from fastapi import APIRouter, File, Form, Header, Request, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 
 from . import db
@@ -31,6 +33,85 @@ router = APIRouter(prefix="/api/writer")
 LAUNCH_MODE = os.environ.get("WRITER_LAUNCH_MODE", "1") == "1"
 DEMO_MODE = os.environ.get("NOVELIST_DEMO_MODE", "0") == "1"
 _LAUNCH_OFF = {"ok": False, "error": "이 버전에서는 제공하지 않는 기능이에요."}
+APP_AUTH_SECRET = os.environ.get("APP_AUTH_SECRET", "").strip()
+
+
+def _safe_ai_error() -> str:
+    """외부 AI의 결제·프로젝트·요청 정보는 사용자 응답에 노출하지 않는다."""
+    raw = (llm.last_error or "").lower()
+    if any(mark in raw for mark in
+           ("resourceexhausted", "429", "spending cap", "quota exceeded")):
+        return "현재 AI 이용량이 가득 찼어요. 잠시 후 다시 시도해 주세요."
+    return "AI 연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요."
+
+
+def _device_token(user: str) -> str:
+    if not APP_AUTH_SECRET:
+        return ""
+    return hmac.new(APP_AUTH_SECRET.encode(), user.encode(), hashlib.sha256).hexdigest()
+
+
+def _recovery_code(user: str) -> str:
+    """설치 교체 때 같은 익명 계정을 복구하는 코드. 서버 비밀키로 위조를 막는다."""
+    proof = hmac.new(APP_AUTH_SECRET.encode(), ("recover:" + user).encode(),
+                     hashlib.sha256).hexdigest()[:24]
+    return f"{user}.{proof}"
+
+
+def valid_device_token(user: str, token: str) -> bool:
+    expected = _device_token(user)
+    return bool(expected and token and hmac.compare_digest(expected, token))
+
+
+def allow_device_registration(client_ip: str) -> bool:
+    """무료 계정을 자동 생성해 API 비용을 소진하는 공격을 완화한다 (IP당 시간당 20회)."""
+    if not APP_AUTH_SECRET:
+        return False
+    ip_hash = hmac.new(APP_AUTH_SECRET.encode(), client_ip.encode(),
+                       hashlib.sha256).hexdigest()[:24]
+    hour = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H")
+    with db.connect() as c:
+        return _counter_spend(c, f"authip:{ip_hash}:{hour}", 20)
+
+
+class DeviceAuthBody(BaseModel):
+    user_id: str
+
+
+class RecoveryBody(BaseModel):
+    recovery_code: str
+
+
+@router.post("/auth/device")
+def register_device(body: DeviceAuthBody):
+    """UUID 설치 식별자에 서버 서명을 발급한다. 비밀키가 없으면 안전하게 거절한다."""
+    user = body.user_id.strip()
+    if not re.fullmatch(r"[A-Za-z0-9-]{20,80}", user) or user.lower() == "solo":
+        return {"ok": False, "error": "기기 식별값이 올바르지 않아요."}
+    token = _device_token(user)
+    if not token:
+        return {"ok": False, "error": "서버 보안 설정이 완료되지 않았어요."}
+    return {"ok": True, "device_token": token}
+
+
+@router.get("/auth/recovery-code")
+def get_recovery_code(user: str = Header(default="", alias="X-User-Id")):
+    """현재 익명 계정의 복구 코드. 인증된 기기에서만 호출된다."""
+    if not APP_AUTH_SECRET:
+        return {"ok": False, "error": "서버 보안 설정이 완료되지 않았어요."}
+    return {"ok": True, "recovery_code": _recovery_code(user)}
+
+
+@router.post("/auth/recover")
+def recover_device(body: RecoveryBody):
+    if not APP_AUTH_SECRET:
+        return {"ok": False, "error": "서버 보안 설정이 완료되지 않았어요."}
+    code = body.recovery_code.strip()
+    user, sep, _proof = code.rpartition(".")
+    if (not sep or not re.fullmatch(r"[A-Za-z0-9-]{20,80}", user) or
+            not hmac.compare_digest(_recovery_code(user), code)):
+        return {"ok": False, "error": "복구 코드가 올바르지 않아요."}
+    return {"ok": True, "user_id": user, "device_token": _device_token(user)}
 
 
 # 요금제. 내부의 light 식별자는 기존 결제·저장 데이터 호환을 위해 유지하지만
@@ -59,39 +140,16 @@ TIERS = {
               "max_canon": 100000, "quota_period": "monthly", "world_limit": 20,
               "character_limit": 20, "outline_limit": 10, "sample_limit": 20,
               "export_enabled": True,
-              "monthly_pens": 0, "body_writing": False,
               "price": "9,900원", "period": "/월", "tagline": "프로 작가용", "badge": "추천",
               "best_for": "전업·다작 작가",
               "pitch": "20화까지 상세 줄거리를 설계하고, 작품 수 제한 없이 여러 작품을 관리하세요.",
               "highlight": "20화 설계 · 본문 예시 월 20회 · 작품 무제한"},
 }
-# 기본값 채우기 — 아래 등급은 본문 쓰기/월 펜 없음.
-for _t in TIERS.values():
-    _t.setdefault("monthly_pens", 0)
-    _t.setdefault("body_writing", False)
-
-
 # 스토어 상품 ID → 등급. (앱 커넥트/플레이 콘솔에서 만든 구독 상품 ID와 맞춘다)
 PRODUCT_TIER = {
-    "novelist.light.monthly": "light", "novelist.light.yearly": "light",
-    "novelist.pro.monthly": "pro", "novelist.pro.yearly": "pro",
+    "novelist.master.monthly": "light",
+    "novelist.pro.monthly": "pro",
 }
-
-# 소모성 '펜' 상품 ID → 지급 개수. 펜 1개 = 본문 1편.
-PEN_PRODUCTS = {
-    "novelist.pen.1": 1,
-    "novelist.pens.10": 10,
-    "novelist.pens.50": 50,
-    "novelist.pens.100": 100,
-}
-# 스토어 표시 정보 (플랜 화면 '펜 충전'에 쓰인다). count·price·per(개당).
-PEN_PACKS = [
-    {"product": "novelist.pen.1",   "count": 1,   "price": "₩990",    "per": "₩990"},
-    {"product": "novelist.pens.10", "count": 10,  "price": "₩8,000",  "per": "개당 ₩800"},
-    {"product": "novelist.pens.50", "count": 50,  "price": "₩35,000", "per": "개당 ₩700", "badge": "인기"},
-    {"product": "novelist.pens.100","count": 100, "price": "₩60,000", "per": "개당 ₩600", "badge": "최저가"},
-]
-
 
 def _entitlement(c, user: str):
     """유효한 '구매 등급' — 만료됐으면 무료로 떨어진다. 없으면 None."""
@@ -129,65 +187,10 @@ def _limits(name: str) -> dict:
     return TIERS.get(name, TIERS["free"])
 
 
-# ─────────────────────────── 펜(소모성 재화) ───────────────────────────
-# 펜 1개 = 본문 1편. 서버가 잔액의 유일한 소스 오브 트루스다.
-#  · 프로 구독자는 매달 monthly_pens 개를 자동 지급받는다.
-#  · 스토어에서 펜을 사면 RevenueCat 웹훅(NON_RENEWING_PURCHASE)이 잔액을 올린다.
-def _pen_balance(c, user: str) -> int:
-    try:
-        return max(0, int(db.kv_get(c, f"pens:{user}", "0") or "0"))
-    except (TypeError, ValueError):
-        return 0
-
-
-def _pen_add(c, user: str, n: int) -> int:
-    bal = _pen_balance(c, user) + max(0, int(n))
-    db.kv_set(c, f"pens:{user}", str(bal))
-    return bal
-
-
-def _pen_spend(c, user: str, n: int = 1) -> bool:
-    bal = _pen_balance(c, user)
-    if bal < n:
-        return False
-    db.kv_set(c, f"pens:{user}", str(bal - n))
-    return True
-
-
-def _maybe_grant_monthly_pens(c, user: str) -> None:
-    """프로 구독자에게 이번 달 펜을 아직 안 줬으면 지급한다 (한국시간 기준 월 1회)."""
-    tier = _tier_name(c, user)
-    give = _limits(tier).get("monthly_pens", 0)
-    if give <= 0:
-        return
-    month = db.real_now().strftime("%Y-%m")   # 한국시간 월
-    if db.kv_get(c, f"penmonth:{user}", "") == month:
-        return
-    db.kv_set(c, f"penmonth:{user}", month)
-    _pen_add(c, user, give)
-
-
-def _credit_pen_tx(c, user: str, product_id: str, tx_id: str) -> bool:
-    """스토어 결제 1건으로 펜을 지급한다 — 거래 ID로 중복 지급을 막는다(멱등)."""
-    n = PEN_PRODUCTS.get(product_id, 0)
-    if n <= 0 or not user:
-        return False
-    mark = f"pentx:{tx_id}" if tx_id else ""
-    if mark and db.kv_get(c, mark, ""):
-        return False                          # 이미 지급된 거래
-    _pen_add(c, user, n)
-    if mark:
-        db.kv_set(c, mark, "1")
-    return True
-
-
 def _body_gate(c, user: str):
     """'AI가 본문을 대신 써주는' 기능의 권한을 확인한다. (작가가 직접 쓰는 건 여기 안 걸린다)
-      · 개인 집필 서버(WRITER_LAUNCH_MODE=0): 항상 허용, 펜 소모 없음.
-      · 판매 빌드(=1): 아예 없는 기능이다 — 본문은 작가가 직접 쓴다.
+      판매 앱에는 없는 기능이다 — 본문은 작가가 직접 쓴다.
     반환: (ok, consume, error_dict|None)"""
-    if not LAUNCH_MODE:
-        return True, False, None
     return False, False, {
         "ok": False, "need": "manual",
         "error": "이 앱은 본문을 작가가 직접 씁니다. 회차를 열어 바로 집필해 주세요."}
@@ -209,7 +212,7 @@ for _k, _v in WORLD_BASE.items():
 # ── 판매(런치) 빌드의 플랜 = 판매 앱이 '실제로 하는 것'만 적는다 ──────────────
 # 판매 앱의 정체성: AI가 세계관·인물·플롯·회차별 줄거리를 짜주고,
 # 본문은 작가가 앱 안에서 직접 쓴다.
-#   → AI 본문 대행 / 펜 / 문체 학습은 판매 빌드에 '없다'. 그러니 플랜 문구에서도 뺀다.
+#   → AI 본문 대행 / 문체 학습은 판매 빌드에 '없다'. 그러니 플랜 문구에서도 뺀다.
 #     (없는 걸 팔면 스토어 심사에서도 걸리고, 산 사람이 못 찾는다.)
 #   → 직접 쓰기는 핵심 기능이라 모든 등급에 열려 있다. 등급은 'AI가 짜주는 양'을 나눈다.
 LAUNCH_TIER_COPY = {
@@ -230,9 +233,7 @@ LAUNCH_TIER_COPY = {
 if LAUNCH_MODE:
     for _k, _over in LAUNCH_TIER_COPY.items():
         TIERS[_k].update(_over)
-        TIERS[_k]["style_learning"] = False   # 문체 학습은 AI 본문용 — 판매 빌드엔 없다
-        TIERS[_k]["body_writing"] = False     # AI 본문 대행 없음
-        TIERS[_k]["monthly_pens"] = 0         # 펜도 없음
+        TIERS[_k]["style_learning"] = False   # 문체 학습은 판매 빌드엔 없다
 
 
 def _quota_scope(c, user: str) -> tuple[str, str]:
@@ -251,18 +252,33 @@ def _feature_quota(c, user: str, feature: str, limit_key: str) -> dict:
             "scope": scope, "period": period}
 
 
+def _counter_spend(c, key: str, limit: int) -> bool:
+    """동시 요청도 한도를 넘지 않도록 DB 한 문장으로 증가시킨다."""
+    if limit <= 0:
+        return False
+    row = c.execute(
+        "INSERT INTO kv (k,v) VALUES (?,?) "
+        "ON CONFLICT(k) DO UPDATE SET v=CAST(kv.v AS INTEGER)+1 "
+        "WHERE CAST(kv.v AS INTEGER) < ? RETURNING v",
+        (key, "1", limit),
+    ).fetchone()
+    return row is not None
+
+
+def _counter_refund(c, key: str) -> None:
+    c.execute("UPDATE kv SET v=CAST(v AS INTEGER)-1 WHERE k=? AND CAST(v AS INTEGER)>0", (key,))
+
+
 def _feature_spend(c, user: str, feature: str, limit_key: str) -> dict | None:
     q = _feature_quota(c, user, feature, limit_key)
-    if q["left"] <= 0:
+    if not _counter_spend(c, f"{feature}q:{user}:{q['scope']}", q["base"]):
         return None
-    db.kv_set(c, f"{feature}q:{user}:{q['scope']}", str(q["used"] + 1))
     return _feature_quota(c, user, feature, limit_key)
 
 
 def _feature_refund(c, user: str, feature: str, limit_key: str) -> dict:
     q = _feature_quota(c, user, feature, limit_key)
-    if q["used"] > 0:
-        db.kv_set(c, f"{feature}q:{user}:{q['scope']}", str(q["used"] - 1))
+    _counter_refund(c, f"{feature}q:{user}:{q['scope']}")
     return _feature_quota(c, user, feature, limit_key)
 
 
@@ -286,17 +302,15 @@ def _world_quota(c, user: str) -> dict:
 
 def _world_spend(c, user: str) -> dict | None:
     q = _world_quota(c, user)
-    if q["left"] <= 0:
+    if not _counter_spend(c, f"worldq:{user}:{q['scope']}", q["base"]):
         return None
-    db.kv_set(c, f"worldq:{user}:{q['day']}", str(q["used"] + 1))
     return _world_quota(c, user)
 
 
 def _world_refund(c, user: str) -> dict:
     """AI 연결/응답 실패 때 먼저 차감한 1회를 안전하게 되돌린다."""
     q = _world_quota(c, user)
-    if q["used"] > 0:
-        db.kv_set(c, f"worldq:{user}:{q['day']}", str(q["used"] - 1))
+    _counter_refund(c, f"worldq:{user}:{q['scope']}")
     return _world_quota(c, user)
 
 
@@ -320,8 +334,6 @@ def writer_config(user: str = Header(default="solo", alias="X-User-Id"),
     """앱이 시작할 때 기능·요금제 상태를 알려준다."""
     with db.connect() as c:
         t = _tier_name(c, user)
-        _maybe_grant_monthly_pens(c, user)     # 프로면 이번 달 펜 지급
-        pens = _pen_balance(c, user)
         ent = None
         raw = db.kv_get(c, f"ent:{user}", "")
         if raw and _entitlement(c, user):
@@ -332,7 +344,7 @@ def writer_config(user: str = Header(default="solo", alias="X-User-Id"),
     # 두 가지를 구분한다.
     #  · writing_enabled — 작가가 '직접' 쓰는 에디터. 핵심 기능이라 모든 등급에 열려 있다.
     #  · ai_body        — AI가 본문을 '대신' 써주는 기능. 판매 빌드에는 없다.
-    ai_body = not LAUNCH_MODE           # 개인 서버는 등급과 무관하게 허용(_body_gate와 동일 규칙)
+    ai_body = False
     with db.connect() as c:
         quota = _sample_quota(c, user)
         world_quota = _world_quota(c, user)
@@ -342,10 +354,9 @@ def writer_config(user: str = Header(default="solo", alias="X-User-Id"),
             "test_mode": test_mode,
             "ai_connected": not llm.is_mock,
             "writing_enabled": True, "ai_body": ai_body,
-            "pens_enabled": not LAUNCH_MODE, "sample": quota, "sample_chars": SAMPLE_CHARS,
+            "sample": quota, "sample_chars": SAMPLE_CHARS,
             "world_quota": world_quota,
-            "tier": t, "limits": TIERS[t], "tiers": TIERS, "expires_at": ent,
-            "pens": pens, "pen_needed": False, "pen_packs": ([] if LAUNCH_MODE else PEN_PACKS)}
+            "tier": t, "limits": TIERS[t], "tiers": TIERS, "expires_at": ent}
 
 
 class TierBody(BaseModel):
@@ -395,27 +406,13 @@ def _rc_subscriber(app_user_id: str):
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-    except (urllib.error.URLError, urllib.error.HTTPError, ValueError, TimeoutError):
-        return None
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return None
+        raise RuntimeError("RevenueCat 조회 실패") from exc
+    except (urllib.error.URLError, ValueError, TimeoutError) as exc:
+        raise RuntimeError("RevenueCat 조회 실패") from exc
     return (data or {}).get("subscriber") or None
-
-
-def _rc_has_nonsub(app_user_id: str, product_id: str, tx_id: str = "") -> str:
-    """이 사용자가 해당 소모성 상품을 실제로 샀는지 RevenueCat로 확인한다.
-    반환: 스토어 거래 ID(멱등 키)로 쓸 문자열, 없으면 ""."""
-    sub = _rc_subscriber(app_user_id)
-    if not sub:
-        return ""
-    txs = (sub.get("non_subscriptions") or {}).get(product_id) or []
-    if not txs:
-        return ""
-    if tx_id:                                   # 특정 거래를 지정했으면 그것만 인정
-        for t in txs:
-            if tx_id in (t.get("store_transaction_id"), t.get("id")):
-                return t.get("store_transaction_id") or t.get("id") or tx_id
-        return ""
-    last = txs[-1]                              # 지정 안 했으면 가장 최근 거래
-    return last.get("store_transaction_id") or last.get("id") or ""
 
 
 def _rc_lookup(app_user_id: str):
@@ -444,7 +441,10 @@ def _rc_lookup(app_user_id: str):
 
 def _grant_from_rc(user: str) -> dict:
     """RevenueCat 확인 결과로 ent를 갱신(활성 없으면 무료로 내림). 결과 dict 반환."""
-    v = _rc_lookup(user)
+    try:
+        v = _rc_lookup(user)
+    except RuntimeError:
+        return {"ok": False, "error": "구독 상태를 확인하지 못했어요. 잠시 후 다시 시도해 주세요."}
     with db.connect() as c:
         if v:
             ent = {"tier": v["tier"], "platform": "revenuecat",
@@ -475,57 +475,20 @@ def set_entitlement(body: EntitlementBody, user: str = Header(default="solo", al
 async def rc_webhook(request: Request):
     """RevenueCat 웹훅 — 갱신/해지/환불/만료 시 해당 사용자 등급을 자동 재동기화.
     RevenueCat 대시보드의 Webhook Authorization 헤더 값과 대조해 인증한다."""
-    if not REVENUECAT_WEBHOOK_AUTH or \
-       request.headers.get("authorization", "") != REVENUECAT_WEBHOOK_AUTH:
-        return {"ok": False}                   # 인증 실패 — 조용히 무시
+    supplied = request.headers.get("authorization", "")
+    if not REVENUECAT_WEBHOOK_AUTH or not secrets.compare_digest(
+            supplied, REVENUECAT_WEBHOOK_AUTH):
+        raise HTTPException(status_code=401, detail="unauthorized")
     try:
         payload = await request.json()
     except Exception:
         return {"ok": False}
     ev = (payload or {}).get("event") or {}
     uid = ev.get("app_user_id") or ev.get("original_app_user_id")
-    if not uid:
+    if not uid or not re.fullmatch(r"[A-Za-z0-9-]{20,80}", str(uid)):
         return {"ok": True}
-    product = ev.get("product_id") or ""
-    if product in PEN_PRODUCTS:                 # 소모성 '펜' 구매 → 잔액 적립(멱등)
-        tx = str(ev.get("transaction_id") or ev.get("id") or "")
-        with db.connect() as c:
-            _credit_pen_tx(c, uid, product, tx)
-    else:                                       # 구독 이벤트 → 등급 재동기화
-        _grant_from_rc(uid)
+    _grant_from_rc(uid)                         # 구독 이벤트 → 등급 재동기화
     return {"ok": True}
-
-
-@router.get("/pens")
-def get_pens(user: str = Header(default="solo", alias="X-User-Id")):
-    """현재 펜 잔액 (프로면 이번 달 지급분 포함)."""
-    with db.connect() as c:
-        _maybe_grant_monthly_pens(c, user)
-        return {"ok": True, "pens": _pen_balance(c, user), "packs": PEN_PACKS}
-
-
-class PenPurchaseBody(BaseModel):
-    product_id: str = ""
-    transaction_id: str = ""
-
-
-@router.post("/pens/purchase")
-def pens_purchase(body: PenPurchaseBody, user: str = Header(default="solo", alias="X-User-Id")):
-    """앱이 소모성 결제 직후 호출 — 서버가 RevenueCat로 확인해 펜을 적립한다(멱등).
-    웹훅이 먼저 처리했다면 여기선 중복 없이 현재 잔액만 돌려준다."""
-    if not LAUNCH_MODE:                         # 개인 서버는 결제가 필요 없다
-        return {"ok": False, "error": "이 서버에서는 펜 구매가 필요 없어요."}
-    if body.product_id not in PEN_PRODUCTS:
-        return {"ok": False, "error": "알 수 없는 상품이에요."}
-    if not REVENUECAT_SECRET:
-        return {"ok": False, "error": "결제 검증을 아직 사용할 수 없어요."}
-    # RevenueCat에 이 사용자의 비구독(소모성) 거래가 실제로 있는지 확인한 뒤 적립.
-    # 반환된 스토어 거래 ID를 멱등 키로 써서 웹훅과 중복 지급을 막는다.
-    verified_tx = _rc_has_nonsub(user, body.product_id, body.transaction_id)
-    with db.connect() as c:
-        if verified_tx:
-            _credit_pen_tx(c, user, body.product_id, verified_tx)
-        return {"ok": True, "pens": _pen_balance(c, user)}
 
 
 ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "")
@@ -600,28 +563,12 @@ def admin_grant(body: GrantBody, secret: str = Header(default="", alias="X-Admin
     return {"ok": True, "tier": body.tier, "expires_at": exp}
 
 
-class PenGrantBody(BaseModel):
-    user_id: str
-    pens: int = 5
-
-
-@router.post("/admin/pens")
-def admin_pens(body: PenGrantBody, secret: str = Header(default="", alias="X-Admin-Secret")):
-    """운영자 수동 펜 지급 (테스트·보상용)."""
-    if not ADMIN_SECRET or secret != ADMIN_SECRET:
-        return {"ok": False, "error": "권한이 없어요."}
-    with db.connect() as c:
-        bal = _pen_add(c, body.user_id, max(0, body.pens))
-    return {"ok": True, "pens": bal}
 
 
 @router.get("/account/export")
 def export_account(user: str = Header(default="solo", alias="X-User-Id")):
-    """내 데이터 전부 내보내기 (데이터 이동권)."""
+    """내 데이터 전부 내보내기 (개인정보 열람·이동용, 요금제와 무관)."""
     with db.connect() as c:
-        if not _limits(_tier_name(c, user)).get("export_enabled"):
-            return {"ok": False, "need": "tier",
-                    "error": "파일 내보내기는 MASTER 플랜부터 제공됩니다."}
         works = [dict(r) for r in c.execute(
             "SELECT * FROM works WHERE user_id=? ORDER BY id", (user,)).fetchall()]
         for w in works:
@@ -643,9 +590,8 @@ def delete_account(user: str = Header(default="solo", alias="X-User-Id")):
         c.execute("DELETE FROM kv WHERE k=?", (f"tier:{user}",))
         c.execute("DELETE FROM kv WHERE k=?", (f"testtier:{user}",))
         c.execute("DELETE FROM kv WHERE k=?", (f"ent:{user}",))
-        c.execute("DELETE FROM kv WHERE k=?", (f"pens:{user}",))
-        c.execute("DELETE FROM kv WHERE k=?", (f"penmonth:{user}",))
-        c.execute("DELETE FROM kv WHERE k LIKE ?", (f"aiq:{user}:%",))
+        for prefix in ("aiq", "worldq", "characterq", "outlineq", "smpl"):
+            c.execute("DELETE FROM kv WHERE k LIKE ?", (f"{prefix}:{user}:%",))
         c.execute("DELETE FROM kv WHERE k=?", (f"active_avatar:{user}",))
         for r in c.execute("SELECT k, v FROM kv WHERE k LIKE 'trash:%'").fetchall():
             try:
@@ -724,6 +670,8 @@ def analyze_style(sample: str) -> str:
 def learn_style(work_id: int, body: StyleBody,
                 user: str = Header(default="solo", alias="X-User-Id")):
     """문체 학습 — 표본을 넣으면 이 작품의 모든 회차가 그 결로 쓰인다."""
+    if LAUNCH_MODE:
+        return _LAUNCH_OFF
     sample = body.sample.strip()
     if len(sample) < 300:
         return {"ok": False, "error": "문체를 배우려면 표본이 300자는 넘어야 해요. 더 길게 붙여넣어 주세요."}
@@ -973,11 +921,7 @@ async def create_from_brief(
             break
         plan = None
     if plan is None:
-        if llm.last_error:
-            hint = (f"AI 호출 오류 — {llm.last_error}. "
-                    "사용량 한도 초과나 크레딧 소진이면 콘솔에서 해결하거나 Gemini로 전환하세요.")
-        else:
-            hint = f"형식 오류 (응답 앞부분: {last_raw[:150] or '빈 응답'})"
+        hint = _safe_ai_error()
         return {"ok": False, "error": "설계도 생성에 실패했어요. 설명서는 반영되지 않았어요.",
                 "detail": hint}
 
@@ -1228,8 +1172,8 @@ def build_work(b: BuildBody, user: str = Header(default="solo", alias="X-User-Id
              for i, name in enumerate(BEATS)]
 
     canon = {cc.name.strip(): cc.desc.strip() for cc in b.canon if cc.name.strip()}
-    sample = b.style_sample.strip()
-    profile = analyze_style(sample) if len(sample) >= 300 else ""
+    sample = ""
+    profile = ""
 
     with db.connect() as c:
         work_id = c.insert_id(
@@ -1343,7 +1287,7 @@ def world_questions(b: WorldQuestionsBody,
     raw = llm.write(prompt, mock_text="", max_tokens=700)
     if llm.last_error:
         return {"ok": False, "error": "질문을 만들지 못했어요. 다시 시도해 주세요.",
-                "detail": llm.last_error, "world_quota": quota}
+                "detail": _safe_ai_error(), "world_quota": quota}
     data = parse_llm_json(raw) or {}
     question = str(data.get("question", "")).strip()[:200]
     if not question:
@@ -1398,7 +1342,7 @@ def world_next(b: WorldNextBody,
     raw = llm.write(prompt, mock_text="", max_tokens=500)
     if llm.last_error:
         return {"ok": False, "error": "다음 질문을 만들지 못했어요. 다시 눌러 주세요.",
-                "detail": llm.last_error}
+                "detail": _safe_ai_error()}
     data = parse_llm_json(raw) or {}
     done = bool(data.get("done"))
     question = str(data.get("question", "")).strip()[:200]
@@ -1428,6 +1372,10 @@ def draft_brief(b: BuildBody, user: str = Header(default="solo", alias="X-User-I
                 return {"ok": False, "need": "world_quota", "world_quota": quota,
                         "error": "이용 가능한 세계관 생성 횟수를 모두 사용했어요."}
             quota = _world_spend(c, user)
+            if quota is None:
+                return {"ok": False, "need": "world_quota",
+                        "world_quota": _world_quota(c, user),
+                        "error": "이용 가능한 세계관 생성 횟수를 모두 사용했어요."}
             charged_world = True
     if llm.is_mock:
         if not DEMO_MODE:
@@ -1735,7 +1683,8 @@ def fill_cast(b: CastFillBody, user: str = Header(default="solo", alias="X-User-
         if llm.last_error:
             with db.connect() as c:
                 _feature_refund(c, user, "character", "character_limit")
-            return {"ok": False, "error": "인물 설정을 채우지 못했어요.", "detail": llm.last_error}
+            return {"ok": False, "error": "인물 설정을 채우지 못했어요.",
+                    "detail": _safe_ai_error()}
         rows = []
 
     specs = {ch["index"]: {f["id"]: f for f in ch["fields"]} for ch in clean}
@@ -1850,7 +1799,7 @@ def suggest_choice(b: SuggestBody, user: str = Header(default="solo", alias="X-U
 {{"picked": ["보기 그대로 정확히"], "reason": "왜 이게 어울리는지 한 문장"}}"""
     raw = llm.write(prompt, mock_text="", max_tokens=600)
     if llm.last_error:
-        return {"ok": False, "error": "추천을 받지 못했어요.", "detail": llm.last_error}
+        return {"ok": False, "error": "추천을 받지 못했어요.", "detail": _safe_ai_error()}
     data = parse_llm_json(raw) or {}
     picked = [p for p in (data.get("picked") or []) if p in opts][:n]
     if not picked:                                   # 형식이 틀리면 비슷한 것 찾아보기
@@ -1897,7 +1846,9 @@ def write_sample(b: SampleBody, user: str = Header(default="solo", alias="X-User
         if q["left"] <= 0:
             return {"ok": False, "need": "tier", "sample": q,
                     "error": "이번 달 1,000자 본문 쓰기 횟수를 모두 사용했어요."}
-        db.kv_set(c, f"smpl:{user}:{q['day']}", str(q["used"] + 1))   # 먼저 차감(중복 요청 방지)
+        if not _counter_spend(c, f"smpl:{user}:{q['scope']}", q["base"]):
+            return {"ok": False, "need": "tier", "sample": _sample_quota(c, user),
+                    "error": "이번 달 1,000자 본문 쓰기 횟수를 모두 사용했어요."}
         # 작품에서 부른 경우엔 그 화의 줄거리를 함께 넣어 준다
         plan_line = ""
         if b.work_id:
@@ -1940,10 +1891,10 @@ def write_sample(b: SampleBody, user: str = Header(default="solo", alias="X-User
     if not text:
         with db.connect() as c:                       # 실패했으면 차감을 되돌린다
             q2 = _sample_quota(c, user)
-            db.kv_set(c, f"smpl:{user}:{q2['day']}", str(max(0, q2["used"] - 1)))
+            _counter_refund(c, f"smpl:{user}:{q2['scope']}")
             back = _sample_quota(c, user)
         return {"ok": False, "sample": back, "error": "예시를 만들지 못했어요. 다시 시도해 주세요.",
-                "detail": llm.last_error or "빈 응답"}
+                "detail": _safe_ai_error()}
     with db.connect() as c:
         left = _sample_quota(c, user)
     return {"ok": True, "text": text, "chars": len(text), "note": SAMPLE_NOTE, "sample": left}
@@ -2026,7 +1977,7 @@ Save the Cat 15비트를 회차 진행률에 맞춰 배치하고, 반드시 고�
         with db.connect() as c:
             _feature_refund(c, user, "outline", "outline_limit")
         return {"ok": False, "error": "회차 전개 생성에 실패했어요. 한 번 더 시도해 주세요.",
-                "detail": (llm.last_error or (raw[:150] or "빈 응답"))}
+                "detail": _safe_ai_error()}
     outline = []
     for it in items:
         if not isinstance(it, dict):
@@ -2093,10 +2044,7 @@ def create_work(body: WorkBody, user: str = Header(default="solo", alias="X-User
         if llm.is_mock:
             plan = _mock_setup(body)  # 데모/오프라인 체험용 (직접 입력 경로에 한함)
         else:
-            hint = (f"AI 호출 오류 — {llm.last_error}. 크레딧/사용량 한도를 확인하세요."
-                    if llm.last_error else
-                    ("응답이 비어 있음 — API 키/모델 설정 확인 필요"
-                     if not last_raw.strip() else f"형식 오류 (응답 앞부분: {last_raw[:120]})"))
+            hint = _safe_ai_error()
             return {"ok": False, "error": "설계도 생성에 실패했어요. 한 번 더 시도해 주세요.",
                     "detail": hint}
 
@@ -2109,9 +2057,8 @@ def create_work(body: WorkBody, user: str = Header(default="solo", alias="X-User
         for i, x in enumerate(beats):
             x["idx"], x["name"] = i, BEATS[i]
 
-    # 문체 표본이 함께 오면 생성 시점에 학습한다
-    sample = body.style_sample.strip()
-    profile = analyze_style(sample) if len(sample) >= 300 else ""
+    sample = ""
+    profile = ""
 
     with db.connect() as c:
         work_id = c.insert_id(
@@ -2175,6 +2122,27 @@ def get_work(work_id: int, user: str = Header(default="solo", alias="X-User-Id")
                                                "relations", "beats", "brief", "outline", "canon",
                                                "style_profile", "style_sample")},
                 "chapters": chapters}
+
+
+@router.get("/works/{work_id}/manuscript")
+def export_manuscript(work_id: int,
+                      user: str = Header(default="solo", alias="X-User-Id")):
+    """작품 원고 파일 내보내기. 개인정보 사본과 달리 요금제 상품 기능이다."""
+    with db.connect() as c:
+        if not _limits(_tier_name(c, user)).get("export_enabled"):
+            return {"ok": False, "need": "tier",
+                    "error": "작품 파일 내보내기는 MASTER 플랜부터 제공됩니다."}
+        w = _load_work(c, work_id, user)
+        if not w:
+            return {"ok": False, "error": "작품을 찾을 수 없어요."}
+        chapters = c.execute(
+            "SELECT no,title,body FROM chapters WHERE work_id=? ORDER BY no",
+            (work_id,)).fetchall()
+    parts = [w["title"]]
+    for ch in chapters:
+        parts.append(f"{ch['no']}화. {ch['title']}\n\n{ch['body'] or ''}")
+    safe = re.sub(r"[^0-9A-Za-z가-힣._ -]", "_", w["title"]).strip() or "내작품"
+    return {"ok": True, "filename": safe + ".txt", "text": "\n\n\n".join(parts)}
 
 
 class BibleBody(BaseModel):
@@ -2356,10 +2324,8 @@ def revise_bible(work_id: int, body: ReviseBody,
             break
         plan = None
     if plan is None:
-        print(f"[writer] 설정 수정 실패. 응답 앞부분: {last_raw[:300]}", flush=True)
-        hint = (f"AI 호출 오류 — {llm.last_error}" if llm.last_error
-                else ("응답이 비어 있음 — API 키/사용량 한도 확인" if not last_raw.strip()
-                      else f"형식 오류 (응답 앞부분: {last_raw[:120]})"))
+        print("[writer] 설정 수정 실패: AI 응답 형식 오류", flush=True)
+        hint = _safe_ai_error()
         return {"ok": False, "error": "수정에 실패했어요. 명령을 조금 다르게 써서 다시 시도해 주세요.",
                 "detail": hint}
 
@@ -2789,7 +2755,7 @@ class BlankChapterBody(BaseModel):
 @router.post("/works/{work_id}/chapters/blank")
 def open_blank_chapter(work_id: int, body: BlankChapterBody,
                        user: str = Header(default="solo", alias="X-User-Id")):
-    """작가가 '직접 쓸' 빈 회차를 연다 — AI를 안 쓰고, 펜도 안 쓰고, 등급 제한도 없다.
+    """작가가 '직접 쓸' 빈 회차를 연다 — AI를 안 쓰고, 등급 제한도 없다.
     이 앱의 핵심 기능이라 무료도 쓸 수 있다. 이미 있는 회차면 그걸 그대로 돌려준다."""
     with db.connect() as c:
         w = _load_work(c, work_id, user)
@@ -2822,7 +2788,7 @@ def open_blank_chapter(work_id: int, body: BlankChapterBody,
 def write_chapter(work_id: int, body: ChapterBody,
                   user: str = Header(default="solo", alias="X-User-Id")):
     with db.connect() as c:
-        ok, consume, err = _body_gate(c, user)
+        ok, _consume, err = _body_gate(c, user)
         if not ok:
             return err
         w = _load_work(c, work_id, user)
@@ -2840,17 +2806,14 @@ def write_chapter(work_id: int, body: ChapterBody,
             w, no, beat, prev, body.directive.strip())
         if err:
             return {"ok": False, "error": "회차 생성에 실패했어요. 저장하지 않았어요.",
-                    "detail": f"AI 호출 오류 — {err}. 크레딧/사용량 한도를 확인하거나 Gemini로 전환하세요."}
+                    "detail": _safe_ai_error()}
         ch_id = c.insert_id(
             "INSERT INTO chapters (work_id, no, title, body, summary, state_json, directive, "
             "beat_idx, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,datetime('now'),datetime('now'))",
             (work_id, no, title, text, summary, "", body.directive.strip(),
              beat_for(no, w["total_chapters"])),
         )
-        if consume:
-            _pen_spend(c, user, 1)
-        return {"ok": True, "id": ch_id, "no": no, "chars": len(text),
-                "pens": _pen_balance(c, user)}
+        return {"ok": True, "id": ch_id, "no": no, "chars": len(text)}
 
 
 def _parse_chapter(raw: str, no: int):
@@ -2901,7 +2864,7 @@ def _continue_prompt(w: dict, no: int, beat: dict, body_so_far: str, directive: 
 def regen_chapter(chapter_id: int, body: ChapterBody,
                   user: str = Header(default="solo", alias="X-User-Id")):
     with db.connect() as c:
-        ok, consume, gerr = _body_gate(c, user)   # 다시 쓰기도 본문 생성 → 프로+펜
+        ok, _consume, gerr = _body_gate(c, user)
         if not ok:
             return gerr
         r = c.execute(
@@ -2924,7 +2887,7 @@ def regen_chapter(chapter_id: int, body: ChapterBody,
             w, r["no"], beat, prev, body.directive.strip(), later)
         if err:
             return {"ok": False, "error": "다시 쓰기에 실패했어요. 기존 회차는 그대로 유지됩니다.",
-                    "detail": f"AI 호출 오류 — {err}. 크레딧/사용량 한도를 확인하세요."}
+                    "detail": _safe_ai_error()}
         # 덮어쓰기 전에 이전 본문을 휴지통에 보관한다 — 다시 쓰기도 언제든 되돌릴 수 있게.
         old_row = c.execute(
             "SELECT title, body, summary, state_json, directive FROM chapters WHERE id=?",
@@ -2934,10 +2897,7 @@ def regen_chapter(chapter_id: int, body: ChapterBody,
         c.execute("UPDATE chapters SET title=?, body=?, summary=?, state_json=?, directive=?, "
                   "updated_at=datetime('now') WHERE id=?",
                   (title, text, summary, "", body.directive.strip(), chapter_id))
-        if consume:
-            _pen_spend(c, user, 1)
-        pens = _pen_balance(c, user)
-    return {"ok": True, "undo": undo, "pens": pens}
+    return {"ok": True, "undo": undo}
 
 
 @router.put("/chapters/{chapter_id}")

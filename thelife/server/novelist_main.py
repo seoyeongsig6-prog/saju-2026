@@ -6,7 +6,7 @@
 import os
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -18,7 +18,7 @@ os.environ.setdefault("WRITER_LAUNCH_MODE", "1")
 from . import db, writer
 
 
-app = FastAPI(title="The Novelist")
+app = FastAPI(title="The Novelist", docs_url=None, redoc_url=None, openapi_url=None)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -34,9 +34,50 @@ WEB = Path(__file__).resolve().parent.parent / "web"
 db.init()
 
 
+@app.middleware("http")
+async def production_security(request: Request, call_next):
+    path = request.url.path
+    try:
+        if int(request.headers.get("content-length", "0")) > 10 * 1024 * 1024:
+            return JSONResponse(status_code=413,
+                                content={"ok": False, "error": "파일이나 내용이 너무 커요."})
+    except ValueError:
+        return JSONResponse(status_code=400, content={"ok": False, "error": "잘못된 요청이에요."})
+    if path == "/api/writer/auth/device":
+        client_ip = request.client.host if request.client else "unknown"
+        if not writer.allow_device_registration(client_ip):
+            return JSONResponse(status_code=429,
+                                content={"ok": False, "error": "잠시 후 다시 시도해 주세요."})
+    # 공개 등록, RevenueCat 웹훅과 운영자 API는 각각 별도 비밀값으로 검증한다.
+    exempt = (path in ("/api/writer/auth/device", "/api/writer/auth/recover") or
+              path == "/api/writer/rc-webhook" or
+              path.startswith("/api/writer/admin/"))
+    if path.startswith("/api/writer/") and not exempt:
+        user = request.headers.get("X-User-Id", "")
+        token = request.headers.get("X-Device-Token", "")
+        if not writer.valid_device_token(user, token):
+            return JSONResponse(status_code=401,
+                                content={"ok": False, "error": "기기 인증이 필요해요."})
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; connect-src 'self' https: capacitor:; "
+        "object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
+    if request.url.scheme == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
+
 @app.exception_handler(Exception)
 async def safe_errors(request, exc):
-    print(f"[novelist] {type(exc).__name__}: {exc}", flush=True)
+    # 예외 본문에는 DB 주소나 외부 API 응답이 섞일 수 있어 운영 로그에는 종류만 남긴다.
+    print(f"[novelist] {type(exc).__name__}", flush=True)
     return JSONResponse(
         status_code=500,
         content={"ok": False, "error": "잠시 문제가 생겼어요. 잠시 후 다시 시도해 주세요."},
@@ -77,10 +118,19 @@ def terms_page():
     return FileResponse(WEB / "terms.html")
 
 
+@app.get("/delete-account")
+def delete_account_page():
+    """Google Play의 외부 계정·데이터 삭제 URL로 제출하는 공개 페이지."""
+    return FileResponse(WEB / "delete-account.html")
+
+
 @app.get("/api/health")
 def health():
-    return {"ok": True, "app": "novelist", "launch_mode": writer.LAUNCH_MODE,
-            "db": db.status()}
+    state = db.status()
+    ready = bool(writer.APP_AUTH_SECRET and state.get("using") == "postgres" and not writer.llm.is_mock)
+    return {"ok": True, "ready": ready, "app": "novelist",
+            "launch_mode": writer.LAUNCH_MODE, "database": state.get("using"),
+            "ai_connected": not writer.llm.is_mock, "auth_configured": bool(writer.APP_AUTH_SECRET)}
 
 
 class FreshStatic(StaticFiles):

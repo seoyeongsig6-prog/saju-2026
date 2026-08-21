@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">더 노벨리스트</string>
+    <string name="title_activity_main">더 노벨리스트</string>
+    <string name="package_name">com.thenovelist.app</string>
+    <string name="custom_url_scheme">com.thenovelist.app</string>
+    <string name="admob_app_id">ca-app-pub-3940256099942544~3347511713</string>
+</resources>
