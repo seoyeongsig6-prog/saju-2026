@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Life</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- ===== 아바타 생성 화면 ===== -->
+<div id="view-create" class="view hidden">
+  <div class="create-hero">
+    <h1>The Life</h1>
+    <p class="tagline">가장 너답게, 가장 특별한 삶을 경험하라</p>
+    <button id="btn-back-main" class="ghost small hidden">← 지켜보던 삶으로 돌아가기</button>
+  </div>
+
+  <div class="create-section">
+    <h2>누구의 삶을 지켜볼까요?</h2>
+    <p class="hint">역사 속 실존 인물의 이름을 쓰면 그의 실제 생애가,<br>
+       상상의 이름을 쓰면 당신이 그리는 삶이 세계가 됩니다.</p>
+    <div class="form">
+      <input id="c-name" placeholder="이름 — 누구든 (예: 이순신, 김철수, 나…)">
+      <input id="c-goal" placeholder="인생 목표 — 자유롭게 쓰세요 (비우면 그다운 목표를 정해줘요)">
+      <button id="btn-more" class="ghost small">자세히 정하기 ▾ (선택)</button>
+      <div id="more-fields" class="hidden form">
+        <div class="row2">
+          <input id="c-age" placeholder="나이">
+          <input id="c-occupation" placeholder="직업 (예: 목수, 어부, 해적…)">
+        </div>
+        <input id="c-era" placeholder="시대·배경 — 자유롭게 (예: 1597년 조선, 대항해시대, 현대 서울)">
+        <input id="c-persona" placeholder="성격 (예: 신중하지만 정이 많다)">
+      </div>
+      <button id="btn-custom" class="primary">이 삶을 시작한다</button>
+    </div>
+    <div id="search-result" class="search-result hidden"></div>
+  </div>
+
+  <div class="create-section">
+    <h2>막막하면, 예시로 시작해보기</h2>
+    <div id="preset-list" class="chip-row"></div>
+    <p class="hint">누르면 위 칸이 채워질 뿐이에요 — 마음대로 고쳐 쓰세요.</p>
+  </div>
+
+  <p class="fine">이 게임 속의 나에겐 단 한 발자국도 접근할 수 없습니다.<br>당신은 그저 지켜볼 뿐 — 시즌에 딱 세 번의 행운을 빼고는.</p>
+</div>
+
+<!-- ===== 홈 (대시보드 — 스토리 없음) ===== -->
+<div id="view-home" class="view hidden">
+  <div class="home-head">
+    <div>
+      <h1 class="home-title">The Life</h1>
+      <p class="home-sub">지켜보는 삶들</p>
+    </div>
+    <div class="luck-box" id="home-luck-box"><span class="luck-icon">✦</span> <span id="home-luck">0</span></div>
+  </div>
+  <div id="story-cards" class="story-cards"></div>
+  <p class="fine" style="margin-top:auto">당신은 그저 지켜볼 뿐 — 시즌에 딱 세 번의 행운을 빼고는.</p>
+</div>
+
+<!-- ===== 스토리 화면 ===== -->
+<div id="view-main" class="view hidden">
+  <header>
+    <div class="head-top">
+      <div id="btn-home" style="cursor:pointer">
+        <div id="h-name" class="h-name">‹ <span id="h-name-text"></span></div>
+        <div id="h-goal" class="h-goal"></div>
+      </div>
+      <div class="h-right">
+        <div id="h-day" class="h-day"></div>
+        <button id="btn-reset" title="새 삶 시작">↺</button>
+      </div>
+    </div>
+    <div class="head-bottom">
+      <div class="luck-box" id="btn-gauge">
+        <span class="luck-icon">✦</span> <span id="h-luck">0</span>
+      </div>
+      <div class="slots" id="h-slots" title="이번 시즌 남은 개입"></div>
+      <button id="btn-intervene" class="intervene-btn">행운 보내기</button>
+    </div>
+    <div class="progress"><div id="h-progress" class="progress-fill"></div></div>
+  </header>
+
+  <main id="panes">
+    <!-- 지금 -->
+    <section id="pane-now" class="pane">
+      <div id="hunch-area"></div>
+      <div class="now-time" id="now-time"></div>
+      <div id="now-scene" class="chat"></div>
+      <button id="btn-peek" class="peek">다시 들여다보기</button>
+    </section>
+    <!-- 그동안 -->
+    <section id="pane-feed" class="pane hidden">
+      <div id="feed-list" class="feed"></div>
+    </section>
+    <!-- 상태 (아바타 대시보드) -->
+    <section id="pane-dash" class="pane hidden">
+      <div id="dash-body"></div>
+    </section>
+    <!-- 이야기 -->
+    <section id="pane-story" class="pane hidden">
+      <div id="story-body"></div>
+    </section>
+  </main>
+
+  <nav>
+    <button data-pane="now" class="tab active">지금</button>
+    <button data-pane="feed" class="tab">그동안 <span id="unread" class="badge hidden"></span></button>
+    <button data-pane="dash" class="tab">상태</button>
+    <button data-pane="story" class="tab">이야기</button>
+  </nav>
+</div>
+
+<!-- ===== 행운 모달 ===== -->
+<div id="modal" class="modal hidden">
+  <div class="modal-card">
+    <h3>행운 보내기</h3>
+    <p class="modal-sub">아바타는 당신을 모릅니다. 행운은 그 세계의 우연으로 배달됩니다.<br>
+       이번 시즌 남은 기회: <b id="m-left"></b>번 · 보유 행운: <b id="m-luck"></b></p>
+    <div class="size-list">
+      <button class="size" data-size="소"><b>작은 행운</b><span>✦10 — 잔잔한 도움</span></button>
+      <button class="size" data-size="중"><b>큰 행운</b><span>✦50 — 은인이 나선다</span></button>
+      <button class="size" data-size="대"><b>운명적 행운</b><span>✦100 — 거북선 한 척</span></button>
+    </div>
+    <div class="charge-row">
+      <button id="btn-ad">광고 보기 +10 (<span id="m-ads"></span>회 남음)</button>
+      <button id="btn-buy">충전 +100 (결제 목업)</button>
+    </div>
+    <button id="btn-close" class="ghost">닫기</button>
+  </div>
+</div>
+
+<!-- ===== 차단/알림 모달 ===== -->
+<div id="notice" class="modal hidden">
+  <div class="modal-card">
+    <p id="notice-text" class="notice-text"></p>
+    <button id="notice-close" class="ghost">알겠어요</button>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pyyaml
+pydantic
+google-genai
+psycopg[binary]
+python-multipart
+tzdata
+python-docx
+pypdf

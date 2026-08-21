@@ -1,0 +1,5 @@
+thelife/data/thelife.db
+__pycache__/
+*.pyc
+.preview-venv/
+.preview.db

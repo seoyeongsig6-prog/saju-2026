@@ -1,0 +1,78 @@
+# 갈등 은행 — 강영식 (어부)
+- id: fm_engine
+  scenario: fisherman
+  type: 재정
+  scale: 중
+  min_act: 1
+  title: "낡은 엔진"
+  seed: "출항길, 엔진에서 못 듣던 소리가 난다"
+  rise: "정비소 견적이 모아둔 계약금의 절반 — 김 선장의 배가 서면 벌이도 선다"
+  climax: "계약금을 헐어 엔진을 고치느냐, 위험을 안고 조업을 계속하느냐"
+  resolve_good: "만복이와 사흘 밤을 새워 중고 부품으로 엔진을 살려낸다"
+  resolve_bad: "먼바다에서 엔진이 멎어 조업 일주일을 통째로 날린다"
+  luck_hook: "폐선 처리장에서 같은 기종의 멀쩡한 엔진이 나온다"
+
+- id: fm_typhoon
+  scenario: fisherman
+  type: 자연
+  scale: 대
+  min_act: 2
+  title: "물마루 너머의 태풍"
+  seed: "기상도에 심상찮은 소용돌이가 잡힌다"
+  rise: "항구가 뒤숭숭하다 — 배를 묶느냐, 마지막 한 번을 나가느냐"
+  climax: "태풍 전야, 갈치 떼가 항로에 들었다는 무전이 온다"
+  resolve_good: "물때를 읽고 태풍보다 반나절 먼저 만선으로 돌아온다"
+  resolve_bad: "그물 절반을 바다에 버리고 몸만 겨우 돌아온다"
+  luck_hook: "태풍이 예보보다 크게 항로를 비껴간다"
+
+- id: fm_loan
+  scenario: fisherman
+  type: 권력
+  scale: 대
+  min_act: 2
+  title: "수협의 도장"
+  seed: "박 조합장이 대출 서류를 자꾸 미뤄둔다"
+  rise: "담보가 부족하다는 말 — 보증인 없이는 어렵다는 눈치"
+  climax: "대출 심사일, 회의실 문 앞에 선다"
+  resolve_good: "십 년 무사고 조업 기록과 김 선장의 보증이 도장을 끌어낸다"
+  resolve_bad: "심사에서 미끄러지고, '만선호'에 다른 매수자가 붙었다는 소문이 돈다"
+  luck_hook: "특별 어민 지원 융자 공고가 그 주에 뜬다"
+
+- id: fm_rival
+  scenario: fisherman
+  type: 관계
+  scale: 중
+  min_act: 1
+  title: "어장 다툼"
+  seed: "남의 선단이 우리 통발 자리에 줄을 놓기 시작했다"
+  rise: "부두에서 언성이 오가고, 만복이가 멱살을 잡혔다"
+  climax: "새벽 어장에서 두 배가 뱃머리를 맞댄다"
+  resolve_good: "영식이 나서 물때를 나누는 중재안을 만든다 — 부두의 신망을 얻다"
+  resolve_bad: "통발 스무 개를 잃고, 어장 한 귀퉁이를 내준다"
+  luck_hook: "해경 순시선이 때마침 그 물길을 지난다"
+
+- id: fm_price
+  scenario: fisherman
+  type: 재정
+  scale: 소
+  min_act: 1
+  title: "반값 경매"
+  seed: "며칠째 어시장 시세가 바닥이다"
+  rise: "기름값도 안 나오는 경매가 이어진다"
+  climax: "혜자가 직거래 제안을 놓고 간다 — 시세의 두 배, 그러나 조합을 거치지 않는 뒷거래"
+  resolve_good: "정직하게 조합 경매를 지키고, 혜자의 신용을 얻는다"
+  resolve_bad: "뒷거래 소문이 돌아 조합 사람들 보기가 껄끄러워진다"
+  luck_hook: "수도권 횟집 체인이 이 항구 갈치를 지명해 사들이기 시작한다"
+
+- id: fm_back
+  scenario: fisherman
+  type: 신체
+  scale: 소
+  min_act: 1
+  title: "허리가 말을 안 듣는다"
+  seed: "그물을 올리다 허리에서 뚝, 소리가 났다"
+  rise: "파스로 버티는 사흘 — 김 선장이 눈치를 챈다"
+  climax: "만선 물때가 왔는데 몸이 말을 듣지 않는다"
+  resolve_good: "만복이가 말없이 영식 몫까지 그물을 당긴다 — 사내들의 우정"
+  resolve_bad: "무리하다 자리에 눕고, 조업 닷새를 놓친다"
+  luck_hook: "용하다는 침쟁이 노인이 마침 항구에 머물고 있다"

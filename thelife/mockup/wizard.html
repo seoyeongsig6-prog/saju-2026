@@ -1,0 +1,409 @@
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>더 노벨리스트 — 단계별 UI 목업</title>
+<style>
+:root{
+  --bg:#f4f1ea; --bg-tint:#efe9dd; --panel:#fff; --panel2:#f3eee4;
+  --text:#2b2721; --dim:#8a8375; --line:#e8e1d2; --line-soft:#f0ebe0;
+  --accent:#7a5cf0; --accent-soft:rgba(122,92,240,.10);
+  --grad:linear-gradient(135deg,#8b70ff,#6a54f0);
+  --shadow-sm:0 1px 2px rgba(50,40,15,.05);
+  --shadow:0 6px 22px -10px rgba(60,48,20,.18),0 2px 6px rgba(60,48,20,.05);
+  --radius:16px;
+}
+[data-theme="dark"]{
+  --bg:#14151b; --bg-tint:#191a22; --panel:#1e2028; --panel2:#272a34;
+  --text:#ecebf2; --dim:#9a95a7; --line:#33323f; --line-soft:#2a2a35;
+  --accent:#9a82ff; --accent-soft:rgba(154,130,255,.14);
+  --grad:linear-gradient(135deg,#a78bff,#7d68ff);
+  --shadow-sm:0 1px 2px rgba(0,0,0,.3);
+  --shadow:0 8px 26px -12px rgba(0,0,0,.55),0 2px 6px rgba(0,0,0,.3);
+}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(1100px 520px at 50% -8%,var(--bg-tint),transparent 60%),var(--bg);
+  color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard",sans-serif;
+  -webkit-font-smoothing:antialiased;}
+button{font-family:inherit;cursor:pointer}
+
+/* 폰 프레임 */
+.phone{width:min(390px,100vw);min-height:780px;margin:0 auto;position:relative;display:flex;flex-direction:column;
+  padding:0 0 150px;}   /* 하단 고정 버튼(최대 2개) 높이만큼 확보 */
+.mk-label{max-width:min(390px,100vw)}
+
+/* 상단: 진행 표시 */
+.wz-top{padding:16px 18px 6px;display:flex;align-items:center;gap:12px}
+.wz-back{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:var(--panel);
+  color:var(--text);font-size:16px;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-sm)}
+.wz-steps{flex:1;display:flex;align-items:center;gap:6px}
+.wz-dot{height:5px;flex:1;border-radius:99px;background:var(--line)}
+.wz-dot.on{background:var(--grad)}
+.wz-count{font-size:12px;color:var(--dim);font-weight:700;white-space:nowrap}
+
+/* 하단 고정 버튼에 콘텐츠가 가리지 않도록 넉넉한 아래 여백 (잘림 방지) */
+.wz-body{flex:1;padding:6px 18px 26px;display:flex;flex-direction:column}
+.wz-kicker{font-size:12.5px;font-weight:800;color:var(--accent);letter-spacing:.02em;margin:10px 0 6px}
+h1.wz-q{font-size:25px;line-height:1.35;font-weight:800;letter-spacing:-.02em;margin:0 0 8px}
+.wz-sub{font-size:13.5px;color:var(--dim);line-height:1.65;margin:0 0 18px}
+
+textarea.wz-in{width:100%;min-height:120px;padding:15px;border-radius:14px;border:1px solid var(--line);
+  background:var(--panel);color:var(--text);font-size:15.5px;line-height:1.6;resize:none;box-shadow:var(--shadow-sm)}
+textarea.wz-in:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.wz-label{font-size:13px;font-weight:700;margin:20px 0 9px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{padding:9px 14px;border-radius:999px;border:1px solid var(--line);background:var(--panel);
+  color:var(--text);font-size:13.5px;font-weight:600;box-shadow:var(--shadow-sm)}
+.chip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:800}
+.wz-more{margin-top:20px;font-size:13px;color:var(--dim);text-align:center;text-decoration:underline;
+  background:none;border:none}
+
+/* 카드 (결과 확인 단계) */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;
+  box-shadow:var(--shadow);margin-bottom:12px}
+.card h3{margin:0 0 6px;font-size:15.5px;display:flex;align-items:center;gap:7px}
+.card p{margin:0;font-size:13.5px;line-height:1.7;color:var(--dim)}
+.card .tag{font-size:11px;font-weight:800;color:var(--accent);background:var(--accent-soft);
+  padding:2px 8px;border-radius:999px}
+.rowbtn{display:flex;gap:8px;margin-top:12px}
+.rowbtn button{flex:1;padding:10px;border-radius:11px;border:1px solid var(--line);background:var(--panel2);
+  color:var(--text);font-size:13px;font-weight:700}
+
+/* 인물 카드 */
+.pcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;
+  box-shadow:var(--shadow);margin-bottom:12px;display:flex;gap:13px;align-items:flex-start}
+.pav{width:46px;height:46px;border-radius:14px;flex-shrink:0;display:flex;align-items:center;
+  justify-content:center;font-size:20px;color:#fff}
+.pcard b{font-size:15.5px}
+.prole{font-size:11.5px;font-weight:800;color:var(--accent);background:var(--accent-soft);
+  padding:2px 8px;border-radius:999px;margin-left:6px}
+.pcard p{margin:5px 0 0;font-size:12.5px;color:var(--dim);line-height:1.6}
+
+/* 회차 리스트 */
+.ep{display:flex;gap:11px;padding:11px 0;border-bottom:1px solid var(--line-soft)}
+.ep:last-child{border:none}
+.epno{font-size:12px;font-weight:800;color:var(--accent);min-width:30px}
+.ep b{font-size:13.5px;display:block;margin-bottom:2px}
+.ep span{font-size:12px;color:var(--dim);line-height:1.55}
+
+/* 하단 고정 버튼 */
+.wz-foot{position:absolute;left:0;right:0;bottom:0;padding:12px 18px calc(14px + env(safe-area-inset-bottom,0px));
+  background:linear-gradient(to top,var(--bg) 72%,transparent);}
+.btn-main{width:100%;padding:16px;border-radius:14px;border:none;background:var(--grad);color:#fff;
+  font-size:16px;font-weight:800;box-shadow:0 8px 20px -8px var(--accent)}
+.btn-ghost{width:100%;padding:13px;border-radius:13px;border:1px solid var(--line);background:var(--panel);
+  color:var(--dim);font-size:14px;font-weight:700;margin-top:8px}
+
+/* 생성 중 */
+.gen{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding-bottom:60px}
+.orb{width:92px;height:92px;border-radius:50%;background:var(--grad);opacity:.9;
+  animation:pulse 1.6s ease-in-out infinite;box-shadow:0 12px 40px -10px var(--accent)}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.09);opacity:1}}
+.gen h2{font-size:19px;margin:0;font-weight:800}
+.tasks{width:100%;display:flex;flex-direction:column;gap:11px;margin-top:4px}
+.task{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--dim)}
+.task.done{color:var(--text)}
+.task .ic{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);display:flex;
+  align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
+.task.done .ic{background:var(--accent);border-color:var(--accent);color:#fff}
+.task.now .ic{border-color:var(--accent);border-right-color:transparent;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* 하단 탭바 (완성 후) */
+.tabbar{position:absolute;left:0;right:0;bottom:0;display:flex;background:var(--panel);
+  border-top:1px solid var(--line);padding:9px 0 calc(9px + env(safe-area-inset-bottom,0px))}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;background:none;border:none;
+  color:var(--dim);font-size:10.5px;font-weight:700}
+.tab .ti{font-size:19px}
+.tab.on{color:var(--accent)}
+
+/* ── 집필 화면 ── */
+.ed-top{display:flex;align-items:center;gap:10px;padding:14px 16px 8px}
+.ed-nav{flex:1;display:flex;align-items:center;justify-content:center;gap:8px}
+.ed-nav b{font-size:15px;min-width:38px;text-align:center}
+.epnav{padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);
+  color:var(--dim);font-size:12.5px;font-weight:700;box-shadow:var(--shadow-sm)}
+
+.plan-strip{margin:0 16px;padding:12px 14px;border-radius:13px;background:var(--accent-soft);
+  border:1px solid rgba(122,92,240,.18)}
+.plan-strip-h{font-size:12.5px;font-weight:800;color:var(--accent);margin-bottom:5px}
+.plan-strip .mini{font-weight:600;color:var(--dim);font-size:11px;margin-left:4px}
+.plan-strip p{margin:0;font-size:13px;line-height:1.65;color:var(--text)}
+
+.ed-title{width:100%;padding:11px 13px;border-radius:11px;border:1px solid var(--line);
+  background:var(--panel);color:var(--text);font-size:15.5px;font-weight:700;margin-bottom:10px}
+.ed-body{flex:1;min-height:230px;padding:15px;border-radius:13px;border:1px solid var(--line);
+  background:var(--panel);font-size:14.5px;line-height:2;color:var(--text);box-shadow:var(--shadow-sm)}
+.caret{color:var(--accent);font-weight:700}
+
+.ed-foot{position:absolute;left:0;right:0;bottom:0;padding:10px 16px calc(14px + env(safe-area-inset-bottom,0px));
+  background:linear-gradient(to top,var(--bg) 72%,transparent)}
+.ed-meta{font-size:11.5px;color:var(--dim);text-align:center;margin-bottom:8px}
+.btn-guide{width:100%;padding:15px;border-radius:14px;border:none;background:var(--grad);color:#fff;
+  font-size:15px;font-weight:800;box-shadow:0 8px 20px -8px var(--accent);
+  display:flex;align-items:center;justify-content:center;gap:8px}
+.badge{background:rgba(255,255,255,.25);padding:1px 8px;border-radius:999px;font-size:12px}
+
+/* 하단 시트 (가이드) */
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--panel);border-top:1px solid var(--line);
+  border-radius:20px 20px 0 0;box-shadow:0 -14px 40px -14px rgba(50,40,20,.3);padding-bottom:8px;max-height:72%}
+.sheet-grip{width:38px;height:4px;border-radius:99px;background:var(--line);margin:9px auto 4px}
+.sheet-tabs{display:flex;gap:6px;padding:4px 14px 10px;border-bottom:1px solid var(--line-soft)}
+.st{flex:1;padding:9px;border-radius:10px;border:none;background:transparent;color:var(--dim);
+  font-size:13px;font-weight:700}
+.st.on{background:var(--accent-soft);color:var(--accent);font-weight:800}
+.sheet-body{padding:12px 16px 6px;display:flex;flex-direction:column;gap:14px}
+
+.ck{display:flex;gap:11px;align-items:flex-start}
+.ck-ic{width:28px;height:28px;border-radius:9px;flex-shrink:0;display:flex;align-items:center;
+  justify-content:center;font-size:14px}
+.ck b{font-size:13.5px;display:block;margin-bottom:3px}
+.ck p{margin:0;font-size:12.5px;line-height:1.65;color:var(--dim)}
+.ck.warn{background:rgba(213,95,87,.08);border:1px solid rgba(213,95,87,.2);
+  border-radius:12px;padding:11px;margin:0 -2px}
+
+.near{padding:12px 13px;border-radius:12px;border:1px solid var(--line);background:var(--panel2)}
+.near-h{font-size:12px;font-weight:800;color:var(--dim);margin-bottom:5px}
+.near p{margin:0;font-size:12.5px;line-height:1.7;color:var(--text)}
+.near.now{background:var(--accent-soft);border-color:rgba(122,92,240,.25)}
+.near.now .near-h{color:var(--accent)}
+.near-more{margin-top:8px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);
+  background:var(--panel);color:var(--dim);font-size:11.5px;font-weight:700}
+
+/* 목업 라벨 */
+.mk-label{max-width:390px;margin:26px auto 8px;font-size:12.5px;font-weight:800;color:var(--dim);
+  letter-spacing:.04em;text-transform:uppercase;padding:0 18px}
+.sep{max-width:390px;margin:0 auto;height:1px;background:var(--line);}
+</style>
+
+<div class="mk-label">1단계 — 아이디어 (입력은 이것뿐)</div>
+<div class="phone">
+  <div class="wz-top">
+    <button class="wz-back">←</button>
+    <div class="wz-steps"><i class="wz-dot on"></i><i class="wz-dot"></i><i class="wz-dot"></i><i class="wz-dot"></i></div>
+    <span class="wz-count">1/4</span>
+  </div>
+  <div class="wz-body">
+    <div class="wz-kicker">STEP 1 · 아이디어</div>
+    <h1 class="wz-q">어떤 이야기를<br>쓰고 싶으세요?</h1>
+    <p class="wz-sub">한 줄이면 충분해요. 세계관·인물·플롯은 AI가 알아서 만들어 드릴게요.</p>
+    <textarea class="wz-in" placeholder="예) 회사에서 쫓겨난 개발자가 우연히 만든 AI로 복수를 시작한다"></textarea>
+    <div class="wz-label">장르</div>
+    <div class="chips">
+      <span class="chip on">현대판타지</span><span class="chip">로맨스</span><span class="chip">무협</span>
+      <span class="chip">회귀·환생</span><span class="chip">미스터리</span><span class="chip">SF</span>
+    </div>
+    <button class="wz-more">＋ 더 자세히 알려주기 (선택)</button>
+  </div>
+  <div class="wz-foot"><button class="btn-main">AI가 다 만들기 ✨</button></div>
+</div>
+<div class="sep"></div>
+
+<div class="mk-label">2단계 — 생성 중 (기다리는 화면)</div>
+<div class="phone">
+  <div class="wz-top">
+    <button class="wz-back" style="visibility:hidden">←</button>
+    <div class="wz-steps"><i class="wz-dot on"></i><i class="wz-dot on"></i><i class="wz-dot"></i><i class="wz-dot"></i></div>
+    <span class="wz-count">2/4</span>
+  </div>
+  <div class="wz-body gen">
+    <div class="orb"></div>
+    <h2>이야기를 짜고 있어요</h2>
+    <div class="tasks">
+      <div class="task done"><span class="ic">✓</span> 세계관 만드는 중</div>
+      <div class="task done"><span class="ic">✓</span> 인물 만드는 중</div>
+      <div class="task now"><span class="ic"></span> 플롯 짜는 중…</div>
+      <div class="task"><span class="ic"></span> 회차별 전개 만들기</div>
+    </div>
+  </div>
+</div>
+<div class="sep"></div>
+
+<div class="mk-label">3단계 — 결과 확인 (세계관 · 인물)</div>
+<div class="phone">
+  <div class="wz-top">
+    <button class="wz-back">←</button>
+    <div class="wz-steps"><i class="wz-dot on"></i><i class="wz-dot on"></i><i class="wz-dot on"></i><i class="wz-dot"></i></div>
+    <span class="wz-count">3/4</span>
+  </div>
+  <div class="wz-body">
+    <div class="wz-kicker">STEP 3 · 확인</div>
+    <h1 class="wz-q" style="font-size:23px">이렇게 만들어 봤어요</h1>
+    <p class="wz-sub">마음에 들면 그대로 두고, 아니면 그 부분만 다시 만들 수 있어요.</p>
+
+    <div class="card">
+      <h3>🌍 세계관 <span class="tag">AI 생성</span></h3>
+      <p>2027년 판교. 거대 IT 기업이 AI 특허를 독점한 시대, 버려진 오픈소스 조각들이
+         스스로 결합해 '유령 지능'이 태어난다. 기술은 넘치지만 정직함은 사라진 세계.</p>
+      <div class="rowbtn"><button>🔄 다시 만들기</button><button>✎ 고치기</button></div>
+    </div>
+
+    <div class="pcard">
+      <div class="pav" style="background:linear-gradient(135deg,#8b70ff,#6a54f0)">주</div>
+      <div><b>강민우</b><span class="prole">주인공</span>
+        <p>누명을 쓰고 쫓겨난 천재 개발자. <b>원하는 것</b> 복수 · <b>진짜 필요한 것</b> 다시 사람을 믿는 일</p></div>
+    </div>
+    <div class="pcard">
+      <div class="pav" style="background:linear-gradient(135deg,#d9559b,#c23f86)">조</div>
+      <div><b>서연우</b><span class="prole">조력자</span>
+        <p>유일하게 그를 믿어준 전 동료. <b>비밀</b> 내부고발 증거를 몰래 모으고 있다</p></div>
+    </div>
+    <div class="pcard">
+      <div class="pav" style="background:linear-gradient(135deg,#d64b43,#b03b34)">적</div>
+      <div><b>박태준</b><span class="prole">적대자</span>
+        <p>공을 가로챈 대표. <b>비밀</b> 회사 자금 45억을 횡령했다</p></div>
+    </div>
+  </div>
+  <div class="wz-foot">
+    <button class="btn-main">좋아요, 다음 →</button>
+    <button class="btn-ghost">🔄 인물 전체 다시 만들기</button>
+  </div>
+</div>
+<div class="sep"></div>
+
+<div class="mk-label">4단계 — 플롯 · 회차 (완성)</div>
+<div class="phone">
+  <div class="wz-top">
+    <button class="wz-back">←</button>
+    <div class="wz-steps"><i class="wz-dot on"></i><i class="wz-dot on"></i><i class="wz-dot on"></i><i class="wz-dot on"></i></div>
+    <span class="wz-count">4/4</span>
+  </div>
+  <div class="wz-body">
+    <div class="wz-kicker">STEP 4 · 플롯</div>
+    <h1 class="wz-q" style="font-size:23px">전체 흐름이에요</h1>
+    <p class="wz-sub">1화부터 마지막화까지 큰 줄기를 잡았어요. 각 화는 눌러서 고칠 수 있어요.</p>
+    <div class="card">
+      <h3>🗺 전체 30화 · 결말 고정</h3>
+      <p style="color:var(--text)">누명을 벗고, 자신이 만든 AI와 함께 정직한 기술로 세상을 바꾼 뒤 조용히 물러난다.</p>
+    </div>
+    <div class="card" style="padding:6px 16px">
+      <div class="ep"><span class="epno">1화</span><div><b>버려진 엔진</b><span>해고당한 민우가 짐을 싸다 이상한 로그를 발견한다</span></div></div>
+      <div class="ep"><span class="epno">2화</span><div><b>틈새의 신경망</b><span>유휴 서버에 숨어 자라던 지능과 처음 대화한다</span></div></div>
+      <div class="ep"><span class="epno">3화</span><div><b>첫 번째 반격</b><span>박태준의 발표가 민우의 코드였음이 드러난다</span></div></div>
+      <div class="ep"><span class="epno">4화</span><div><b>손 내민 사람</b><span>연우가 위험을 무릅쓰고 증거를 건넨다</span></div></div>
+      <div class="ep" style="opacity:.55"><span class="epno">5화</span><div><b>…</b><span>이어서 30화까지</span></div></div>
+    </div>
+  </div>
+  <div class="wz-foot"><button class="btn-main">완성! 작품 시작하기 🎉</button></div>
+</div>
+<div class="sep"></div>
+
+<div class="mk-label">완성 후 — 작품 홈 (하단 탭바)</div>
+<div class="phone">
+  <div class="wz-top" style="padding-top:18px">
+    <div style="flex:1"><div style="font-size:21px;font-weight:800;letter-spacing:-.02em">신들이 내 방송을<br>구독하기 시작했다</div>
+      <div style="font-size:12.5px;color:var(--dim);margin-top:5px">현대판타지 · 30화 설계 완료</div></div>
+  </div>
+  <div class="wz-body">
+    <div class="card"><h3>📖 회차 줄거리</h3><p>1화부터 30화까지 각 화의 사건·갈등이 준비됐어요.</p></div>
+    <div class="card"><h3>👥 인물 · 관계도</h3><p>3명의 인물과 관계를 한눈에 확인하고 고칠 수 있어요.</p></div>
+    <div class="card"><h3>🩺 플롯 닥터 <span class="tag">PRO</span></h3><p>앞뒤가 안 맞거나 늘어지는 곳을 AI가 찾아 알려줘요.</p></div>
+  </div>
+  <div class="tabbar">
+    <button class="tab on"><span class="ti">📖</span>작품</button>
+    <button class="tab"><span class="ti">🗺</span>플롯</button>
+    <button class="tab"><span class="ti">⚙</span>설정</button>
+  </div>
+</div>
+<div class="sep"></div>
+
+<!-- ════════ 집필 화면 (이 앱의 핵심) ════════ -->
+<div class="mk-label">집필 ① — 내가 쓰는 화면 (회차 이동 · 줄거리 항상 확인)</div>
+<div class="phone">
+  <div class="ed-top">
+    <button class="wz-back">←</button>
+    <div class="ed-nav">
+      <button class="epnav">‹ 3화</button>
+      <b>4화</b>
+      <button class="epnav">5화 ›</button>
+    </div>
+    <button class="wz-back">⋯</button>
+  </div>
+
+  <div class="plan-strip">
+    <div class="plan-strip-h">📋 이번 회차 줄거리 <span class="mini">계획한 대로</span></div>
+    <p>연우가 위험을 무릅쓰고 증거가 담긴 USB를 건넨다. 민우는 처음으로 반격의 실마리를 잡지만,
+       그 증거만으로는 부족하다는 걸 깨닫는다.</p>
+  </div>
+
+  <div class="wz-body" style="padding-top:12px">
+    <input class="ed-title" value="4화. 손 내민 사람">
+    <div class="ed-body">밤 열한 시, 사무실 복도의 센서등이 꺼졌다 켜지길 반복했다.<br><br>
+      민우는 종이컵을 쥔 채 비상계단 앞에 서 있었다. 등 뒤에서 구두 소리가 멈췄다.<br><br>
+      “……여기 있을 줄 알았어요.”<br><br>
+      연우였다. 그녀의 손에는 작은 USB가 들려 있었다<span class="caret">|</span></div>
+  </div>
+
+  <div class="ed-foot">
+    <div class="ed-meta"><b>1,240</b>자 · 저장됨</div>
+    <button class="btn-guide">💡 이번 회차에서 중요한 것 <span class="badge">7</span></button>
+  </div>
+</div>
+<div class="sep"></div>
+
+<div class="mk-label">집필 ② — 이번 회차 가이드 (다각도 체크포인트) ★핵심</div>
+<div class="phone">
+  <div class="ed-top">
+    <button class="wz-back">←</button>
+    <div class="ed-nav"><button class="epnav">‹ 3화</button><b>4화</b><button class="epnav">5화 ›</button></div>
+    <button class="wz-back">⋯</button>
+  </div>
+  <div class="wz-body" style="padding-top:10px;opacity:.35">
+    <input class="ed-title" value="4화. 손 내민 사람">
+    <div class="ed-body" style="min-height:90px">밤 열한 시, 사무실 복도의 센서등이 꺼졌다 켜지길 반복했다.</div>
+  </div>
+
+  <div class="sheet">
+    <div class="sheet-grip"></div>
+    <div class="sheet-tabs">
+      <button class="st on">이번 회차</button><button class="st">앞뒤 확인</button><button class="st">설정집</button>
+    </div>
+    <div class="sheet-body">
+      <div class="ck"><span class="ck-ic" style="background:#7a5cf0">🎯</span>
+        <div><b>이 회차의 목표</b><p>민우가 처음으로 반격의 실마리를 잡는다. 단, 아직 이기지는 못한다.</p></div></div>
+      <div class="ck"><span class="ck-ic" style="background:#d64b43">⚔️</span>
+        <div><b>갈등 — 무엇이 막아서나</b><p>USB의 증거만으로는 박태준을 무너뜨릴 수 없다. 결정적 서명 로그가 빠져 있다.</p></div></div>
+      <div class="ck"><span class="ck-ic" style="background:#2f7fce">👤</span>
+        <div><b>인물 변화</b><p><b>민우</b> 무력감 → 작은 확신 (이 화에서 처음 웃는다)<br>
+          <b>연우</b> 방관자 → 공범이 되기로 결심</p></div></div>
+      <div class="ck"><span class="ck-ic" style="background:#b9822b">🔗</span>
+        <div><b>앞 회차에서 이어받을 것</b><p>3화 끝 — 민우는 아직 <b>해고 통보서</b>를 들고 있다. 연우와는 서먹한 상태.</p></div></div>
+      <div class="ck"><span class="ck-ic" style="background:#2fa07f">🌱</span>
+        <div><b>여기서 심을 복선</b><p>아키가 시키지도 않은 로그를 스스로 정리해 둔다 → <b>9화에서 회수</b></p></div></div>
+      <div class="ck"><span class="ck-ic" style="background:#8a8375">✂️</span>
+        <div><b>다음 화로 넘길 끝맺음</b><p>박태준이 민우에게 직접 전화를 건다 (5화 도입과 연결)</p></div></div>
+      <div class="ck warn"><span class="ck-ic" style="background:#d55f57">⚠️</span>
+        <div><b>반복 주의</b><p>‘심장이 쿵 내려앉았다’는 이미 <b>3회</b>, 연우 등장 시 <b>향기 묘사</b>는 <b>4회</b> 쓰셨어요.
+          이번엔 다른 감각으로 가보세요.</p></div></div>
+    </div>
+  </div>
+</div>
+<div class="sep"></div>
+
+<div class="mk-label">집필 ③ — 앞뒤 회차 확인 (연속성)</div>
+<div class="phone">
+  <div class="ed-top">
+    <button class="wz-back">←</button>
+    <div class="ed-nav"><button class="epnav">‹ 3화</button><b>4화</b><button class="epnav">5화 ›</button></div>
+    <button class="wz-back">⋯</button>
+  </div>
+  <div class="wz-body" style="padding-top:10px;opacity:.35">
+    <input class="ed-title" value="4화. 손 내민 사람">
+    <div class="ed-body" style="min-height:90px">밤 열한 시, 사무실 복도의 센서등이 꺼졌다 켜지길 반복했다.</div>
+  </div>
+  <div class="sheet">
+    <div class="sheet-grip"></div>
+    <div class="sheet-tabs">
+      <button class="st">이번 회차</button><button class="st on">앞뒤 확인</button><button class="st">설정집</button>
+    </div>
+    <div class="sheet-body">
+      <div class="near prev"><div class="near-h">‹ 3화 · 이미 쓴 내용</div>
+        <p>박태준의 신제품 발표가 민우의 코드였음이 드러난다. 하지만 아무도 믿어주지 않고,
+           민우는 해고 통보서를 받는다. <b>끝 장면 —</b> 연우가 복도에서 그를 붙잡는다.</p>
+        <button class="near-more">전문 보기</button></div>
+      <div class="near now"><div class="near-h">● 4화 · 지금 쓰는 중</div>
+        <p>연우가 USB를 건넨다. 반격의 실마리를 잡지만 증거가 부족하다.</p></div>
+      <div class="near next"><div class="near-h">5화 › 다음에 쓸 것</div>
+        <p>박태준이 회유를 시도한다. 민우는 거절하고, 아키에게 처음으로 “도와달라”고 말한다.
+           <b>이어지려면 —</b> 4화 끝에 박태준의 전화가 필요해요.</p></div>
+    </div>
+  </div>
+</div>
+<div style="height:40px"></div>

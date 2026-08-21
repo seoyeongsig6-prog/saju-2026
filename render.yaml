@@ -1,0 +1,37 @@
+services:
+  - type: web
+    name: thelife
+    runtime: python
+    rootDir: thelife
+    # 앱스토어 운영은 콜드 스타트·일시 디스크에 의존하지 않는 상시 실행 인스턴스를 쓴다.
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server.novelist_main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      # 판매용 소설 앱 전용 모드. 전체 AI 본문 생성은 막고 기획·가이드 기능만 제공합니다.
+      - key: WRITER_LAUNCH_MODE
+        value: "1"
+
+      # Render 대시보드에서 실제 값을 보관합니다. 저장소에는 비밀값을 넣지 않습니다.
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: APP_AUTH_SECRET
+        generateValue: true
+      - key: ADMIN_SECRET
+        sync: false
+      - key: NOVELIST_DEMO_MODE
+        value: "0"
+
+      # AI 공급자와 모델. 대시보드 값이 있으면 그 값이 우선 적용됩니다.
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: GEMINI_MODEL
+        value: gemini-3.6-flash
+
+      # 유료 구독 검증과 갱신/환불 동기화에 필수입니다.
+      - key: REVENUECAT_SECRET
+        sync: false
+      - key: REVENUECAT_WEBHOOK_AUTH
+        sync: false

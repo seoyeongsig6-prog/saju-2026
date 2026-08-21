@@ -1,0 +1,11 @@
+node_modules/
+www/
+.DS_Store
+*.log
+*.jks
+*.keystore
+keystore.properties
+*.p12
+*.mobileprovision
+GoogleService-Info.plist
+google-services.json

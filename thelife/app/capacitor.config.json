@@ -1,0 +1,15 @@
+{
+  "appId": "com.thenovelist.app",
+  "appName": "더 노벨리스트",
+  "webDir": "www",
+  "backgroundColor": "#faf7ff",
+  "ios": { "contentInset": "always", "backgroundColor": "#faf7ff" },
+  "android": { "backgroundColor": "#faf7ff" },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 800,
+      "backgroundColor": "#faf7ff",
+      "showSpinner": false
+    }
+  }
+}
